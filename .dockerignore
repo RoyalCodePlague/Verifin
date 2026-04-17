@@ -1,0 +1,30 @@
+# Ignore frontend files
+node_modules/
+dist/
+src/
+public/
+index.html
+package*.json
+vite.config.*
+tsconfig.*
+tailwind.config.*
+postcss.config.*
+eslint.config.*
+components.json
+
+# Ignore other non-backend files
+.cursor/
+.git/
+.gitignore
+.qodo/
+.venv/
+*.md
+test_*.py
+tests/
+test-results/
+playwright.*.ts
+vitest.config.*
+
+# Only include backend
+!backend/
+backend/!
