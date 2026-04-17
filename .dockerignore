@@ -25,6 +25,12 @@ test-results/
 playwright.*.ts
 vitest.config.*
 
+# Never bake local secrets or placeholder database settings into the image
+.env
+.env.*
+backend/.env
+backend/.env.*
+
 # Only include backend
 !backend/
 backend/!
