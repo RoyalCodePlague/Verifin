@@ -1,0 +1,163 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Space+Grotesk:wght@300..700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --font-display: 'Space Grotesk', sans-serif;
+    --font-body: 'DM Sans', sans-serif;
+
+    --background: 40 20% 98%;
+    --foreground: 160 30% 8%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 160 30% 8%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 160 30% 8%;
+
+    --primary: 152 55% 28%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 40 60% 94%;
+    --secondary-foreground: 160 30% 12%;
+
+    --muted: 40 20% 95%;
+    --muted-foreground: 160 10% 45%;
+
+    --accent: 38 92% 50%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --success: 152 55% 28%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --border: 40 15% 90%;
+    --input: 40 15% 90%;
+    --ring: 152 55% 28%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 160 30% 8%;
+    --sidebar-foreground: 40 20% 90%;
+    --sidebar-primary: 152 55% 45%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 160 25% 14%;
+    --sidebar-accent-foreground: 40 20% 90%;
+    --sidebar-border: 160 20% 16%;
+    --sidebar-ring: 152 55% 45%;
+
+    --gradient-hero: linear-gradient(135deg, hsl(152 55% 28%), hsl(160 45% 18%));
+    --gradient-accent: linear-gradient(135deg, hsl(38 92% 50%), hsl(28 90% 55%));
+    --gradient-card: linear-gradient(180deg, hsl(0 0% 100%), hsl(40 20% 97%));
+    --shadow-soft: 0 2px 12px -2px hsl(160 30% 8% / 0.06);
+    --shadow-card: 0 4px 24px -4px hsl(160 30% 8% / 0.08);
+    --shadow-elevated: 0 12px 40px -8px hsl(160 30% 8% / 0.12);
+  }
+
+  .dark {
+    --background: 160 30% 6%;
+    --foreground: 40 20% 95%;
+    --card: 160 25% 10%;
+    --card-foreground: 40 20% 95%;
+    --popover: 160 25% 10%;
+    --popover-foreground: 40 20% 95%;
+    --primary: 152 55% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 160 20% 15%;
+    --secondary-foreground: 40 20% 90%;
+    --muted: 160 15% 14%;
+    --muted-foreground: 40 10% 55%;
+    --accent: 38 85% 55%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 55% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 85% 55%;
+    --warning-foreground: 0 0% 100%;
+    --border: 160 15% 16%;
+    --input: 160 15% 16%;
+    --ring: 152 55% 45%;
+    --sidebar-background: 160 30% 4%;
+    --sidebar-foreground: 40 20% 90%;
+    --sidebar-primary: 152 55% 45%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 160 25% 10%;
+    --sidebar-accent-foreground: 40 20% 90%;
+    --sidebar-border: 160 20% 12%;
+    --sidebar-ring: 152 55% 45%;
+    --shadow-soft: 0 2px 12px -2px hsl(0 0% 0% / 0.2);
+    --shadow-card: 0 4px 24px -4px hsl(0 0% 0% / 0.3);
+    --shadow-elevated: 0 12px 40px -8px hsl(0 0% 0% / 0.4);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-body);
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+  }
+}
+
+@layer utilities {
+  .text-gradient-hero {
+    background: var(--gradient-hero);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .text-gradient-accent {
+    background: var(--gradient-accent);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .bg-gradient-hero {
+    background: var(--gradient-hero);
+  }
+  .bg-gradient-accent {
+    background: var(--gradient-accent);
+  }
+  .shadow-soft {
+    box-shadow: var(--shadow-soft);
+  }
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+  .shadow-elevated {
+    box-shadow: var(--shadow-elevated);
+  }
+}
+
+/* Floating particles background animation */
+@keyframes float-particle {
+  0%, 100% { transform: translateY(0) translateX(0); opacity: 0; }
+  10% { opacity: 0.6; }
+  90% { opacity: 0.6; }
+  50% { transform: translateY(-200px) translateX(50px); }
+}
+
+.particle {
+  position: absolute;
+  border-radius: 50%;
+  background: hsl(var(--primary) / 0.15);
+  animation: float-particle var(--duration, 8s) ease-in-out infinite;
+  animation-delay: var(--delay, 0s);
+}

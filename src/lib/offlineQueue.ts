@@ -1,0 +1,65 @@
+// Offline queue: stores actions when offline, syncs when back online
+const QUEUE_KEY = "sp_offline_queue";
+const SESSION_KEY = "sp_offline_logged_in";
+
+export interface OfflineAction {
+  id: string;
+  type: "sale" | "expense" | "restock" | "customer_update";
+  payload: Record<string, unknown>;
+  timestamp: number;
+}
+
+export function getOfflineQueue(): OfflineAction[] {
+  try {
+    return JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+export function addToOfflineQueue(action: Omit<OfflineAction, "id" | "timestamp">) {
+  const queue = getOfflineQueue();
+  queue.push({
+    ...action,
+    id: Math.random().toString(36).slice(2, 10),
+    timestamp: Date.now(),
+  });
+  localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+}
+
+export function clearOfflineQueue() {
+  localStorage.removeItem(QUEUE_KEY);
+}
+
+export function markOfflineSession() {
+  localStorage.setItem(SESSION_KEY, "1");
+}
+
+export function clearOfflineSession() {
+  localStorage.removeItem(SESSION_KEY);
+}
+
+export function hadOfflineSession() {
+  return localStorage.getItem(SESSION_KEY) === "1";
+}
+
+export function isOnline(): boolean {
+  return navigator.onLine;
+}
+
+// Listen for online status and trigger sync when the app is back online
+export function setupOfflineSync(onSync: (actions: OfflineAction[]) => Promise<boolean>) {
+  const handleOnline = async () => {
+    const queue = getOfflineQueue();
+    if (queue.length > 0) {
+      const success = await onSync(queue);
+      if (success) {
+        clearOfflineQueue();
+        clearOfflineSession();
+      }
+    }
+  };
+
+  window.addEventListener("online", handleOnline);
+  return () => window.removeEventListener("online", handleOnline);
+}

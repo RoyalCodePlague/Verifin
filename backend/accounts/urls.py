@@ -1,0 +1,18 @@
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
+from rest_framework_simplejwt.views import TokenRefreshView
+from .views import CustomTokenObtainPairView, GoogleOAuthPlaceholderView, LogoutView, MeView, ProfileViewSet, RegisterView, StaffViewSet
+
+router = DefaultRouter()
+router.register("profiles", ProfileViewSet, basename="profile")
+router.register("staff", StaffViewSet, basename="staff")
+
+urlpatterns = [
+    path("", include(router.urls)),
+    path("register/", RegisterView.as_view(), name="register"),
+    path("login/", CustomTokenObtainPairView.as_view(), name="login"),
+    path("token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
+    path("logout/", LogoutView.as_view(), name="logout"),
+    path("me/", MeView.as_view(), name="me"),
+    path("google/", GoogleOAuthPlaceholderView.as_view(), name="google_oauth"),
+]

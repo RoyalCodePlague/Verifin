@@ -1,0 +1,12 @@
+django
+djangorestframework
+django-filter
+djangorestframework-simplejwt
+django-cors-headers
+pillow
+qrcode
+reportlab
+groq==1.1.2
+# Updated to explicitly require groq
+requests
+python-dotenv

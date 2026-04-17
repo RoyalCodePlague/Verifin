@@ -1,0 +1,47 @@
+from django.contrib.auth.models import AbstractUser
+from django.db import models
+from core.models import TimeStampedSoftDeleteModel
+
+
+class User(AbstractUser, TimeStampedSoftDeleteModel):
+    email = models.EmailField(unique=True)
+    phone = models.CharField(max_length=30, blank=True)
+    business_name = models.CharField(max_length=255, blank=True)
+    currency = models.CharField(max_length=10, default="ZAR")
+    currency_symbol = models.CharField(max_length=10, default="R")
+    dark_mode = models.BooleanField(default=False)
+    onboarding_complete = models.BooleanField(default=False)
+
+    USERNAME_FIELD = "email"
+    REQUIRED_FIELDS = ["username"]
+
+
+class Profile(TimeStampedSoftDeleteModel):
+    user = models.OneToOneField(User, related_name="profile", on_delete=models.CASCADE)
+    address = models.CharField(max_length=255, blank=True)
+    country = models.CharField(max_length=100, blank=True)
+    city = models.CharField(max_length=100, blank=True)
+    avatar = models.ImageField(upload_to="avatars/", blank=True, null=True)
+    bio = models.TextField(blank=True)
+
+
+class Staff(TimeStampedSoftDeleteModel):
+    OWNER = "Owner"
+    CASHIER = "Cashier"
+    STOCK_MANAGER = "Stock Manager"
+    MANAGER = "Manager"
+    ROLE_CHOICES = [
+        (OWNER, OWNER),
+        (CASHIER, CASHIER),
+        (STOCK_MANAGER, STOCK_MANAGER),
+        (MANAGER, MANAGER),
+    ]
+    ACTIVE = "Active"
+    INACTIVE = "Inactive"
+    STATUS_CHOICES = [(ACTIVE, ACTIVE), (INACTIVE, INACTIVE)]
+
+    user = models.ForeignKey(User, related_name="staff_members", on_delete=models.CASCADE)
+    name = models.CharField(max_length=255)
+    role = models.CharField(max_length=30, choices=ROLE_CHOICES, default=CASHIER)
+    status = models.CharField(max_length=15, choices=STATUS_CHOICES, default=ACTIVE)
+    last_active = models.DateTimeField(blank=True, null=True)
