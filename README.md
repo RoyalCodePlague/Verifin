@@ -1,3 +1,3 @@
-# Welcome to your Lovable project
+# Verifin — Smart Inventory & Admin for African SMEs
 
-TODO: Document your project here
+Automate your admin, control your stock, and stop losing money. The all-in-one business OS for African SMEs.

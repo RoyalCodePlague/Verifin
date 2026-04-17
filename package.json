@@ -1,8 +1,8 @@
 {
-  "name": "vite_react_shadcn_ts",
+  "name": "verifin",
   "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "version": "1.0.0",
+  "description": "Smart Inventory & Admin for African SMEs",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
