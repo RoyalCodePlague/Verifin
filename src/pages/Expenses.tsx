@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { useStore } from "@/lib/store";
 import { createExpenseApi, deleteExpenseApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { addToOfflineQueue, isOnline, markOfflineSession } from "@/lib/offlineQueue";
+import { addToOfflineQueue, canQueueOfflineAction, hadOfflineSession } from "@/lib/offlineQueue";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
@@ -49,13 +49,18 @@ const Expenses = () => {
         date: "Today",
       });
       addToOfflineQueue({ type: "expense", payload });
-      markOfflineSession();
       toast.success("Expense saved locally while offline. It will sync when you are back online.");
       setForm({ desc: "", amount: "", category: "Transport" });
       setAddOpen(false);
     };
 
-    if (!isOnline()) {
+    if (!navigator.onLine && !canQueueOfflineAction()) {
+      toast.error("Offline mode is only available after you lose connection from the logged-in dashboard.");
+      setSaving(false);
+      return;
+    }
+
+    if (canQueueOfflineAction()) {
       saveOffline();
       setSaving(false);
       return;
@@ -68,7 +73,11 @@ const Expenses = () => {
       toast.success("Expense recorded");
       await refreshUser();
     } catch (e) {
-      saveOffline();
+      if (hadOfflineSession()) {
+        saveOffline();
+      } else {
+        toast.error(e instanceof Error ? e.message : "Could not record expense");
+      }
     } finally {
       setSaving(false);
     }

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createSaleApi, deleteSaleApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { addToOfflineQueue, isOnline, markOfflineSession } from "@/lib/offlineQueue";
+import { addToOfflineQueue, canQueueOfflineAction, hadOfflineSession } from "@/lib/offlineQueue";
 import { motion } from "framer-motion";
 import { Plus, Search, ArrowUpRight, Trash2, ShoppingCart } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -92,10 +92,15 @@ const Sales = () => {
       })),
     };
 
-    if (!isOnline()) {
+    if (!navigator.onLine && !canQueueOfflineAction()) {
+      toast.error("Offline mode is only available after you lose connection from the logged-in dashboard.");
+      setSaving(false);
+      return;
+    }
+
+    if (canQueueOfflineAction()) {
       createOfflineSale();
       addToOfflineQueue({ type: "sale", payload: actionPayload });
-      markOfflineSession();
       toast.success("Sale saved locally while offline. It will sync automatically when you are back online.");
       setLineItems([]);
       setMethod("Cash");
@@ -112,10 +117,13 @@ const Sales = () => {
       setAddOpen(false);
       await refreshUser();
     } catch (e) {
-      createOfflineSale();
-      addToOfflineQueue({ type: "sale", payload: actionPayload });
-      markOfflineSession();
-      toast.success("Sale saved locally. It will sync automatically when you are back online.");
+      if (hadOfflineSession()) {
+        createOfflineSale();
+        addToOfflineQueue({ type: "sale", payload: actionPayload });
+        toast.success("Sale saved locally. It will sync automatically when you are back online.");
+      } else {
+        toast.error(e instanceof Error ? e.message : "Could not record sale");
+      }
     } finally {
       setSaving(false);
     }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Search, Plus, Package, Edit2, Trash2, ScanBarcode, Calendar } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { useStore } from "@/lib/store";
 import { createProductApi, deleteProductApi, updateProductApi } from "@/lib/api";
+import { addToOfflineQueue, canQueueOfflineAction, hadOfflineSession } from "@/lib/offlineQueue";
 import { useAuth } from "@/lib/auth-context";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
@@ -22,7 +23,7 @@ const allCategories = [
 ];
 
 const Inventory = () => {
-  const { products, deleteProduct, profile, addActivity } = useStore();
+  const { products, addProduct, updateProduct, deleteProduct, profile, addActivity } = useStore();
   const { refreshUser } = useAuth();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
@@ -32,7 +33,18 @@ const Inventory = () => {
   const [scanOpen, setScanOpen] = useState(false);
   const [form, setForm] = useState({ name: "", category: "", stock: "", reorder: "", price: "", barcode: "" });
   const [saving, setSaving] = useState(false);
+  const [canUseCameraScan, setCanUseCameraScan] = useState(false);
   const sym = profile.currencySymbol || "R";
+
+  useEffect(() => {
+    const updateCameraSupport = () => {
+      const mobileOrTablet = window.matchMedia("(pointer: coarse)").matches && window.matchMedia("(max-width: 1024px)").matches;
+      setCanUseCameraScan(mobileOrTablet && !!navigator.mediaDevices?.getUserMedia);
+    };
+    updateCameraSupport();
+    window.addEventListener("resize", updateCameraSupport);
+    return () => window.removeEventListener("resize", updateCameraSupport);
+  }, []);
 
   const mergedCategories = Array.from(new Set([...profile.categories, ...allCategories]));
   const categories = ["All", ...mergedCategories];
@@ -62,14 +74,84 @@ const Inventory = () => {
 
   const handleSave = async () => {
     setSaving(true);
+    const stock = parseInt(form.stock) || 0;
+    const reorder = parseInt(form.reorder) || 5;
+    const price = parseFloat(form.price) || 0;
+
+    const saveOffline = () => {
+      if (editProduct) {
+        updateProduct(editProduct, {
+          name: form.name,
+          category: form.category,
+          stock,
+          reorder,
+          price,
+          barcode: form.barcode,
+        });
+        if (/^\d+$/.test(editProduct)) {
+          addToOfflineQueue({
+            type: "product_update",
+            payload: {
+              id: parseInt(editProduct, 10),
+              name: form.name,
+              categoryName: form.category,
+              stock,
+              reorder_level: reorder,
+              price,
+              barcode: form.barcode,
+            },
+          });
+        }
+        setEditProduct(null);
+        toast.success("Product update saved locally. It will sync when you are back online.");
+      } else {
+        const sku = generateSku(form.name, form.category);
+        addProduct({
+          name: form.name,
+          sku,
+          category: form.category,
+          stock,
+          reorder,
+          price,
+          barcode: form.barcode,
+        });
+        addToOfflineQueue({
+          type: "product_create",
+          payload: {
+            name: form.name,
+            sku,
+            categoryName: form.category,
+            stock,
+            reorder_level: reorder,
+            price,
+            barcode: form.barcode,
+          },
+        });
+        setAddOpen(false);
+        toast.success("Product saved locally. It will sync when you are back online.");
+      }
+    };
+
+    if (!navigator.onLine && !canQueueOfflineAction()) {
+      toast.error("Offline mode is only available after you lose connection from the logged-in dashboard.");
+      setSaving(false);
+      return;
+    }
+
+    if (canQueueOfflineAction()) {
+      saveOffline();
+      setSaving(false);
+      return;
+    }
+
     try {
       if (editProduct) {
         await updateProductApi(editProduct, {
           name: form.name,
           categoryName: form.category,
-          stock: parseInt(form.stock) || 0,
-          reorder_level: parseInt(form.reorder) || 5,
-          price: parseFloat(form.price) || 0,
+          stock,
+          reorder_level: reorder,
+          price,
           barcode: form.barcode,
         });
         setEditProduct(null);
@@ -81,9 +163,9 @@ const Inventory = () => {
           name: form.name,
           sku,
           categoryName: form.category,
-          stock: parseInt(form.stock) || 0,
-          reorder_level: parseInt(form.reorder) || 5,
-          price: parseFloat(form.price) || 0,
+          stock,
+          reorder_level: reorder,
+          price,
           barcode: form.barcode,
         });
         setAddOpen(false);
@@ -92,7 +174,11 @@ const Inventory = () => {
         await refreshUser();
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not save product");
+      if (hadOfflineSession()) {
+        saveOffline();
+      } else {
+        toast.error(e instanceof Error ? e.message : "Could not save product");
+      }
     } finally {
       setSaving(false);
     }
@@ -148,7 +234,7 @@ const Inventory = () => {
           <Input placeholder="Search products, SKU, barcode..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setScanOpen(true)}><ScanBarcode className="h-4 w-4 mr-2" /> Scan</Button>
+          {canUseCameraScan && <Button variant="outline" onClick={() => setScanOpen(true)}><ScanBarcode className="h-4 w-4 mr-2" /> Scan</Button>}
           <Button onClick={openAdd} className="bg-gradient-hero text-primary-foreground"><Plus className="h-4 w-4 mr-2" /> Add Product</Button>
         </div>
       </div>
@@ -240,12 +326,24 @@ const Inventory = () => {
         onConfirm={async () => {
           if (!deleteId) return;
           try {
-            await deleteProductApi(deleteId);
+            if (canQueueOfflineAction()) {
+              if (/^\d+$/.test(deleteId)) {
+                addToOfflineQueue({ type: "product_delete", payload: { id: parseInt(deleteId, 10) } });
+              }
+            } else {
+              await deleteProductApi(deleteId);
+            }
             deleteProduct(deleteId);
-            toast.success("Product removed");
-            await refreshUser();
+            toast.success(canQueueOfflineAction() ? "Product removal saved locally. It will sync when you are back online." : "Product removed");
+            if (!canQueueOfflineAction()) await refreshUser();
           } catch (e) {
-            toast.error(e instanceof Error ? e.message : "Delete failed");
+            if (hadOfflineSession() && /^\d+$/.test(deleteId)) {
+              addToOfflineQueue({ type: "product_delete", payload: { id: parseInt(deleteId, 10) } });
+              deleteProduct(deleteId);
+              toast.success("Product removal saved locally. It will sync when you are back online.");
+            } else {
+              toast.error(e instanceof Error ? e.message : "Delete failed");
+            }
           }
           setDeleteId(null);
         }}

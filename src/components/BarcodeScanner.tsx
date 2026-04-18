@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { Camera, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface BarcodeScannerProps {
   open: boolean;
@@ -67,7 +67,7 @@ export function BarcodeScanner({ open, onClose, onDetected }: BarcodeScannerProp
         () => {}
       ).catch((err) => {
         setError("Camera access denied or unavailable. Please allow camera permissions.");
-        console.error("Scanner error:", err);
+        console.warn("Scanner error:", err);
       });
     }, 300);
 
@@ -84,6 +84,9 @@ export function BarcodeScanner({ open, onClose, onDetected }: BarcodeScannerProp
           <DialogTitle className="font-display flex items-center gap-2">
             <Camera className="h-5 w-5 text-primary" /> Scan Barcode / QR Code
           </DialogTitle>
+          <DialogDescription>
+            Use your device camera to scan a product barcode or QR code.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div id={mountId} className="w-full min-h-[280px] rounded-lg overflow-hidden bg-muted" />

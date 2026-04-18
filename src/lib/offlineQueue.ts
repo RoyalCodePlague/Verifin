@@ -2,9 +2,11 @@
 const QUEUE_KEY = "sp_offline_queue";
 const SESSION_KEY = "sp_offline_logged_in";
 
+export type OfflineActionType = "sale" | "expense" | "product_create" | "product_update" | "product_delete" | "restock" | "customer_update";
+
 export interface OfflineAction {
   id: string;
-  type: "sale" | "expense" | "restock" | "customer_update";
+  type: OfflineActionType;
   payload: Record<string, unknown>;
   timestamp: number;
 }
@@ -41,6 +43,10 @@ export function clearOfflineSession() {
 
 export function hadOfflineSession() {
   return localStorage.getItem(SESSION_KEY) === "1";
+}
+
+export function canQueueOfflineAction() {
+  return hadOfflineSession() && !isOnline();
 }
 
 export function isOnline(): boolean {

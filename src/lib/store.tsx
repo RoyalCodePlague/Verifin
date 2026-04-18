@@ -111,7 +111,7 @@ interface StoreState {
   staff: StaffMember[];
   activities: ActivityItem[];
   setProfile: (p: BusinessProfile) => void;
-  addProduct: (p: Omit<Product, "id" | "status">) => void;
+  addProduct: (p: Omit<Product, "id" | "status">) => string;
   updateProduct: (id: string, p: Partial<Product>) => void;
   deleteProduct: (id: string) => void;
   addSale: (s: Omit<Sale, "id">) => void;
@@ -209,9 +209,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const setProfile = useCallback((p: BusinessProfile) => setProfileState(p), []);
   
   const addProduct = useCallback((p: Omit<Product, "id" | "status">) => {
-    const product: Product = { ...p, id: uid(), status: computeStatus(p.stock, p.reorder), addedDate: p.addedDate || today(), lastRestocked: p.lastRestocked || today() };
+    const id = uid();
+    const product: Product = { ...p, id, status: computeStatus(p.stock, p.reorder), addedDate: p.addedDate || today(), lastRestocked: p.lastRestocked || today() };
     setProducts(prev => [product, ...prev]);
     addActivity({ text: `Added product: ${p.name}`, time: "Just now", type: "restock" });
+    return id;
   }, []);
 
   const updateProduct = useCallback((id: string, updates: Partial<Product>) => {

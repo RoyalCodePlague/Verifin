@@ -20,7 +20,22 @@ import {
 } from "@/lib/api";
 import { loadServerData } from "@/lib/sync";
 import { useStore } from "@/lib/store";
-import { clearOfflineQueue, clearOfflineSession } from "@/lib/offlineQueue";
+import { clearOfflineQueue, clearOfflineSession, hadOfflineSession } from "@/lib/offlineQueue";
+
+const CACHED_USER_KEY = "sp_cached_user";
+
+function loadCachedUser(): ApiUser | null {
+  try {
+    const stored = localStorage.getItem(CACHED_USER_KEY);
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveCachedUser(user: ApiUser) {
+  localStorage.setItem(CACHED_USER_KEY, JSON.stringify(user));
+}
 
 type AuthContextValue = {
   user: ApiUser | null;
@@ -49,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshUser = useCallback(async () => {
     const u = await fetchMe();
+    saveCachedUser(u);
     setUser(u);
     await applyServerData(u);
   }, [applyServerData]);
@@ -64,12 +80,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const u = await fetchMe();
         if (cancelled) return;
+        saveCachedUser(u);
         setUser(u);
         await applyServerData(u);
       } catch {
+        const cachedUser = loadCachedUser();
+        if (!navigator.onLine && hadOfflineSession() && cachedUser) {
+          setUser(cachedUser);
+          return;
+        }
         clearTokens();
         setUser(null);
-        resetForLogout();
       } finally {
         if (!cancelled) setIsLoading(false);
       }
@@ -108,6 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // ignore server logout failures and clear local auth state anyway
     } finally {
       clearTokens();
+      localStorage.removeItem(CACHED_USER_KEY);
       clearOfflineQueue();
       clearOfflineSession();
       setUser(null);

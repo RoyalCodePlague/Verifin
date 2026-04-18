@@ -7,9 +7,10 @@ import {
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth-context";
-import { getAccessToken } from "@/lib/api";
-import { markOfflineSession } from "@/lib/offlineQueue";
+import { getAccessToken, pushOfflineActions } from "@/lib/api";
+import { clearOfflineQueue, getOfflineQueue, hadOfflineSession, markOfflineSession, setupOfflineSync } from "@/lib/offlineQueue";
 import { NotificationCenter } from "@/components/NotificationCenter";
+import { toast } from "sonner";
 
 const navItems = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
@@ -28,7 +29,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { profile, setProfile } = useStore();
-  const { logout } = useAuth();
+  const { logout, refreshUser } = useAuth();
   const [time, setTime] = useState(new Date());
 
   useEffect(() => {
@@ -40,14 +41,46 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     const handleOffline = () => {
-      if (getAccessToken()) {
+      if (getAccessToken() && location.pathname.startsWith("/dashboard")) {
         markOfflineSession();
+        toast.info("Offline mode is active.", { description: "Sales, expenses, and inventory edits will save locally and sync when internet returns." });
       }
     };
 
     window.addEventListener("offline", handleOffline);
     return () => window.removeEventListener("offline", handleOffline);
-  }, []);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const syncQueuedActions = async () => {
+      if (!hadOfflineSession()) return true;
+      const queue = getOfflineQueue();
+      if (queue.length === 0) {
+        clearOfflineQueue();
+        return true;
+      }
+
+      try {
+        const result = await pushOfflineActions(queue);
+        if (result.processed > 0) {
+          toast.success(`Synced ${result.processed} offline changes`);
+          await refreshUser();
+        }
+        if (result.errors?.length) {
+          toast.warning(`${result.errors.length} offline changes need review.`);
+        }
+        return result.errors?.length === 0;
+      } catch (error) {
+        console.warn("Offline sync failed", error);
+        toast.error("Offline sync failed. We will retry when your connection is stable.");
+        return false;
+      }
+    };
+
+    const cleanup = setupOfflineSync(syncQueuedActions);
+    if (navigator.onLine) void syncQueuedActions();
+    return cleanup;
+  }, [refreshUser]);
   const handleLogout = async () => {
     await logout();
     navigate("/login");

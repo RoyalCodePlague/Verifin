@@ -350,13 +350,13 @@ export async function deleteExpenseApi(id: string) {
 
 type ApiOfflineAction = {
   id: string;
-  type: "sale" | "expense" | "restock" | "customer_update";
+  type: "sale" | "expense" | "product_create" | "product_update" | "product_delete" | "restock" | "customer_update";
   payload: Record<string, unknown>;
   timestamp: number;
 };
 
 export async function pushOfflineActions(actions: ApiOfflineAction[]) {
-  return apiFetch<{ processed: number; conflicts: number[]; resolution: string }>("/api/v1/sync/push/", {
+  return apiFetch<{ processed: number; conflicts?: number[]; errors?: unknown[]; resolution: string }>("/api/v1/sync/push/", {
     method: "POST",
     body: JSON.stringify({ actions }),
   });

@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState } from "react";
+import { useMemo } from "react";
 import { motion } from "framer-motion";
 import {
   TrendingUp, TrendingDown, Package, ShoppingCart, AlertTriangle,
@@ -9,19 +9,14 @@ import { Button } from "@/components/ui/button";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart } from "recharts";
 import { AdminAssistant } from "@/components/dashboard/AdminAssistant";
 import { useStore } from "@/lib/store";
-import { useAuth } from "@/lib/auth-context";
-import { pushOfflineActions } from "@/lib/api";
 import { buildWeeklyFinanceData, formatMoney } from "@/lib/reporting";
-import { clearOfflineQueue, getOfflineQueue, hadOfflineSession, setupOfflineSync } from "@/lib/offlineQueue";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 const Dashboard = () => {
   const { products, sales, expenses, discrepancies, activities, profile, generateWhatsAppSummary } = useStore();
-  const { refreshUser } = useAuth();
   const navigate = useNavigate();
   const sym = profile.currencySymbol || "R";
-  const [syncing, setSyncing] = useState(false);
 
   const todaySales = sales.filter(s => s.date === "Today");
   const todayTotal = todaySales.reduce((sum, s) => sum + s.total, 0);
@@ -39,57 +34,6 @@ const Dashboard = () => {
   // Calculate percentage change in expenses
   const yesterdayExpenses = expenses.filter(e => e.date !== "Today").slice(0, 10).reduce((sum, e) => sum + e.amount, 0);
   const expensesChange = yesterdayExpenses > 0 ? Math.round(((todayExpenses - yesterdayExpenses) / yesterdayExpenses) * 100) : 0;
-
-  const syncOfflineActions = async () => {
-    const queue = getOfflineQueue();
-    if (queue.length === 0) {
-      return true;
-    }
-
-    setSyncing(true);
-    try {
-      const result = await pushOfflineActions(queue);
-      toast.success(`Synced ${result.processed} offline actions when back online`);
-      await refreshUser();
-      return true;
-    } catch (error) {
-      console.warn("Offline sync failed", error);
-      toast.error("Offline sync failed. Your queued changes will retry when online.");
-      return false;
-    } finally {
-      setSyncing(false);
-    }
-  };
-
-  useEffect(() => {
-    const maybeSync = async () => {
-      if (!navigator.onLine) return;
-      if (!hadOfflineSession()) return;
-      const queue = getOfflineQueue();
-      if (queue.length === 0) {
-        clearOfflineQueue();
-        return;
-      }
-      await syncOfflineActions();
-    };
-
-    const cleanup = setupOfflineSync(async (actions) => {
-      if (actions.length === 0) return true;
-      try {
-        const result = await pushOfflineActions(actions);
-        toast.success(`Synced ${result.processed} offline actions`);
-        await refreshUser();
-        return true;
-      } catch (error) {
-        console.warn("Offline sync failed", error);
-        toast.error("Failed to sync queued edits. We will retry automatically.");
-        return false;
-      }
-    });
-
-    void maybeSync();
-    return cleanup;
-  }, [refreshUser]);
 
   const salesData = useMemo(() => {
     return buildWeeklyFinanceData(sales, []).map(({ day, sales }) => ({ day, sales }));
@@ -160,7 +104,6 @@ const Dashboard = () => {
           </div>
           <h2 className="text-xl font-display font-bold">Welcome back, {displayName}!</h2>
           <p className="text-sm text-muted-foreground">Here's what's happening with your business today.</p>
-          {syncing && <p className="text-xs text-success mt-1">Syncing offline changes. Changes queued while offline are being pushed now.</p>}
         </div>
         <Button variant="outline" size="sm" onClick={handleWhatsAppShare} className="hidden sm:flex gap-2">
           <Share2 className="h-4 w-4" /> Share via WhatsApp

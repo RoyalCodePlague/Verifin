@@ -1,35 +1,33 @@
-// Cache static app assets, but always let API requests go to the network.
-const CACHE_NAME = 'verifin-cache-v2';
+const CACHE_NAME = 'verifin-cache-v3';
+const APP_SHELL = '/index.html';
 const STATIC_ASSETS = [
-  '/',
-  '/index.html',
   '/manifest.json',
   '/android-chrome-192x192.png',
   '/android-chrome-512x512.png',
+  '/apple-touch-icon.png',
+  '/favicon.ico',
 ];
 
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      return Promise.all(
+    caches.open(CACHE_NAME).then(cache =>
+      Promise.all(
         STATIC_ASSETS.map(asset =>
           cache.add(asset).catch(() => {
-            // Optional assets should not prevent the service worker from installing.
+            // Optional assets should not prevent installation.
           })
         )
-      );
-    })
+      )
+    )
   );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then(keys => {
-      return Promise.all(
-        keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))
-      );
-    })
+    caches.keys().then(keys =>
+      Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)))
+    )
   );
   self.clients.claim();
 });
@@ -43,33 +41,40 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Cache-first for static assets
-  if (STATIC_ASSETS.includes(url.pathname)) {
+  if (request.mode === 'navigate') {
     event.respondWith(
-      caches.match(request).then(response => {
-        return response || fetch(request).then(fetchRes => {
-          return caches.open(CACHE_NAME).then(cache => {
-            cache.put(request, fetchRes.clone());
-            return fetchRes;
+      fetch(request)
+        .then(response => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(APP_SHELL, copy));
+          return response;
+        })
+        .catch(async () => {
+          const cached = await caches.match(APP_SHELL);
+          return cached || new Response('<!doctype html><title>Verifin</title><p>Verifin is offline. Reconnect and try again.</p>', {
+            headers: { 'Content-Type': 'text/html; charset=utf-8' },
           });
-        });
-      })
+        })
     );
     return;
   }
 
-  // Network-first for everything else (API, dynamic)
-  event.respondWith(
-    fetch(request)
-      .then(response => response)
-      .catch(async () => {
-        const cached = await caches.match(request);
-        return cached || caches.match('/index.html');
-      })
-  );
+  if (STATIC_ASSETS.includes(url.pathname)) {
+    event.respondWith(
+      caches.match(request).then(cached =>
+        cached || fetch(request).then(response => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
+          return response;
+        })
+      )
+    );
+    return;
+  }
+
+  event.respondWith(fetch(request));
 });
 
-// Listen for skipWaiting message to activate new SW immediately
 self.addEventListener('message', event => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
