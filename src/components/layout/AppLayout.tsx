@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Package, ShoppingCart, Receipt, ClipboardCheck,
@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth-context";
-import { pushOfflineActions } from "@/lib/api";
+import { getAccessToken, pushOfflineActions } from "@/lib/api";
 import {
   clearOfflineQueue,
   getOfflineQueue,
@@ -37,6 +37,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const { profile, setProfile } = useStore();
   const { logout, refreshUser } = useAuth();
   const [time, setTime] = useState(new Date());
+  const syncInFlightRef = useRef(false);
 
   useEffect(() => {
     const interval = setInterval(() => setTime(new Date()), 1000);
@@ -58,13 +59,15 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
   }, [location.pathname]);
 
   useEffect(() => {
-    const syncQueuedActions = async () => {
+    const syncQueuedActions = async (showErrors = true) => {
+      if (syncInFlightRef.current || !navigator.onLine || !getAccessToken()) return false;
       const queue = getOfflineQueue();
       if (queue.length === 0) {
         clearOfflineQueue();
         return true;
       }
 
+      syncInFlightRef.current = true;
       try {
         const result = await pushOfflineActions(queue);
         const syncSucceeded = result.errors?.length === 0;
@@ -81,13 +84,19 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
         return syncSucceeded;
       } catch (error) {
         console.warn("Offline sync failed", error);
-        toast.error("Offline sync failed. We will retry when your connection is stable.");
+        if (showErrors) {
+          toast.error("Offline sync failed. We will retry when your connection is stable.");
+        }
         return false;
+      } finally {
+        syncInFlightRef.current = false;
       }
     };
 
-    const cleanup = setupOfflineSync(syncQueuedActions);
-    if (navigator.onLine) void syncQueuedActions();
+    const cleanup = setupOfflineSync(async () => syncQueuedActions(true));
+    if (navigator.onLine) {
+      window.setTimeout(() => void syncQueuedActions(false), 1500);
+    }
     return cleanup;
   }, [refreshUser]);
   const handleLogout = async () => {
