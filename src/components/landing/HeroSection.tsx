@@ -2,9 +2,13 @@ import { motion } from "framer-motion";
 import { ArrowRight, Zap, Shield, TrendingUp, CheckCircle, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/lib/auth-context";
 
 const HeroSection = () => {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
+  const primaryPath = isAuthenticated ? "/dashboard" : "/login?signup=1";
+  const primaryLabel = isAuthenticated ? "Dashboard" : "Start Free Trial";
 
   const particles = Array.from({ length: 12 }, (_, i) => ({
     id: i,
@@ -66,8 +70,8 @@ const HeroSection = () => {
               Verifin is the all-in-one business operating system that handles your inventory, sales, expenses, and audits — so you can focus on growing your business.
             </motion.p>
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1 }} className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
-              <Button size="lg" onClick={() => navigate("/login?signup=1")} className="bg-gradient-hero text-primary-foreground shadow-elevated hover:opacity-90 transition-opacity text-base px-8 h-12">
-                Start Free Trial <ArrowRight className="ml-2 h-4 w-4" />
+              <Button size="lg" onClick={() => navigate(primaryPath)} className="bg-gradient-hero text-primary-foreground shadow-elevated hover:opacity-90 transition-opacity text-base px-8 h-12">
+                {primaryLabel} <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
               <Button size="lg" variant="outline" onClick={() => navigate("/demo")} className="text-base h-12 bg-gradient-accent text-accent-foreground border-0 hover:opacity-90">
                 Try the Demo

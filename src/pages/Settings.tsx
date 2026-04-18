@@ -7,6 +7,7 @@ import { useStore } from "@/lib/store";
 import { toast } from "sonner";
 import { useState } from "react";
 import { Moon, Sun } from "lucide-react";
+import { patchMe } from "@/lib/api";
 
 const currencyOptions = [
   { code: "ZAR", symbol: "R", label: "South African Rand (R)" },
@@ -24,11 +25,26 @@ const SettingsPage = () => {
   const { profile, setProfile } = useStore();
   const [name, setName] = useState(profile.name);
   const [currency, setCurrency] = useState(profile.currency);
+  const [saving, setSaving] = useState(false);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const selected = currencyOptions.find(c => c.code === currency);
-    setProfile({ ...profile, name, currency, currencySymbol: selected?.symbol || currency });
-    toast.success("Settings saved!");
+    const nextProfile = { ...profile, name, currency, currencySymbol: selected?.symbol || currency };
+    setSaving(true);
+    try {
+      await patchMe({
+        business_name: name,
+        currency,
+        currency_symbol: nextProfile.currencySymbol,
+      });
+      setProfile(nextProfile);
+      toast.success("Settings saved!");
+    } catch (e) {
+      setProfile(nextProfile);
+      toast.warning("Settings saved on this device.", { description: e instanceof Error ? e.message : "Server sync will retry after login." });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleToggle = (key: "whatsappDaily" | "lowStockAlerts" | "discrepancyAlerts") => {
@@ -62,7 +78,7 @@ const SettingsPage = () => {
               ))}
             </select>
           </div>
-          <Button onClick={handleSave} className="bg-gradient-hero text-primary-foreground">Save Changes</Button>
+          <Button onClick={handleSave} disabled={saving} className="bg-gradient-hero text-primary-foreground">{saving ? "Saving..." : "Save Changes"}</Button>
         </CardContent>
       </Card>
 

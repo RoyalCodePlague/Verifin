@@ -3,6 +3,7 @@ import { ArrowRight, Check, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/lib/auth-context";
 
 const plans = [
   { name: "Starter", price: "Free", note: "Forever", features: ["1 user", "50 products", "Basic tracking"], popular: false },
@@ -12,6 +13,10 @@ const plans = [
 
 const CTASection = () => {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
+  const primaryPath = isAuthenticated ? "/dashboard" : "/login?signup=1";
+  const primaryLabel = isAuthenticated ? "Dashboard" : "Get Started Free";
+
   return (
     <section className="py-20">
       <div className="container">
@@ -41,8 +46,8 @@ const CTASection = () => {
           <h2 className="font-display text-3xl md:text-4xl font-bold mb-4">Ready to take control of your business?</h2>
           <p className="text-primary-foreground/80 max-w-xl mx-auto mb-8 text-lg">Join thousands of SMEs using Verifin to automate admin, prevent stock losses, and grow smarter.</p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <Button size="lg" onClick={() => navigate("/login?signup=1")} className="bg-accent text-accent-foreground hover:bg-accent/90 text-base px-8 h-12 shadow-elevated">
-              Get Started Free <ArrowRight className="ml-2 h-4 w-4" />
+            <Button size="lg" onClick={() => navigate(primaryPath)} className="bg-accent text-accent-foreground hover:bg-accent/90 text-base px-8 h-12 shadow-elevated">
+              {primaryLabel} <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
             <Button size="lg" variant="outline" onClick={() => navigate("/demo")} className="text-base h-12 border-primary-foreground/30 bg-gradient-accent text-accent-foreground hover:opacity-90 border-0">
               Try the Demo

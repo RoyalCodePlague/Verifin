@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import Navbar from "@/components/landing/Navbar";
 import Footer from "@/components/landing/Footer";
+import { useAuth } from "@/lib/auth-context";
 
 const plans = [
   {
@@ -144,8 +145,10 @@ const featureMatrix = [
 
 const Pricing = () => {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const [checkoutPlan, setCheckoutPlan] = useState<string | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const primaryPath = isAuthenticated ? "/dashboard" : "/login?signup=1";
 
   const handleCheckout = (e: React.FormEvent) => {
     e.preventDefault();
@@ -154,7 +157,7 @@ const Pricing = () => {
       setCheckoutLoading(false);
       setCheckoutPlan(null);
       toast.success("Welcome aboard! Your trial has started.", { description: "You now have full access for 14 days." });
-      navigate("/login?signup=1");
+      navigate(primaryPath);
     }, 2000);
   };
 
@@ -197,11 +200,11 @@ const Pricing = () => {
                       ))}
                     </ul>
                     <Button
-                      onClick={() => plan.price === "Free" ? navigate("/login?signup=1") : setCheckoutPlan(plan.name)}
+                      onClick={() => isAuthenticated ? navigate("/dashboard") : plan.price === "Free" ? navigate("/login?signup=1") : setCheckoutPlan(plan.name)}
                       className={`mt-6 w-full ${plan.popular ? "bg-gradient-hero text-primary-foreground" : ""}`}
                       variant={plan.popular ? "default" : "outline"}
                     >
-                      {plan.cta}
+                      {isAuthenticated ? "Dashboard" : plan.cta}
                     </Button>
                   </CardContent>
                 </Card>
@@ -332,8 +335,8 @@ const Pricing = () => {
           <h2 className="font-display font-bold text-3xl mb-4">Ready to grow your business?</h2>
           <p className="text-muted-foreground mb-6">Start free with Starter, or get full access for 14 days with Growth or Business.</p>
           <div className="flex gap-4 justify-center">
-            <Button onClick={() => navigate("/login?signup=1")} className="bg-gradient-hero text-primary-foreground">
-              Start Free Now
+            <Button onClick={() => navigate(primaryPath)} className="bg-gradient-hero text-primary-foreground">
+              {isAuthenticated ? "Dashboard" : "Start Free Now"}
             </Button>
             <Button variant="outline" onClick={() => navigate("/contact")}>
               Talk to Sales

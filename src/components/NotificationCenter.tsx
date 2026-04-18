@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Bell, AlertTriangle, TrendingUp, Package } from "lucide-react";
+import { Bell, AlertTriangle, TrendingUp, Package, ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/lib/store";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -10,7 +10,7 @@ export interface AppNotification {
   id: string;
   title: string;
   message: string;
-  type: "low_stock" | "sales_summary" | "info";
+  type: "low_stock" | "sales_summary" | "audit" | "info";
   time: string;
   read: boolean;
 }
@@ -28,7 +28,7 @@ function persistReadIds(ids: string[]) {
 }
 
 export function NotificationCenter() {
-  const { products, sales, profile } = useStore();
+  const { products, sales, profile, activities } = useStore();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [readIds, setReadIds] = useState<string[]>(() => loadReadIds());
   const [open, setOpen] = useState(false);
@@ -64,8 +64,24 @@ export function NotificationCenter() {
       });
     }
 
+    if (profile.discrepancyAlerts) {
+      activities
+        .filter((a) => a.type === "alert" && /audit|discrepancy/i.test(a.text))
+        .slice(0, 5)
+        .forEach((a) => {
+          notifs.push({
+            id: `activity-${a.id}`,
+            title: /resolved/i.test(a.text) ? "Issue Resolved" : "Audit Update",
+            message: a.text,
+            type: "audit",
+            time: a.time,
+            read: readIds.includes(`activity-${a.id}`),
+          });
+        });
+    }
+
     setNotifications(notifs);
-  }, [products, sales, profile.lowStockAlerts, sym, readIds]);
+  }, [products, sales, activities, profile.lowStockAlerts, profile.discrepancyAlerts, sym, readIds]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -93,6 +109,7 @@ export function NotificationCenter() {
     switch (type) {
       case "low_stock": return <AlertTriangle className="h-4 w-4 text-destructive" />;
       case "sales_summary": return <TrendingUp className="h-4 w-4 text-success" />;
+      case "audit": return <ClipboardCheck className="h-4 w-4 text-primary" />;
       default: return <Package className="h-4 w-4 text-primary" />;
     }
   };

@@ -4,15 +4,20 @@ import { Download, FileText, BarChart3, Package, AlertTriangle, Users, Receipt, 
 import { useStore } from "@/lib/store";
 import { toast } from "sonner";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
+import { buildWeeklyFinanceData, csvCell, formatMoney } from "@/lib/reporting";
 
 const COLORS = ["hsl(152 55% 28%)", "hsl(38 92% 50%)", "hsl(0 72% 51%)", "hsl(200 70% 50%)", "hsl(280 60% 50%)"];
 
 const Reports = () => {
   const { sales, expenses, products, discrepancies, customers, profile } = useStore();
   const sym = profile.currencySymbol || "R";
-  const todaySalesTotal = sales.filter(s => s.date === "Today").reduce((sum, s) => sum + s.total, 0);
+  const todaySales = sales.filter((s) => s.date === "Today");
+  const todaySalesTotal = todaySales.reduce((sum, s) => sum + s.total, 0);
   const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
   const totalSales = sales.reduce((sum, s) => sum + s.total, 0);
+  const weeklyData = buildWeeklyFinanceData(sales, expenses);
+  const weeklySalesTotal = weeklyData.reduce((sum, d) => sum + d.sales, 0);
+  const weeklyExpensesTotal = weeklyData.reduce((sum, d) => sum + d.expenses, 0);
 
   const categoryData = profile.categories.map(cat => {
     const catProducts = products.filter(p => p.category === cat);
@@ -24,74 +29,73 @@ const Reports = () => {
     return acc;
   }, {} as Record<string, number>);
 
-  const weeklyData = [
-    { day: "Mon", sales: 3200, expenses: 800 },
-    { day: "Tue", sales: 2800, expenses: 1200 },
-    { day: "Wed", sales: 4100, expenses: 600 },
-    { day: "Thu", sales: 3600, expenses: 900 },
-    { day: "Fri", sales: 5200, expenses: 700 },
-    { day: "Sat", sales: 4800, expenses: 500 },
-    { day: "Sun", sales: todaySalesTotal || 4280, expenses: 200 },
+  const reports = [
+    { title: "Daily Sales Summary", desc: `${todaySales.length} transactions - ${formatMoney(todaySalesTotal, sym)} total`, icon: FileText },
+    { title: "Weekly Performance", desc: `Sales: ${formatMoney(weeklySalesTotal, sym)} - Expenses: ${formatMoney(weeklyExpensesTotal, sym)} - Net: ${formatMoney(weeklySalesTotal - weeklyExpensesTotal, sym)}`, icon: BarChart3 },
+    { title: "Stock Movement Report", desc: `${products.length} products tracked - ${products.filter(p => p.status !== "ok").length} need attention`, icon: Package },
+    { title: "Discrepancy Report", desc: `${discrepancies.filter(d => d.status !== "resolved").length} open issues`, icon: AlertTriangle },
+    { title: "Customer Report", desc: `${customers.length} customers - ${formatMoney(customers.reduce((s, c) => s + c.totalSpent, 0), sym)} total revenue`, icon: Users },
+    { title: "Expense Analysis", desc: `${expenses.length} expenses across ${Object.keys(expenseByCat).length} categories`, icon: Receipt },
+    { title: "Profit & Loss", desc: `Revenue: ${formatMoney(totalSales, sym)} - Costs: ${formatMoney(totalExpenses, sym)} - Net: ${formatMoney(totalSales - totalExpenses, sym)}`, icon: TrendingUp },
+    { title: "Monthly Overview", desc: "Full month breakdown of sales, expenses, and stock", icon: Calendar },
   ];
 
-  const reports = [
-    { title: "Daily Sales Summary", desc: `${sales.filter(s => s.date === "Today").length} transactions · ${sym}${todaySalesTotal.toLocaleString()} total`, icon: FileText },
-    { title: "Weekly Performance", desc: `Sales: ${sym}${totalSales.toLocaleString()} · Expenses: ${sym}${totalExpenses.toLocaleString()} · Net: ${sym}${(totalSales - totalExpenses).toLocaleString()}`, icon: BarChart3 },
-    { title: "Stock Movement Report", desc: `${products.length} products tracked · ${products.filter(p => p.status !== "ok").length} need attention`, icon: Package },
-    { title: "Discrepancy Report", desc: `${discrepancies.filter(d => d.status !== "resolved").length} open issues`, icon: AlertTriangle },
-    { title: "Customer Report", desc: `${customers.length} customers · ${sym}${customers.reduce((s, c) => s + c.totalSpent, 0).toLocaleString()} total revenue`, icon: Users },
-    { title: "Expense Analysis", desc: `${expenses.length} expenses across ${Object.keys(expenseByCat).length} categories`, icon: Receipt },
-    { title: "Profit & Loss", desc: `Revenue: ${sym}${totalSales.toLocaleString()} · Costs: ${sym}${totalExpenses.toLocaleString()} · Net: ${sym}${(totalSales - totalExpenses).toLocaleString()}`, icon: TrendingUp },
-    { title: "Monthly Overview", desc: `Full month breakdown of sales, expenses, and stock`, icon: Calendar },
-  ];
+  const row = (values: unknown[]) => values.map(csvCell).join(",");
 
   const exportToExcel = (title: string) => {
     let csvRows: string[] = [];
-    const date = new Date().toLocaleDateString();
+    const date = new Date().toISOString().slice(0, 10);
 
     if (title.includes("Sales")) {
       csvRows = [
-        "Date,Time,Items,Total,Payment Method",
-        ...sales.map(s => `${s.date},${s.time},"${s.items}",${s.total},${s.method}`)
+        "Currency,Date,Time,Items,Total,Payment Method",
+        ...sales.map(s => row([profile.currency, s.date, s.time, s.items, formatMoney(s.total, sym), s.method])),
       ];
-    } else if (title.includes("Performance") || title.includes("Profit")) {
+    } else if (title.includes("Performance")) {
       csvRows = [
-        "Metric,Value",
-        `Total Sales,${totalSales}`,
-        `Total Expenses,${totalExpenses}`,
-        `Net Profit,${totalSales - totalExpenses}`,
+        "Currency,Metric,Value",
+        row([profile.currency, "Weekly Sales", formatMoney(weeklySalesTotal, sym)]),
+        row([profile.currency, "Weekly Expenses", formatMoney(weeklyExpensesTotal, sym)]),
+        row([profile.currency, "Weekly Net", formatMoney(weeklySalesTotal - weeklyExpensesTotal, sym)]),
         "",
-        "Day,Sales,Expenses",
-        ...weeklyData.map(d => `${d.day},${d.sales},${d.expenses}`)
+        "Currency,Day,Sales,Expenses,Net",
+        ...weeklyData.map(d => row([profile.currency, d.day, formatMoney(d.sales, sym), formatMoney(d.expenses, sym), formatMoney(d.sales - d.expenses, sym)])),
+      ];
+    } else if (title.includes("Profit")) {
+      csvRows = [
+        "Currency,Metric,Value",
+        row([profile.currency, "Total Sales", formatMoney(totalSales, sym)]),
+        row([profile.currency, "Total Expenses", formatMoney(totalExpenses, sym)]),
+        row([profile.currency, "Net Profit", formatMoney(totalSales - totalExpenses, sym)]),
       ];
     } else if (title.includes("Stock")) {
       csvRows = [
-        "Product,SKU,Category,Stock,Reorder Level,Price,Status,Value,Added Date,Last Restocked",
-        ...products.map(p => `"${p.name}",${p.sku},${p.category},${p.stock},${p.reorder},${p.price},${p.status},${p.stock * p.price},${p.addedDate || "N/A"},${p.lastRestocked || "N/A"}`)
+        "Currency,Product,SKU,Category,Stock,Reorder Level,Price,Status,Value,Added Date,Last Restocked",
+        ...products.map(p => row([profile.currency, p.name, p.sku, p.category, p.stock, p.reorder, formatMoney(p.price, sym), p.status, formatMoney(p.stock * p.price, sym), p.addedDate || "N/A", p.lastRestocked || "N/A"])),
       ];
     } else if (title.includes("Discrepancy")) {
       csvRows = [
         "Product,Expected,Actual,Difference,Status",
-        ...discrepancies.map(d => `"${d.product}",${d.expected},${d.actual},${d.diff},${d.status}`)
+        ...discrepancies.map(d => row([d.product, d.expected, d.actual, d.diff, d.status])),
       ];
     } else if (title.includes("Customer")) {
       csvRows = [
-        "Name,Phone,Total Spent,Visits,Loyalty Points,Credits,Last Visit",
-        ...customers.map(c => `"${c.name}",${c.phone},${c.totalSpent},${c.visits},${c.loyaltyPoints},${c.credits || 0},${c.lastVisit}`)
+        "Currency,Name,Phone,Total Spent,Visits,Loyalty Points,Credits,Last Visit",
+        ...customers.map(c => row([profile.currency, c.name, c.phone, formatMoney(c.totalSpent, sym), c.visits, c.loyaltyPoints, formatMoney(c.credits || 0, sym), c.lastVisit])),
       ];
     } else if (title.includes("Expense")) {
       csvRows = [
-        "Description,Amount,Date,Category",
-        ...expenses.map(e => `"${e.desc}",${e.amount},${e.date},${e.category}`)
+        "Currency,Description,Amount,Date,Category",
+        ...expenses.map(e => row([profile.currency, e.desc, formatMoney(e.amount, sym), e.date, e.category])),
       ];
     } else {
       csvRows = [
-        "Metric,Value",
-        `Total Sales,${totalSales}`,
-        `Total Expenses,${totalExpenses}`,
-        `Total Products,${products.length}`,
-        `Total Customers,${customers.length}`,
-        `Net Profit,${totalSales - totalExpenses}`,
+        "Currency,Metric,Value",
+        row([profile.currency, "Total Sales", formatMoney(totalSales, sym)]),
+        row([profile.currency, "Total Expenses", formatMoney(totalExpenses, sym)]),
+        row([profile.currency, "Total Products", products.length]),
+        row([profile.currency, "Total Customers", customers.length]),
+        row([profile.currency, "Net Profit", formatMoney(totalSales - totalExpenses, sym)]),
       ];
     }
 
@@ -119,7 +123,7 @@ const Reports = () => {
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="day" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
                 <YAxis tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
-                <Tooltip />
+                <Tooltip formatter={(value) => formatMoney(Number(value), sym)} />
                 <Bar dataKey="sales" fill="hsl(152 55% 28%)" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="expenses" fill="hsl(38 92% 50%)" radius={[4, 4, 0, 0]} />
               </BarChart>
@@ -137,7 +141,7 @@ const Reports = () => {
                     <Cell key={i} fill={COLORS[i % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip formatter={(value) => formatMoney(Number(value), sym)} />
               </PieChart>
             </ResponsiveContainer>
           </CardContent>

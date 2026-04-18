@@ -11,6 +11,7 @@ import { AdminAssistant } from "@/components/dashboard/AdminAssistant";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth-context";
 import { pushOfflineActions } from "@/lib/api";
+import { buildWeeklyFinanceData, formatMoney } from "@/lib/reporting";
 import { clearOfflineQueue, getOfflineQueue, hadOfflineSession, setupOfflineSync } from "@/lib/offlineQueue";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -91,87 +92,19 @@ const Dashboard = () => {
   }, [refreshUser]);
 
   const salesData = useMemo(() => {
-    const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    
-    // Group sales by day of week
-    const dayTotals: Record<string, number> = {
-      Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0, Sun: 0
-    };
-    
-    sales.forEach(s => {
-      try {
-        const rawDate = s.date === "Today" ? new Date().toISOString() : (s.date.includes("T") ? s.date : `${s.date}T12:00:00`);
-        const d = new Date(rawDate);
-        const dayIndex = (d.getDay() + 6) % 7; // Convert to Monday=0
-        const dayName = days[dayIndex];
-        dayTotals[dayName] += s.total;
-      } catch {
-        // If date parsing fails, skip
-      }
-    });
-    
-    // If no data, show zero values
-    if (Object.values(dayTotals).every(v => v === 0)) {
-      return days.map((day) => ({ day, sales: 0 }));
-    }
-    
-    return days.map((day) => ({ day, sales: dayTotals[day] || 0 }));
+    return buildWeeklyFinanceData(sales, []).map(({ day, sales }) => ({ day, sales }));
   }, [sales]);
 
   const weeklySalesTotal = useMemo(() => salesData.reduce((sum, item) => sum + item.sales, 0), [salesData]);
 
-  const salesVsExpensesData = useMemo(() => {
-    const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    
-    // Group sales and expenses by day of week
-    const dayTotals: Record<string, { sales: number; expenses: number }> = {
-      Mon: { sales: 0, expenses: 0 },
-      Tue: { sales: 0, expenses: 0 },
-      Wed: { sales: 0, expenses: 0 },
-      Thu: { sales: 0, expenses: 0 },
-      Fri: { sales: 0, expenses: 0 },
-      Sat: { sales: 0, expenses: 0 },
-      Sun: { sales: 0, expenses: 0 },
-    };
-    
-    // Add sales data
-    sales.forEach(s => {
-      try {
-        const rawDate = s.date === "Today" ? new Date().toISOString() : (s.date.includes("T") ? s.date : `${s.date}T12:00:00`);
-        const d = new Date(rawDate);
-        const dayIndex = (d.getDay() + 6) % 7; // Convert to Monday=0
-        const dayName = days[dayIndex];
-        dayTotals[dayName].sales += s.total;
-      } catch {
-        // Skip if date parsing fails
-      }
-    });
-    
-    // Add expenses data
-    expenses.forEach(e => {
-      try {
-        const d = new Date(e.date.includes("T") ? e.date : `${e.date}T12:00:00`);
-        const dayIndex = (d.getDay() + 6) % 7; // Convert to Monday=0
-        const dayName = days[dayIndex];
-        dayTotals[dayName].expenses += e.amount;
-      } catch {
-        // Skip if date parsing fails
-      }
-    });
-    
-    return days.map((day) => ({ 
-      day, 
-      sales: dayTotals[day].sales || 0,
-      expenses: dayTotals[day].expenses || 0
-    }));
-  }, [sales, expenses]);
+  const salesVsExpensesData = useMemo(() => buildWeeklyFinanceData(sales, expenses), [sales, expenses]);
 
   const metrics = [
-    { label: "Today's Sales", value: `${sym}${todayTotal.toLocaleString()}`, change: `${salesChange > 0 ? '+' : ''}${salesChange}%`, up: salesChange >= 0, icon: ShoppingCart },
-    { label: "This Week", value: `${sym}${weeklySalesTotal.toLocaleString()}`, change: `${weeklySalesTotal >= todayTotal ? 'Up' : 'Down'}`, up: weeklySalesTotal >= todayTotal, icon: TrendingUp },
-    { label: "Inventory Value", value: `${sym}${inventoryValue.toLocaleString()}`, change: `${lowStockCount} low`, up: lowStockCount === 0, icon: Package },
+    { label: "Today's Sales", value: formatMoney(todayTotal, sym), change: `${salesChange > 0 ? '+' : ''}${salesChange}%`, up: salesChange >= 0, icon: ShoppingCart },
+    { label: "This Week", value: formatMoney(weeklySalesTotal, sym), change: `${weeklySalesTotal >= todayTotal ? 'Up' : 'Down'}`, up: weeklySalesTotal >= todayTotal, icon: TrendingUp },
+    { label: "Inventory Value", value: formatMoney(inventoryValue, sym), change: `${lowStockCount} low`, up: lowStockCount === 0, icon: Package },
     { label: "Low Stock Items", value: String(lowStockCount), change: `${lowStockCount}`, up: false, icon: AlertTriangle },
-    { label: "Today's Expenses", value: `${sym}${todayExpenses.toLocaleString()}`, change: `${expensesChange > 0 ? '+' : ''}${expensesChange}%`, up: expensesChange <= 0, icon: Receipt },
+    { label: "Today's Expenses", value: formatMoney(todayExpenses, sym), change: `${expensesChange > 0 ? '+' : ''}${expensesChange}%`, up: expensesChange <= 0, icon: Receipt },
   ];
 
   const topProduct = useMemo(() => {
@@ -190,7 +123,7 @@ const Dashboard = () => {
     return Object.entries(salesCount).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
   }, [sales]);
 
-  const expenseAlert = todayExpenses > todayTotal * 0.5 ? `Expenses are running high today at ${sym}${todayExpenses.toLocaleString()}` : null;
+  const expenseAlert = todayExpenses > todayTotal * 0.5 ? `Expenses are running high today at ${formatMoney(todayExpenses, sym)}` : null;
 
   const quickActions = [
     { label: "Record Sale", icon: ShoppingCart, color: "bg-primary/10 text-primary", to: "/sales" },
@@ -329,7 +262,7 @@ const Dashboard = () => {
               <XAxis dataKey="day" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
               <YAxis tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
               <Tooltip 
-                formatter={(value) => `${sym}${Number(value).toLocaleString()}`}
+                formatter={(value) => formatMoney(Number(value), sym)}
               />
               <Legend />
               <Bar dataKey="sales" fill="hsl(152 55% 28%)" name="Sales" />

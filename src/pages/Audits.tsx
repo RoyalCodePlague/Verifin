@@ -40,8 +40,7 @@ const Audits = () => {
   }, []);
 
   const startAudit = () => {
-    const auditId = Math.random().toString(36).slice(2, 10);
-    addAudit({ date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }), status: "in_progress", items: products.length, discrepancies: 0, conductor: "You", autoFindings: [] });
+    const auditId = addAudit({ date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }), status: "in_progress", items: products.length, discrepancies: 0, conductor: "You", autoFindings: [] });
     toast.success("New audit started!");
 
     setBgAuditId(auditId);
@@ -50,7 +49,7 @@ const Audits = () => {
 
     const findings: string[] = [];
     let progress = 0;
-    const totalSteps = products.length;
+    const totalSteps = Math.max(products.length, 1);
     let step = 0;
 
     if (bgIntervalRef.current) clearInterval(bgIntervalRef.current);
@@ -78,10 +77,7 @@ const Audits = () => {
         bgIntervalRef.current = null;
         const lowItems = products.filter(p => p.status === "low" || p.status === "out");
         const autoDiscs = lowItems.length;
-        const latestAudit = audits.find(a => a.status === "in_progress");
-        if (latestAudit) {
-          updateAudit(latestAudit.id, { autoFindings: findings });
-        }
+        updateAudit(auditId, { autoFindings: findings });
         addActivity({ text: `Background audit completed: ${findings.length} findings, ${autoDiscs} items flagged`, time: "Just now", type: "alert" });
         toast.success(`Background audit complete!`, { description: `${findings.length} findings detected across ${totalSteps} products.` });
       }
@@ -118,12 +114,14 @@ const Audits = () => {
       }
     });
     updateAudit(auditId, { discrepancies: discCount, status: "completed" });
+    addActivity({ text: `Audit completed: ${discCount} discrepancies found`, time: "Just now", type: "alert" });
     setCountOpen(null);
     toast.success(`Audit completed! ${discCount} discrepancies found.`);
   };
 
   const handleCompleteAudit = (auditId: string) => {
     updateAudit(auditId, { status: "completed" });
+    addActivity({ text: "Audit marked as completed", time: "Just now", type: "alert" });
     setCompleteId(null);
     toast.success("Audit marked as completed!");
   };
@@ -296,7 +294,15 @@ const Audits = () => {
         </DialogContent>
       </Dialog>
 
-      <ConfirmationModal open={!!resolveId} onOpenChange={() => setResolveId(null)} title="Resolve Discrepancy" description="Mark this discrepancy as resolved?" confirmLabel="Resolve" onConfirm={() => { if (resolveId) { resolveDiscrepancy(resolveId); toast.success("Discrepancy resolved!"); } setResolveId(null); }} />
+      <ConfirmationModal open={!!resolveId} onOpenChange={() => setResolveId(null)} title="Resolve Discrepancy" description="Mark this discrepancy as resolved?" confirmLabel="Resolve" onConfirm={() => {
+        if (resolveId) {
+          const resolved = discrepancies.find(d => d.id === resolveId);
+          resolveDiscrepancy(resolveId);
+          addActivity({ text: `Discrepancy resolved${resolved ? `: ${resolved.product}` : ""}`, time: "Just now", type: "alert" });
+          toast.success("Discrepancy resolved!", { description: resolved ? `${resolved.product} was marked as resolved.` : undefined });
+        }
+        setResolveId(null);
+      }} />
       <ConfirmationModal open={!!completeId} onOpenChange={() => setCompleteId(null)} title="Complete Audit" description="Mark this audit as completed? Any unsubmitted stock counts will not be recorded." confirmLabel="Complete" onConfirm={() => { if (completeId) handleCompleteAudit(completeId); }} />
     </div>
   );

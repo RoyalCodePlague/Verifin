@@ -3,6 +3,7 @@ import { Menu, X, CheckCircle, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useStore } from "@/lib/store";
+import { useAuth } from "@/lib/auth-context";
 
 const Navbar = () => {
   const [open, setOpen] = useState(false);
@@ -10,6 +11,9 @@ const Navbar = () => {
   const location = useLocation();
   const isHome = location.pathname === "/";
   const { profile, setProfile } = useStore();
+  const { isAuthenticated } = useAuth();
+  const primaryPath = isAuthenticated ? "/dashboard" : "/login?signup=1";
+  const primaryLabel = isAuthenticated ? "Dashboard" : "Start Free";
 
   const toggleDark = () => setProfile({ ...profile, darkMode: !profile.darkMode });
 
@@ -34,9 +38,9 @@ const Navbar = () => {
           <button onClick={toggleDark} className="p-2 rounded-lg hover:bg-muted transition-colors">
             {profile.darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </button>
-          <Button variant="ghost" size="sm" onClick={() => navigate("/login")}>Log in</Button>
-          <Button size="sm" className="bg-gradient-hero text-primary-foreground" onClick={() => navigate("/login?signup=1")}>
-            Start Free
+          {!isAuthenticated && <Button variant="ghost" size="sm" onClick={() => navigate("/login")}>Log in</Button>}
+          <Button size="sm" className="bg-gradient-hero text-primary-foreground" onClick={() => navigate(primaryPath)}>
+            {primaryLabel}
           </Button>
         </div>
 
@@ -55,8 +59,8 @@ const Navbar = () => {
           <button onClick={() => { navigate("/pricing"); setOpen(false); }} className="block text-sm py-2 w-full text-left">Pricing</button>
           <button onClick={() => { navigate("/about"); setOpen(false); }} className="block text-sm py-2 w-full text-left">About</button>
           <button onClick={() => { navigate("/demo"); setOpen(false); }} className="block text-sm py-2 w-full text-left">Demo</button>
-          <Button className="w-full bg-gradient-hero text-primary-foreground" onClick={() => { navigate("/login?signup=1"); setOpen(false); }}>
-            Get Started
+          <Button className="w-full bg-gradient-hero text-primary-foreground" onClick={() => { navigate(primaryPath); setOpen(false); }}>
+            {isAuthenticated ? "Dashboard" : "Get Started"}
           </Button>
         </div>
       )}

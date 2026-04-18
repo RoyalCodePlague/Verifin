@@ -126,7 +126,7 @@ interface StoreState {
   deleteStaff: (id: string) => void;
   addActivity: (a: Omit<ActivityItem, "id">) => void;
   resolveDiscrepancy: (id: string) => void;
-  addAudit: (a: Omit<AuditRecord, "id">) => void;
+  addAudit: (a: Omit<AuditRecord, "id">) => string;
   updateAudit: (id: string, a: Partial<AuditRecord>) => void;
   addDiscrepancy: (d: Omit<Discrepancy, "id">) => void;
   generateWhatsAppSummary: () => string;
@@ -294,7 +294,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addAudit = useCallback((a: Omit<AuditRecord, "id">) => {
-    setAudits(prev => [{ ...a, id: uid() }, ...prev]);
+    const id = uid();
+    setAudits(prev => [{ ...a, id }, ...prev]);
+    return id;
   }, []);
 
   const updateAudit = useCallback((id: string, updates: Partial<AuditRecord>) => {
