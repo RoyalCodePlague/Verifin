@@ -1,18 +1,23 @@
-// A production-ready service worker for a PWA (cache-first for static assets, network-first for API)
-const CACHE_NAME = 'verifin-cache-v1';
+// Cache static app assets, but always let API requests go to the network.
+const CACHE_NAME = 'verifin-cache-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/icon-192.png',
-  '/icon-512.png',
-  // Add more static assets if needed
+  '/android-chrome-192x192.png',
+  '/android-chrome-512x512.png',
 ];
 
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
-      return cache.addAll(STATIC_ASSETS);
+      return Promise.all(
+        STATIC_ASSETS.map(asset =>
+          cache.add(asset).catch(() => {
+            // Optional assets should not prevent the service worker from installing.
+          })
+        )
+      );
     })
   );
   self.skipWaiting();
@@ -33,6 +38,11 @@ self.addEventListener('fetch', event => {
   const { request } = event;
   const url = new URL(request.url);
 
+  if (request.method !== 'GET' || url.pathname.startsWith('/api/')) {
+    event.respondWith(fetch(request));
+    return;
+  }
+
   // Cache-first for static assets
   if (STATIC_ASSETS.includes(url.pathname)) {
     event.respondWith(
@@ -51,11 +61,11 @@ self.addEventListener('fetch', event => {
   // Network-first for everything else (API, dynamic)
   event.respondWith(
     fetch(request)
-      .then(response => {
-        // Optionally cache API responses if needed
-        return response;
+      .then(response => response)
+      .catch(async () => {
+        const cached = await caches.match(request);
+        return cached || caches.match('/index.html');
       })
-      .catch(() => caches.match(request))
   );
 });
 

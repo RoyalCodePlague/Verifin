@@ -3,11 +3,14 @@ import type { Product } from "@/lib/store";
 const ACCESS_KEY = "sp_access_token";
 const REFRESH_KEY = "sp_refresh_token";
 
-export const apiBase = () => (import.meta.env.VITE_API_URL as string | undefined) ?? "";
+export const apiBase = () => (import.meta.env.VITE_API_URL as string | undefined)?.trim() ?? "";
 
 export function apiUrl(path: string): string {
   const p = path.startsWith("/") ? path : `/${path}`;
   const base = apiBase();
+  if (!base && import.meta.env.PROD && p.startsWith("/api/")) {
+    throw new Error("Production API URL is not configured. Set VITE_API_URL to your Railway backend URL in Vercel.");
+  }
   return base ? `${base.replace(/\/$/, "")}${p}` : p;
 }
 

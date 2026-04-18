@@ -42,9 +42,9 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     'whitenoise.middleware.WhiteNoiseMiddleware',
     "django.contrib.sessions.middleware.SessionMiddleware",
-    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -146,6 +146,9 @@ SIMPLE_JWT = {
 }
 
 CORS_ALLOW_CREDENTIALS = True
+
+FRONTEND_URL = os.getenv("FRONTEND_URL", "https://verifin-tau.vercel.app").rstrip("/")
+
 CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:8080",
     "http://localhost:8080",
@@ -156,9 +159,18 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:5173",
     "http://localhost:5173",
     "http://192.168.100.4:8080",
+    "https://verifin-tau.vercel.app",
     # Vercel production - UPDATE AFTER DEPLOYMENT
     "https://your-project.vercel.app",
 ]
+
+if FRONTEND_URL not in CORS_ALLOWED_ORIGINS:
+    CORS_ALLOWED_ORIGINS.append(FRONTEND_URL)
+
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.vercel\.app$",
+]
+
 CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:8080",
     "http://localhost:8080",
@@ -169,9 +181,13 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:8082",
     "http://127.0.0.1:5173",
     "http://localhost:5173",
+    "https://verifin-tau.vercel.app",
     # Vercel production - UPDATE AFTER DEPLOYMENT
     "https://your-project.vercel.app",
 ]
+
+if FRONTEND_URL not in CSRF_TRUSTED_ORIGINS:
+    CSRF_TRUSTED_ORIGINS.append(FRONTEND_URL)
 
 STORAGES = {
     "staticfiles": {
