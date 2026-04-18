@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { Search, Plus, Package, Edit2, Trash2, ScanBarcode, Calendar } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { AdminAssistant } from "@/components/dashboard/AdminAssistant";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -33,7 +32,6 @@ const Inventory = () => {
   const [scanOpen, setScanOpen] = useState(false);
   const [form, setForm] = useState({ name: "", category: "", stock: "", reorder: "", price: "", barcode: "" });
   const [saving, setSaving] = useState(false);
-  const [showAssistant, setShowAssistant] = useState(false);
   const sym = profile.currencySymbol || "R";
 
   const mergedCategories = Array.from(new Set([...profile.categories, ...allCategories]));
@@ -89,7 +87,6 @@ const Inventory = () => {
           barcode: form.barcode,
         });
         setAddOpen(false);
-        setShowAssistant(true);
         addActivity({ text: `Added product: ${form.name}`, time: "Just now", type: "restock" });
         toast.success("Product added!");
         await refreshUser();
@@ -220,6 +217,7 @@ const Inventory = () => {
         </Card>
       )}
 
+      {/*
       {showAssistant && (
         <Card className="shadow-soft border-primary/20">
           <CardContent className="p-4 lg:p-5">
@@ -228,6 +226,7 @@ const Inventory = () => {
           </CardContent>
         </Card>
       )}
+      */}
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>{formDialog}</Dialog>
       <Dialog open={!!editProduct} onOpenChange={() => setEditProduct(null)}>{formDialog}</Dialog>
