@@ -67,14 +67,18 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
 
       try {
         const result = await pushOfflineActions(queue);
-        if (result.processed > 0) {
+        const syncSucceeded = result.errors?.length === 0;
+        if (syncSucceeded) {
+          clearOfflineQueue();
+        }
+        if (result.processed > 0 && syncSucceeded) {
           toast.success(`Synced ${result.processed} offline changes`);
           await refreshUser();
         }
         if (result.errors?.length) {
           toast.warning(`${result.errors.length} offline changes need review.`);
         }
-        return result.errors?.length === 0;
+        return syncSucceeded;
       } catch (error) {
         console.warn("Offline sync failed", error);
         toast.error("Offline sync failed. We will retry when your connection is stable.");

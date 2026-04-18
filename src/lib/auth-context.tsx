@@ -24,6 +24,7 @@ import {
   clearAuthenticatedOfflineSession,
   clearOfflineQueue,
   clearOfflineSession,
+  getOfflineQueue,
   hasAuthenticatedOfflineSession,
   markAuthenticatedOfflineSession,
 } from "@/lib/offlineQueue";
@@ -73,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     saveCachedUser(u);
     markAuthenticatedOfflineSession();
     setUser(u);
+    if (getOfflineQueue().length > 0) return;
     await applyServerData(u);
   }, [applyServerData]);
 
@@ -90,6 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         saveCachedUser(u);
         markAuthenticatedOfflineSession();
         setUser(u);
+        if (getOfflineQueue().length > 0) return;
         await applyServerData(u);
       } catch {
         const cachedUser = loadCachedUser();

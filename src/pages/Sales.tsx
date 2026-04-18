@@ -81,7 +81,7 @@ const Sales = () => {
     if (lineItems.length === 0) return;
     setSaving(true);
 
-    const actionPayload = {
+    const apiPayload = {
       payment_method: method,
       customer: null,
       sale_items: lineItems.map((l) => ({
@@ -90,6 +90,21 @@ const Sales = () => {
         unit_price: l.unitPrice.toFixed(2),
         subtotal: (l.quantity * l.unitPrice).toFixed(2),
       })),
+    };
+    const offlinePayload = {
+      payment_method: method,
+      customer: null,
+      sale_items: lineItems.map((l) => {
+        const productId = parseInt(l.productId, 10);
+        return {
+          product: Number.isFinite(productId) ? productId : null,
+          product_local_id: l.productId,
+          product_name: l.productName,
+          quantity: l.quantity,
+          unit_price: l.unitPrice.toFixed(2),
+          subtotal: (l.quantity * l.unitPrice).toFixed(2),
+        };
+      }),
     };
 
     if (!navigator.onLine && !canQueueOfflineAction()) {
@@ -100,7 +115,7 @@ const Sales = () => {
 
     if (canQueueOfflineAction()) {
       createOfflineSale();
-      addToOfflineQueue({ type: "sale", payload: actionPayload });
+      addToOfflineQueue({ type: "sale", payload: offlinePayload });
       toast.success("Sale saved locally while offline. It will sync automatically when you are back online.");
       setLineItems([]);
       setMethod("Cash");
@@ -110,7 +125,7 @@ const Sales = () => {
     }
 
     try {
-      await createSaleApi(actionPayload);
+      await createSaleApi(apiPayload);
       toast.success("Sale recorded & inventory updated!");
       setLineItems([]);
       setMethod("Cash");
@@ -119,7 +134,7 @@ const Sales = () => {
     } catch (e) {
       if (canQueueOfflineAction()) {
         createOfflineSale();
-        addToOfflineQueue({ type: "sale", payload: actionPayload });
+        addToOfflineQueue({ type: "sale", payload: offlinePayload });
         toast.success("Sale saved locally. It will sync automatically when you are back online.");
       } else {
         toast.error(e instanceof Error ? e.message : "Could not record sale");

@@ -24,19 +24,64 @@ class SyncPushView(APIView):
         category, _ = Category.objects.get_or_create(user=request.user, name=category_name)
         return category.id
 
+    def _resolve_sale_items(self, request, items, local_product_ids):
+        resolved = []
+        for item in items:
+            product_id = item.get("product")
+            local_id = item.get("product_local_id")
+            product_name = item.get("product_name")
+
+            if not product_id and local_id:
+                product_id = local_product_ids.get(str(local_id))
+
+            if not product_id and product_name:
+                product = Product.objects.filter(
+                    user=request.user,
+                    name__iexact=product_name,
+                    is_deleted=False,
+                ).order_by("-created_at").first()
+                if product:
+                    product_id = product.id
+
+            if not product_id:
+                raise ValueError(f"Product not found for offline sale item: {product_name or local_id or 'unknown'}")
+
+            resolved.append({
+                "product": product_id,
+                "quantity": item.get("quantity"),
+                "unit_price": item.get("unit_price"),
+                "subtotal": item.get("subtotal"),
+            })
+        return resolved
+
     def post(self, request):
         actions = request.data.get("actions", [])
         processed = 0
         conflicts = []
         errors = []
         local_audit_ids = {}
+        local_product_ids = {}
 
         for action in actions:
             action_type = action.get("type")
             payload = action.get("payload", {})
 
             if action_type == "sale":
-                serializer = SaleSerializer(data=payload, context={"request": request})
+                try:
+                    sale_payload = {
+                        **payload,
+                        "sale_items": self._resolve_sale_items(
+                            request,
+                            payload.get("sale_items", []),
+                            local_product_ids,
+                        ),
+                    }
+                except ValueError as exc:
+                    errors.append({"action": action, "detail": str(exc)})
+                    SyncConflict.objects.create(user=request.user, payload=action, reason=str(exc))
+                    continue
+
+                serializer = SaleSerializer(data=sale_payload, context={"request": request})
                 if serializer.is_valid():
                     serializer.save(created_by=request.user)
                     processed += 1
@@ -68,7 +113,10 @@ class SyncPushView(APIView):
                 }
                 serializer = ProductSerializer(data=product_payload, context={"request": request})
                 if serializer.is_valid():
-                    serializer.save(user=request.user)
+                    product = serializer.save(user=request.user)
+                    local_id = payload.get("local_id")
+                    if local_id:
+                        local_product_ids[str(local_id)] = product.id
                     processed += 1
                 else:
                     errors.append({"action": action, "errors": serializer.errors})

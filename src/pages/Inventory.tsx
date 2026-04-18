@@ -106,7 +106,7 @@ const Inventory = () => {
         toast.success("Product update saved locally. It will sync when you are back online.");
       } else {
         const sku = generateSku(form.name, form.category);
-        addProduct({
+        const localId = addProduct({
           name: form.name,
           sku,
           category: form.category,
@@ -118,6 +118,7 @@ const Inventory = () => {
         addToOfflineQueue({
           type: "product_create",
           payload: {
+            local_id: localId,
             name: form.name,
             sku,
             categoryName: form.category,
