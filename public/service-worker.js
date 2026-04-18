@@ -1,5 +1,6 @@
-const CACHE_NAME = 'verifin-cache-v4';
+const CACHE_NAME = 'verifin-cache-v5';
 const APP_SHELL = '/index.html';
+const OFFLINE_FALLBACK = '<!doctype html><title>Verifin</title><p>Verifin is offline. Reconnect and try again.</p>';
 const STATIC_ASSETS = [
   APP_SHELL,
   '/manifest.json',
@@ -38,7 +39,6 @@ self.addEventListener('fetch', event => {
   const url = new URL(request.url);
 
   if (request.method !== 'GET' || url.pathname.startsWith('/api/')) {
-    event.respondWith(fetch(request));
     return;
   }
 
@@ -52,7 +52,7 @@ self.addEventListener('fetch', event => {
         })
         .catch(async () => {
           const cached = await caches.match(APP_SHELL);
-          return cached || new Response('<!doctype html><title>Verifin</title><p>Verifin is offline. Reconnect and try again.</p>', {
+          return cached || new Response(OFFLINE_FALLBACK, {
             headers: { 'Content-Type': 'text/html; charset=utf-8' },
           });
         })
@@ -68,7 +68,15 @@ self.addEventListener('fetch', event => {
           const copy = response.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
           return response;
-        }).catch(() => cached)
+        }).catch(async () => {
+          const shell = await caches.match(APP_SHELL);
+          if (request.destination === 'document' && shell) return shell;
+          return new Response('', {
+            status: 503,
+            statusText: 'Offline',
+            headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+          });
+        })
       )
     );
     return;
