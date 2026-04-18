@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { useStore } from "@/lib/store";
 import { createProductApi, deleteProductApi, updateProductApi } from "@/lib/api";
-import { addToOfflineQueue, canQueueOfflineAction, hadOfflineSession } from "@/lib/offlineQueue";
+import { addToOfflineQueue, canQueueOfflineAction } from "@/lib/offlineQueue";
 import { useAuth } from "@/lib/auth-context";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
@@ -133,7 +133,7 @@ const Inventory = () => {
     };
 
     if (!navigator.onLine && !canQueueOfflineAction()) {
-      toast.error("Offline mode is only available after you lose connection from the logged-in dashboard.");
+      toast.error("Offline mode is available after you have signed in on this device.");
       setSaving(false);
       return;
     }
@@ -174,7 +174,7 @@ const Inventory = () => {
         await refreshUser();
       }
     } catch (e) {
-      if (hadOfflineSession()) {
+      if (canQueueOfflineAction()) {
         saveOffline();
       } else {
         toast.error(e instanceof Error ? e.message : "Could not save product");
@@ -337,7 +337,7 @@ const Inventory = () => {
             toast.success(canQueueOfflineAction() ? "Product removal saved locally. It will sync when you are back online." : "Product removed");
             if (!canQueueOfflineAction()) await refreshUser();
           } catch (e) {
-            if (hadOfflineSession() && /^\d+$/.test(deleteId)) {
+            if (canQueueOfflineAction() && /^\d+$/.test(deleteId)) {
               addToOfflineQueue({ type: "product_delete", payload: { id: parseInt(deleteId, 10) } });
               deleteProduct(deleteId);
               toast.success("Product removal saved locally. It will sync when you are back online.");

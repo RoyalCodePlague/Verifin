@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { useStore } from "@/lib/store";
 import { createExpenseApi, deleteExpenseApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { addToOfflineQueue, canQueueOfflineAction, hadOfflineSession } from "@/lib/offlineQueue";
+import { addToOfflineQueue, canQueueOfflineAction } from "@/lib/offlineQueue";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
@@ -55,7 +55,7 @@ const Expenses = () => {
     };
 
     if (!navigator.onLine && !canQueueOfflineAction()) {
-      toast.error("Offline mode is only available after you lose connection from the logged-in dashboard.");
+      toast.error("Offline mode is available after you have signed in on this device.");
       setSaving(false);
       return;
     }
@@ -73,7 +73,7 @@ const Expenses = () => {
       toast.success("Expense recorded");
       await refreshUser();
     } catch (e) {
-      if (hadOfflineSession()) {
+      if (canQueueOfflineAction()) {
         saveOffline();
       } else {
         toast.error(e instanceof Error ? e.message : "Could not record expense");

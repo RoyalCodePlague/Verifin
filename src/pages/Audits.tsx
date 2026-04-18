@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useStore } from "@/lib/store";
+import { addToOfflineQueue, canQueueOfflineAction } from "@/lib/offlineQueue";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
@@ -41,6 +42,17 @@ const Audits = () => {
 
   const startAudit = () => {
     const auditId = addAudit({ date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }), status: "in_progress", items: products.length, discrepancies: 0, conductor: "You", autoFindings: [] });
+    if (canQueueOfflineAction()) {
+      addToOfflineQueue({
+        type: "audit_create",
+        payload: {
+          local_id: auditId,
+          status: "in_progress",
+          items_counted: products.length,
+          discrepancies_found: 0,
+        },
+      });
+    }
     toast.success("New audit started!");
 
     setBgAuditId(auditId);
@@ -109,21 +121,57 @@ const Audits = () => {
         const actual = parseInt(actualStr);
         if (!isNaN(actual) && actual !== p.stock) {
           addDiscrepancy({ product: p.name, expected: p.stock, actual, diff: actual - p.stock, status: "unresolved" });
+          if (canQueueOfflineAction()) {
+            addToOfflineQueue({
+              type: "discrepancy_create",
+              payload: {
+                audit_local_id: auditId,
+                audit: /^\d+$/.test(auditId) ? parseInt(auditId, 10) : undefined,
+                product: /^\d+$/.test(p.id) ? parseInt(p.id, 10) : undefined,
+                product_name: p.name,
+                expected_stock: p.stock,
+                actual_stock: actual,
+                difference: actual - p.stock,
+              },
+            });
+          }
           discCount++;
         }
       }
     });
     updateAudit(auditId, { discrepancies: discCount, status: "completed" });
+    if (canQueueOfflineAction()) {
+      addToOfflineQueue({
+        type: "audit_update",
+        payload: {
+          local_id: auditId,
+          id: /^\d+$/.test(auditId) ? parseInt(auditId, 10) : undefined,
+          status: "completed",
+          items_counted: products.length,
+          discrepancies_found: discCount,
+        },
+      });
+    }
     addActivity({ text: `Audit completed: ${discCount} discrepancies found`, time: "Just now", type: "alert" });
     setCountOpen(null);
-    toast.success(`Audit completed! ${discCount} discrepancies found.`);
+    toast.success(canQueueOfflineAction() ? `Audit saved locally. ${discCount} discrepancies will sync when online.` : `Audit completed! ${discCount} discrepancies found.`);
   };
 
   const handleCompleteAudit = (auditId: string) => {
     updateAudit(auditId, { status: "completed" });
+    if (canQueueOfflineAction()) {
+      addToOfflineQueue({
+        type: "audit_update",
+        payload: {
+          local_id: auditId,
+          id: /^\d+$/.test(auditId) ? parseInt(auditId, 10) : undefined,
+          status: "completed",
+        },
+      });
+    }
     addActivity({ text: "Audit marked as completed", time: "Just now", type: "alert" });
     setCompleteId(null);
-    toast.success("Audit marked as completed!");
+    toast.success(canQueueOfflineAction() ? "Audit update saved locally. It will sync when you are back online." : "Audit marked as completed!");
   };
 
   return (
@@ -298,8 +346,11 @@ const Audits = () => {
         if (resolveId) {
           const resolved = discrepancies.find(d => d.id === resolveId);
           resolveDiscrepancy(resolveId);
+          if (canQueueOfflineAction() && /^\d+$/.test(resolveId)) {
+            addToOfflineQueue({ type: "discrepancy_resolve", payload: { id: parseInt(resolveId, 10) } });
+          }
           addActivity({ text: `Discrepancy resolved${resolved ? `: ${resolved.product}` : ""}`, time: "Just now", type: "alert" });
-          toast.success("Discrepancy resolved!", { description: resolved ? `${resolved.product} was marked as resolved.` : undefined });
+          toast.success(canQueueOfflineAction() ? "Discrepancy resolution saved locally." : "Discrepancy resolved!", { description: resolved ? `${resolved.product} was marked as resolved.` : undefined });
         }
         setResolveId(null);
       }} />

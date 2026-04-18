@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createSaleApi, deleteSaleApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { addToOfflineQueue, canQueueOfflineAction, hadOfflineSession } from "@/lib/offlineQueue";
+import { addToOfflineQueue, canQueueOfflineAction } from "@/lib/offlineQueue";
 import { motion } from "framer-motion";
 import { Plus, Search, ArrowUpRight, Trash2, ShoppingCart } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -93,7 +93,7 @@ const Sales = () => {
     };
 
     if (!navigator.onLine && !canQueueOfflineAction()) {
-      toast.error("Offline mode is only available after you lose connection from the logged-in dashboard.");
+      toast.error("Offline mode is available after you have signed in on this device.");
       setSaving(false);
       return;
     }
@@ -117,7 +117,7 @@ const Sales = () => {
       setAddOpen(false);
       await refreshUser();
     } catch (e) {
-      if (hadOfflineSession()) {
+      if (canQueueOfflineAction()) {
         createOfflineSale();
         addToOfflineQueue({ type: "sale", payload: actionPayload });
         toast.success("Sale saved locally. It will sync automatically when you are back online.");

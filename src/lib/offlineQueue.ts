@@ -1,8 +1,22 @@
 // Offline queue: stores actions when offline, syncs when back online
 const QUEUE_KEY = "sp_offline_queue";
 const SESSION_KEY = "sp_offline_logged_in";
+const AUTHENTICATED_SESSION_KEY = "sp_offline_authenticated";
+const ACCESS_KEY = "sp_access_token";
+const CACHED_USER_KEY = "sp_cached_user";
 
-export type OfflineActionType = "sale" | "expense" | "product_create" | "product_update" | "product_delete" | "restock" | "customer_update";
+export type OfflineActionType =
+  | "sale"
+  | "expense"
+  | "product_create"
+  | "product_update"
+  | "product_delete"
+  | "restock"
+  | "customer_update"
+  | "audit_create"
+  | "audit_update"
+  | "discrepancy_create"
+  | "discrepancy_resolve";
 
 export interface OfflineAction {
   id: string;
@@ -45,8 +59,24 @@ export function hadOfflineSession() {
   return localStorage.getItem(SESSION_KEY) === "1";
 }
 
+export function markAuthenticatedOfflineSession() {
+  localStorage.setItem(AUTHENTICATED_SESSION_KEY, "1");
+}
+
+export function clearAuthenticatedOfflineSession() {
+  localStorage.removeItem(AUTHENTICATED_SESSION_KEY);
+}
+
+export function hasAuthenticatedOfflineSession() {
+  return (
+    localStorage.getItem(AUTHENTICATED_SESSION_KEY) === "1" &&
+    !!localStorage.getItem(ACCESS_KEY) &&
+    !!localStorage.getItem(CACHED_USER_KEY)
+  );
+}
+
 export function canQueueOfflineAction() {
-  return hadOfflineSession() && !isOnline();
+  return hasAuthenticatedOfflineSession() && !isOnline();
 }
 
 export function isOnline(): boolean {

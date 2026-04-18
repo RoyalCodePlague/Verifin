@@ -1,6 +1,7 @@
-const CACHE_NAME = 'verifin-cache-v3';
+const CACHE_NAME = 'verifin-cache-v4';
 const APP_SHELL = '/index.html';
 const STATIC_ASSETS = [
+  APP_SHELL,
   '/manifest.json',
   '/android-chrome-192x192.png',
   '/android-chrome-512x512.png',
@@ -59,14 +60,15 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  if (STATIC_ASSETS.includes(url.pathname)) {
+  if (STATIC_ASSETS.includes(url.pathname) || url.origin === self.location.origin) {
     event.respondWith(
       caches.match(request).then(cached =>
         cached || fetch(request).then(response => {
+          if (!response || response.status !== 200) return response;
           const copy = response.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
           return response;
-        })
+        }).catch(() => cached)
       )
     );
     return;

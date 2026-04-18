@@ -1,9 +1,11 @@
 from django.utils.dateparse import parse_datetime
+from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
 from .models import SyncConflict
+from audits.models import Audit, Discrepancy
 from sales.serializers import SaleSerializer
 from expenses.serializers import ExpenseSerializer
 from expenses.models import ExpenseCategory
@@ -27,6 +29,7 @@ class SyncPushView(APIView):
         processed = 0
         conflicts = []
         errors = []
+        local_audit_ids = {}
 
         for action in actions:
             action_type = action.get("type")
@@ -101,6 +104,68 @@ class SyncPushView(APIView):
                 else:
                     errors.append({"action": action, "detail": "Product not found"})
                     SyncConflict.objects.create(user=request.user, payload=action, reason="Product delete target missing")
+            elif action_type == "audit_create":
+                audit = Audit.objects.create(
+                    conductor=request.user,
+                    status=payload.get("status", "in_progress"),
+                    items_counted=payload.get("items_counted", 0),
+                    discrepancies_found=payload.get("discrepancies_found", 0),
+                    completed_at=timezone.now() if payload.get("status") == "completed" else None,
+                )
+                local_id = payload.get("local_id")
+                if local_id:
+                    local_audit_ids[str(local_id)] = audit.id
+                processed += 1
+            elif action_type == "audit_update":
+                audit_id = payload.get("id") or local_audit_ids.get(str(payload.get("local_id")))
+                try:
+                    audit = Audit.objects.get(id=audit_id, conductor=request.user, is_deleted=False)
+                except Audit.DoesNotExist:
+                    errors.append({"action": action, "detail": "Audit not found"})
+                    SyncConflict.objects.create(user=request.user, payload=action, reason="Audit update target missing")
+                    continue
+
+                if payload.get("status"):
+                    audit.status = payload["status"]
+                    if audit.status == "completed" and not audit.completed_at:
+                        audit.completed_at = timezone.now()
+                if payload.get("items_counted") is not None:
+                    audit.items_counted = payload["items_counted"]
+                if payload.get("discrepancies_found") is not None:
+                    audit.discrepancies_found = payload["discrepancies_found"]
+                audit.save()
+                processed += 1
+            elif action_type == "discrepancy_create":
+                audit_id = payload.get("audit") or local_audit_ids.get(str(payload.get("audit_local_id")))
+                product_id = payload.get("product")
+                try:
+                    audit = Audit.objects.get(id=audit_id, conductor=request.user, is_deleted=False)
+                    product = Product.objects.get(id=product_id, user=request.user, is_deleted=False)
+                except (Audit.DoesNotExist, Product.DoesNotExist):
+                    errors.append({"action": action, "detail": "Audit or product not found"})
+                    SyncConflict.objects.create(user=request.user, payload=action, reason="Discrepancy create target missing")
+                    continue
+
+                Discrepancy.objects.create(
+                    audit=audit,
+                    product=product,
+                    expected_stock=payload.get("expected_stock", 0),
+                    actual_stock=payload.get("actual_stock", 0),
+                    difference=payload.get("difference", 0),
+                    status=payload.get("status", "unresolved"),
+                )
+                processed += 1
+            elif action_type == "discrepancy_resolve":
+                updated = Discrepancy.objects.filter(
+                    id=payload.get("id"),
+                    audit__conductor=request.user,
+                    is_deleted=False,
+                ).update(status="resolved", resolved_by_id=request.user.id, resolved_at=timezone.now())
+                if updated:
+                    processed += 1
+                else:
+                    errors.append({"action": action, "detail": "Discrepancy not found"})
+                    SyncConflict.objects.create(user=request.user, payload=action, reason="Discrepancy resolve target missing")
             else:
                 errors.append({"action": action, "detail": "Unsupported sync action type"})
                 SyncConflict.objects.create(user=request.user, payload=action, reason="Unsupported sync action")

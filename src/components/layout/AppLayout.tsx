@@ -7,8 +7,14 @@ import {
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth-context";
-import { getAccessToken, pushOfflineActions } from "@/lib/api";
-import { clearOfflineQueue, getOfflineQueue, hadOfflineSession, markOfflineSession, setupOfflineSync } from "@/lib/offlineQueue";
+import { pushOfflineActions } from "@/lib/api";
+import {
+  clearOfflineQueue,
+  getOfflineQueue,
+  hasAuthenticatedOfflineSession,
+  markOfflineSession,
+  setupOfflineSync,
+} from "@/lib/offlineQueue";
 import { NotificationCenter } from "@/components/NotificationCenter";
 import { toast } from "sonner";
 
@@ -41,7 +47,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     const handleOffline = () => {
-      if (getAccessToken() && location.pathname.startsWith("/dashboard")) {
+      if (hasAuthenticatedOfflineSession()) {
         markOfflineSession();
         toast.info("Offline mode is active.", { description: "Sales, expenses, and inventory edits will save locally and sync when internet returns." });
       }
@@ -53,7 +59,6 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     const syncQueuedActions = async () => {
-      if (!hadOfflineSession()) return true;
       const queue = getOfflineQueue();
       if (queue.length === 0) {
         clearOfflineQueue();

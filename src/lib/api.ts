@@ -71,7 +71,7 @@ export async function apiFetch<T = unknown>(
     headers.set("Content-Type", "application/json");
   }
 
-  let access = options.skipAuth ? null : getAccessToken();
+  const access = options.skipAuth ? null : getAccessToken();
 
   const doFetch = async (token: string | null) => {
     const h = new Headers(headers);
@@ -350,7 +350,18 @@ export async function deleteExpenseApi(id: string) {
 
 type ApiOfflineAction = {
   id: string;
-  type: "sale" | "expense" | "product_create" | "product_update" | "product_delete" | "restock" | "customer_update";
+  type:
+    | "sale"
+    | "expense"
+    | "product_create"
+    | "product_update"
+    | "product_delete"
+    | "restock"
+    | "customer_update"
+    | "audit_create"
+    | "audit_update"
+    | "discrepancy_create"
+    | "discrepancy_resolve";
   payload: Record<string, unknown>;
   timestamp: number;
 };

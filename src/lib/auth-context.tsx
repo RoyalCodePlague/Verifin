@@ -20,7 +20,13 @@ import {
 } from "@/lib/api";
 import { loadServerData } from "@/lib/sync";
 import { useStore } from "@/lib/store";
-import { clearOfflineQueue, clearOfflineSession, hadOfflineSession } from "@/lib/offlineQueue";
+import {
+  clearAuthenticatedOfflineSession,
+  clearOfflineQueue,
+  clearOfflineSession,
+  hasAuthenticatedOfflineSession,
+  markAuthenticatedOfflineSession,
+} from "@/lib/offlineQueue";
 
 const CACHED_USER_KEY = "sp_cached_user";
 
@@ -65,6 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshUser = useCallback(async () => {
     const u = await fetchMe();
     saveCachedUser(u);
+    markAuthenticatedOfflineSession();
     setUser(u);
     await applyServerData(u);
   }, [applyServerData]);
@@ -81,11 +88,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const u = await fetchMe();
         if (cancelled) return;
         saveCachedUser(u);
+        markAuthenticatedOfflineSession();
         setUser(u);
         await applyServerData(u);
       } catch {
         const cachedUser = loadCachedUser();
-        if (!navigator.onLine && hadOfflineSession() && cachedUser) {
+        if (!navigator.onLine && cachedUser && hasAuthenticatedOfflineSession()) {
           setUser(cachedUser);
           return;
         }
@@ -132,6 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem(CACHED_USER_KEY);
       clearOfflineQueue();
       clearOfflineSession();
+      clearAuthenticatedOfflineSession();
       setUser(null);
       resetForLogout();
     }
