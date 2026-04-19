@@ -87,8 +87,10 @@ export async function apiFetch<T = unknown>(
 
   if (!res.ok) {
     let detail = res.statusText;
+    let payload: unknown;
     try {
       const err = (await res.json()) as { detail?: string | string[]; non_field_errors?: string[] };
+      payload = err;
       if (Array.isArray(err.detail)) {
         detail = err.detail.join(" ");
       } else {
@@ -97,7 +99,9 @@ export async function apiFetch<T = unknown>(
     } catch {
       /* ignore */
     }
-    throw new Error(detail || `Request failed: ${res.status}`);
+    const apiError = new Error(detail || `Request failed: ${res.status}`);
+    (apiError as Error & { payload?: unknown }).payload = payload;
+    throw apiError;
   }
 
   if (res.status === 204) return undefined as T;
@@ -624,5 +628,84 @@ export async function resolveSyncConflict(id: number, resolution_note = "") {
   return apiFetch<ApiSyncConflict>(`/api/v1/sync/conflicts/${id}/resolve/`, {
     method: "POST",
     body: JSON.stringify({ status: "resolved", resolution_note }),
+  });
+}
+
+export type PlanCode = "starter" | "growth" | "business";
+export type BillingPeriod = "monthly" | "yearly";
+
+export type FeatureLimit = {
+  key: string;
+  label: string;
+  enabled: boolean;
+  limit: number | null;
+  unit: string;
+  used?: number | null;
+  remaining?: number | null;
+};
+
+export type BillingPlan = {
+  id: number;
+  code: PlanCode;
+  name: string;
+  description: string;
+  monthly_price: string;
+  yearly_price: string;
+  currency: string;
+  sort_order: number;
+  limits: FeatureLimit[];
+};
+
+export type BillingSubscription = {
+  id: number;
+  plan: BillingPlan;
+  status: "active" | "trialing" | "past_due" | "cancelled" | "expired";
+  billing_period: BillingPeriod;
+  provider: string;
+  current_period_start: string;
+  current_period_end: string | null;
+  trial_ends_at: string | null;
+  grace_period_ends_at: string | null;
+  cancel_at_period_end: boolean;
+  cancelled_at: string | null;
+  ended_at: string | null;
+};
+
+export type BillingOverview = {
+  subscription: BillingSubscription;
+  plan: BillingPlan;
+  limits: FeatureLimit[];
+  locked_features: FeatureLimit[];
+  events: Array<{ id: number; event_type: string; provider: string; metadata: Record<string, unknown>; created_at: string }>;
+  cycles: Array<{ id: number; period_start: string; period_end: string; amount: string; currency: string; paid_at: string | null; status: string }>;
+  available_actions: string[];
+};
+
+export async function listBillingPlansApi() {
+  return fetchAllPages<BillingPlan>("/api/v1/billing/plans/");
+}
+
+export async function getBillingOverviewApi() {
+  return apiFetch<BillingOverview>("/api/v1/billing/subscriptions/current/");
+}
+
+export async function mockCheckoutApi(payload: { plan: PlanCode; billing_period: BillingPeriod; trial_days?: number }) {
+  return apiFetch<{ detail: string; subscription: BillingSubscription; billing: BillingOverview }>("/api/v1/billing/subscriptions/mock-checkout/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function mockTrialApi(payload: { plan: PlanCode; billing_period: BillingPeriod; trial_days?: number }) {
+  return apiFetch<BillingOverview>("/api/v1/billing/subscriptions/mock-trial/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function subscriptionActionApi(action: "renew" | "upgrade" | "downgrade" | "cancel" | "resume" | "expire", payload: Record<string, unknown> = {}) {
+  return apiFetch<BillingOverview>(`/api/v1/billing/subscriptions/${action}/`, {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }

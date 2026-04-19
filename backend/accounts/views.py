@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
+from billing.services import enforce_limit
 from .models import Profile, Staff
 from .permissions import IsOwnerOrManager
 from .serializers import CustomTokenObtainPairSerializer, ProfileSerializer, RegisterSerializer, StaffSerializer, UserSerializer
@@ -135,6 +136,7 @@ class ProfileViewSet(viewsets.ModelViewSet):
         return Profile.objects.filter(user=self.request.user, is_deleted=False)
 
     def perform_create(self, serializer):
+        enforce_limit(self.request.user, "users")
         serializer.save(user=self.request.user)
 
 

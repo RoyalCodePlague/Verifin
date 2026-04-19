@@ -6,6 +6,7 @@ from rest_framework.views import APIView
 from expenses.models import Expense
 from inventory.models import Product, StockMovement
 from sales.models import Sale
+from billing.services import enforce_feature
 
 
 class DailySalesView(APIView):
@@ -43,6 +44,7 @@ class ProfitLossView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        enforce_feature(request.user, "advanced_analytics")
         sales = Sale.objects.filter(created_by=request.user)
         sales_total = sales.aggregate(total=Sum("total"))["total"] or 0
         cost_total = sales.aggregate(total=Sum("total_cost"))["total"] or 0
@@ -63,6 +65,7 @@ class MarginReportView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        enforce_feature(request.user, "advanced_analytics")
         rows = []
         for product in Product.objects.filter(user=request.user, is_deleted=False):
             revenue = Sale.objects.filter(created_by=request.user, sale_items__product=product).aggregate(total=Sum("sale_items__subtotal"))["total"] or 0
@@ -93,6 +96,8 @@ class ExportView(APIView):
 
     def get(self, request):
         export_type = request.query_params.get("type", "csv")
+        if export_type in ["excel", "xlsx"]:
+            enforce_feature(request.user, "excel_exports")
         if export_type == "csv":
             response = HttpResponse("metric,value\nsales,0\n", content_type="text/csv")
             response["Content-Disposition"] = 'attachment; filename="report.csv"'

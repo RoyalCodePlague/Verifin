@@ -7,18 +7,21 @@ from rest_framework import status
 from .models import AssistantLog
 import json
 import logging
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework import status
 from django.conf import settings
 from django.views.decorators.csrf import csrf_exempt
 from groq import Groq
 from . import services
+from billing.services import enforce_feature
 logger = logging.getLogger(__name__)
 @csrf_exempt
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def command_endpoint(request):
     """Process user command with Groq (compatible with frontend)"""
+    enforce_feature(request.user, "ai_assistant")
     user_command = request.data.get('command', '').strip()
     if not user_command:
         return Response({"error": "No command provided"}, status=400)
@@ -123,8 +126,10 @@ def command_endpoint(request):
 
 @csrf_exempt
 @api_view(['POST'])
+@permission_classes([IsAuthenticated])
 def chat_endpoint(request):
     """Process user message with Groq and fetch real data"""
+    enforce_feature(request.user, "ai_assistant")
     user_message = request.data.get('message', '').strip()
     if not user_message:
         return Response({"error": "No message provided"}, status=400)
@@ -166,8 +171,10 @@ def chat_endpoint(request):
 
 @api_view(['GET'])
 @csrf_exempt
+@permission_classes([IsAuthenticated])
 def insights_endpoint(request):
     """AI Insights endpoint"""
+    enforce_feature(request.user, "advanced_analytics")
     try:
         insights = services.generate_insights()
         return Response(insights)
@@ -206,6 +213,7 @@ class AssistantCommandView(APIView):
         }
         """
         try:
+            enforce_feature(request.user, "ai_assistant")
             command_text = request.data.get("command", "").strip()
 
             if not command_text:

@@ -2,6 +2,7 @@ from django.utils import timezone
 from rest_framework import viewsets, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from billing.services import enforce_feature
 from .models import Audit, Discrepancy, StockCount
 from .serializers import AuditSerializer, DiscrepancySerializer, StockCountSerializer
 
@@ -9,7 +10,7 @@ from .serializers import AuditSerializer, DiscrepancySerializer, StockCountSeria
 class AuditViewSet(viewsets.ModelViewSet):
     serializer_class = AuditSerializer
     filterset_fields = ["status", "date"]
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         if self.request.user and self.request.user.is_authenticated:
@@ -18,10 +19,12 @@ class AuditViewSet(viewsets.ModelViewSet):
             return Audit.objects.filter(is_deleted=False)
 
     def perform_create(self, serializer):
+        enforce_feature(self.request.user, "audits")
         serializer.save(conductor=self.request.user)
 
     @action(detail=True, methods=["post"], url_path="complete")
     def complete(self, request, pk=None):
+        enforce_feature(request.user, "audits")
         audit = self.get_object()
         discrepancies_count = 0
         for count in audit.stock_counts.all():

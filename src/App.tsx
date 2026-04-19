@@ -21,6 +21,7 @@ import Suppliers from "./pages/Suppliers";
 import SettingsPage from "./pages/Settings";
 import Onboarding from "./pages/Onboarding";
 import Pricing from "./pages/Pricing";
+import Billing from "./pages/Billing";
 import About from "./pages/About";
 import Demo from "./pages/Demo";
 import Login from "./pages/Login";
@@ -82,6 +83,7 @@ const App = () => (
               <Route path="/suppliers" element={<ProtectedRoute><AppRoute><Suppliers /></AppRoute></ProtectedRoute>} />
               <Route path="/staff" element={<ProtectedRoute><AppRoute><Staff /></AppRoute></ProtectedRoute>} />
               <Route path="/settings" element={<ProtectedRoute><AppRoute><SettingsPage /></AppRoute></ProtectedRoute>} />
+              <Route path="/billing" element={<ProtectedRoute><AppRoute><Billing /></AppRoute></ProtectedRoute>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

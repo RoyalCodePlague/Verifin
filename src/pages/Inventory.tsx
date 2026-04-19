@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Search, Plus, Package, Edit2, Trash2, ScanBarcode, Calendar, TrendingUp } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -32,6 +33,7 @@ const pricePreview = (price: string, cost: string) => {
 const Inventory = () => {
   const { products, addProduct, updateProduct, deleteProduct, profile, addActivity } = useStore();
   const { refreshUser } = useAuth();
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [addOpen, setAddOpen] = useState(false);
@@ -214,7 +216,10 @@ const Inventory = () => {
       if (canQueueOfflineAction()) {
         saveOffline();
       } else {
-        toast.error(e instanceof Error ? e.message : "Could not save product");
+        toast.error(e instanceof Error ? e.message : "Could not save product", {
+          description: "Open Billing to review your limits and upgrade options.",
+          action: { label: "Billing", onClick: () => navigate("/billing") },
+        });
       }
     } finally {
       setSaving(false);

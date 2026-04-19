@@ -1,400 +1,224 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
-import { Check, Sparkles, CreditCard, X, WifiOff, ScanBarcode, MessageSquare, Users, ClipboardCheck, Shield, BarChart3, TrendingUp } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { toast } from "sonner";
+import { BarChart3, Check, HelpCircle, Lock, ScanBarcode, ShieldCheck, Sparkles, type LucideIcon } from "lucide-react";
 import Navbar from "@/components/landing/Navbar";
 import Footer from "@/components/landing/Footer";
 import { useAuth } from "@/lib/auth-context";
+import { listBillingPlansApi, type BillingPeriod, type BillingPlan, type PlanCode } from "@/lib/api";
 
-const plans = [
+const fallbackPlans: BillingPlan[] = [
   {
+    id: 1,
+    code: "starter",
     name: "Starter",
-    price: "Free",
-    priceNote: "Forever",
-    desc: "For solo entrepreneurs just getting started",
-    color: "bg-blue-50 border-blue-200",
-    features: [
-      "✓ 1 user account",
-      "✓ Up to 50 products",
-      "✓ Basic sales recording",
-      "✓ Daily sales summaries",
-      "✓ Mobile app access (PWA)",
-      "✓ Customer directory (up to 100)",
-      "✓ Basic expense logging",
-      "✓ Basic reports (2 types)",
-      "✓ Community support",
-    ],
-    cta: "Get Started Free",
-    popular: false,
+    description: "Free forever for solo owners getting started.",
+    monthly_price: "0.00",
+    yearly_price: "0.00",
+    currency: "ZAR",
+    sort_order: 1,
+    limits: [],
   },
   {
+    id: 2,
+    code: "growth",
     name: "Growth",
-    price: "R299",
-    priceNote: "/month",
-    desc: "For growing businesses that need more power",
-    color: "bg-emerald-50 border-emerald-200",
-    features: [
-      "✓ Up to 3 user accounts",
-      "✓ Unlimited products",
-      "✓ Admin Assistance System",
-      "✓ Full inventory audits",
-      "✓ Barcode scanning",
-      "✓ Receipt OCR digitization",
-      "✓ WhatsApp daily reports",
-      "✓ QR customer loyalty system",
-      "✓ 8 report types with charts",
-      "✓ Low stock & discrepancy alerts",
-      "✓ Unlimited customers",
-      "✓ Priority email support",
-    ],
-    cta: "Start 14-Day Trial",
-    popular: true,
+    description: "For growing SMEs that need automation and unlimited stock.",
+    monthly_price: "299.00",
+    yearly_price: "2990.00",
+    currency: "ZAR",
+    sort_order: 2,
+    limits: [],
   },
   {
+    id: 3,
+    code: "business",
     name: "Business",
-    price: "R599",
-    priceNote: "/month",
-    desc: "For established businesses with multiple staff",
-    color: "bg-purple-50 border-purple-200",
-    features: [
-      "✓ Unlimited users",
-      "✓ Unlimited products",
-      "✓ Smart insights & sales forecasting",
-      "✓ Advanced analytics dashboard",
-      "✓ Custom report builder",
-      "✓ Role-based staff access",
-      "✓ Offline mode with auto-sync",
-      "✓ Automated background audits",
-      "✓ Bulk product import/export",
-      "✓ Excel report exports",
-      "✓ API access for integrations",
-      "✓ Dedicated account manager",
-      "✓ Phone support",
-    ],
-    cta: "Start 14-Day Trial",
-    popular: false,
+    description: "For established businesses needing advanced control.",
+    monthly_price: "599.00",
+    yearly_price: "5990.00",
+    currency: "ZAR",
+    sort_order: 3,
+    limits: [],
   },
 ];
 
-// Comprehensive feature matrix for comparison
-const featureMatrix = [
-  {
-    category: "Core Features",
-    features: [
-      { name: "User Accounts", starter: "1", growth: "3", business: "Unlimited" },
-      { name: "Products", starter: "50", growth: "Unlimited", business: "Unlimited" },
-      { name: "Customers", starter: "100", growth: "Unlimited", business: "Unlimited" },
-      { name: "Daily Transactions", starter: "Limited", growth: "Unlimited", business: "Unlimited" },
-    ]
-  },
-  {
-    category: "Sales & Inventory",
-    features: [
-      { name: "Sales Recording", starter: "Basic", growth: "Full", business: "Full + Forecasting" },
-      { name: "Barcode Scanning", starter: false, growth: true, business: true },
-      { name: "Inventory Audits", starter: "Manual", growth: "Automated", business: "Continuous" },
-      { name: "Low Stock Alerts", starter: false, growth: true, business: true },
-      { name: "Stock Reconciliation", starter: false, growth: true, business: true },
-    ]
-  },
-  {
-    category: "Reports & Analytics",
-    features: [
-      { name: "Report Types", starter: "2", growth: "8", business: "Custom Builder" },
-      { name: "Charts & Graphs", starter: false, growth: true, business: true },
-      { name: "Sales Analytics", starter: "Basic", growth: "Advanced", business: "AI-Powered" },
-      { name: "Export to Excel", starter: false, growth: "Limited", business: true },
-      { name: "Scheduled Reports", starter: false, growth: false, business: true },
-    ]
-  },
-  {
-    category: "Customer Management",
-    features: [
-      { name: "Customer Directory", starter: true, growth: true, business: true },
-      { name: "Loyalty Points", starter: false, growth: true, business: true },
-      { name: "QR Loyalty Cards", starter: false, growth: true, business: true },
-      { name: "Purchase History", starter: "30 days", growth: "Unlimited", business: "Unlimited" },
-    ]
-  },
-  {
-    category: "Communication & Support",
-    features: [
-      { name: "WhatsApp Reports", starter: false, growth: true, business: true },
-      { name: "Email Notifications", starter: "Basic", growth: "Advanced", business: "Advanced" },
-      { name: "Support", starter: "Community", growth: "Email", business: "Email + Phone" },
-      { name: "Dedicated Manager", starter: false, growth: false, business: true },
-    ]
-  },
-  {
-    category: "Advanced Features",
-    features: [
-      { name: "Admin Assistance System", starter: false, growth: true, business: true },
-      { name: "Offline Mode", starter: false, growth: false, business: true },
-      { name: "API Access", starter: false, growth: false, business: true },
-      { name: "Custom Integrations", starter: false, growth: false, business: true },
-      { name: "Receipt OCR", starter: false, growth: true, business: true },
-    ]
-  },
+const features: Record<PlanCode, string[]> = {
+  starter: ["1 user", "50 products", "100 customers", "Basic sales", "Daily summaries", "2 basic reports"],
+  growth: ["3 users", "Unlimited products", "AI admin assistant", "Audits and barcode scanning", "Receipt OCR", "8 reports with charts"],
+  business: ["Unlimited users", "Forecasting", "Advanced analytics", "Role-based access", "Offline auto-sync", "Excel exports and API access"],
+};
+
+const comparison = [
+  ["Users", "1", "3", "Unlimited"],
+  ["Products", "50", "Unlimited", "Unlimited"],
+  ["Customers", "100", "Unlimited", "Unlimited"],
+  ["AI assistance", "Locked", "Included", "Included"],
+  ["Forecasting", "Locked", "Locked", "Included"],
+  ["Exports", "Basic", "Reports", "Excel and API"],
 ];
+
+const faqs = [
+  ["Do I need a card today?", "No. The current checkout is a local mock flow for testing subscriptions before a real payment provider is connected."],
+  ["Can I switch plans?", "Yes. Upgrades, downgrades, renewals, cancellations, trials, and grace periods are handled by the backend billing engine."],
+  ["What happens at a limit?", "The app blocks the action, explains the limit, and points the user to the plan that unlocks it."],
+  ["Can this move to real payments later?", "Yes. The backend already stores provider IDs, events, payments, billing cycles, and webhook-ready records."],
+];
+
+const trustItems: Array<[LucideIcon, string]> = [
+  [ShieldCheck, "Mock billing, real rules"],
+  [Lock, "Feature gates in the API"],
+  [ScanBarcode, "Growth tools unlock cleanly"],
+  [BarChart3, "Business analytics ready"],
+];
+
+const tone: Record<PlanCode, string> = {
+  starter: "border-slate-200 bg-white",
+  growth: "border-emerald-300 bg-emerald-50",
+  business: "border-sky-300 bg-sky-50",
+};
+
+function priceFor(plan: BillingPlan, period: BillingPeriod) {
+  const amount = Number(period === "yearly" ? plan.yearly_price : plan.monthly_price);
+  if (amount <= 0) return "Free";
+  return `R${amount.toLocaleString("en-ZA")}`;
+}
 
 const Pricing = () => {
+  const [period, setPeriod] = useState<BillingPeriod>("monthly");
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
-  const [checkoutPlan, setCheckoutPlan] = useState<string | null>(null);
-  const [checkoutLoading, setCheckoutLoading] = useState(false);
-  const primaryPath = isAuthenticated ? "/dashboard" : "/login?signup=1";
+  const { data } = useQuery({ queryKey: ["public-billing-plans"], queryFn: listBillingPlansApi });
+  const plans = (data?.length ? data : fallbackPlans).sort((a, b) => a.sort_order - b.sort_order);
 
-  const handleCheckout = (e: React.FormEvent) => {
-    e.preventDefault();
-    setCheckoutLoading(true);
-    setTimeout(() => {
-      setCheckoutLoading(false);
-      setCheckoutPlan(null);
-      toast.success("Welcome aboard! Your trial has started.", { description: "You now have full access for 14 days." });
-      navigate(primaryPath);
-    }, 2000);
+  const startPlan = () => {
+    navigate(isAuthenticated ? "/billing" : "/login");
   };
 
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
-      <section className="py-20 px-4">
-        <div className="container max-w-5xl">
-          <div className="text-center mb-12">
-            <h1 className="font-display font-bold text-3xl sm:text-4xl mb-3">
-              Simple, <span className="text-gradient-hero">Transparent</span> Pricing
-            </h1>
-            <p className="text-muted-foreground max-w-md mx-auto">No hidden fees. Start free, upgrade when you're ready.</p>
+      <main>
+        <section className="border-b bg-slate-50">
+          <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+            <div className="max-w-3xl">
+              <p className="text-sm font-bold uppercase tracking-[0.18em] text-emerald-700">Pricing</p>
+              <h1 className="mt-4 text-4xl font-bold tracking-tight sm:text-5xl">Start free. Upgrade when the business needs more power.</h1>
+              <p className="mt-5 text-lg text-muted-foreground">
+                Clear limits, test billing controls, and premium features that unlock only when the plan allows them.
+              </p>
+            </div>
+            <div className="mt-8 inline-flex rounded-md border bg-white p-1">
+              {(["monthly", "yearly"] as BillingPeriod[]).map((next) => (
+                <button key={next} type="button" onClick={() => setPeriod(next)} className={`rounded px-5 py-2 text-sm font-bold capitalize ${period === next ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}>
+                  {next}
+                </button>
+              ))}
+            </div>
           </div>
+        </section>
 
-          <div className="grid md:grid-cols-3 gap-6">
-            {plans.map((plan, i) => (
-              <motion.div key={plan.name} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
-                <Card className={`shadow-card h-full flex flex-col ${plan.popular ? "ring-2 ring-primary relative" : ""}`}>
-                  {plan.popular && (
-                    <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                      <span className="bg-gradient-hero text-primary-foreground text-xs font-bold px-4 py-1 rounded-full flex items-center gap-1">
-                        <Sparkles className="h-3 w-3" /> Most Popular
-                      </span>
-                    </div>
-                  )}
-                  <CardContent className="p-6 flex flex-col flex-1">
-                    <h3 className="font-display font-semibold text-lg">{plan.name}</h3>
-                    <p className="text-xs text-muted-foreground mt-1">{plan.desc}</p>
-                    <div className="mt-4 mb-6">
-                      <span className="font-display font-bold text-3xl">{plan.price}</span>
-                      <span className="text-sm text-muted-foreground">{plan.priceNote}</span>
-                    </div>
-                    <ul className="space-y-2.5 flex-1">
-                      {plan.features.map(f => (
-                        <li key={f} className="flex items-start gap-2 text-sm">
-                          <Check className="h-4 w-4 text-success flex-shrink-0 mt-0.5" />
-                          <span>{f.replace('✓ ', '')}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <Button
-                      onClick={() => isAuthenticated ? navigate("/dashboard") : plan.price === "Free" ? navigate("/login?signup=1") : setCheckoutPlan(plan.name)}
-                      className={`mt-6 w-full ${plan.popular ? "bg-gradient-hero text-primary-foreground" : ""}`}
-                      variant={plan.popular ? "default" : "outline"}
-                    >
-                      {isAuthenticated ? "Dashboard" : plan.cta}
-                    </Button>
-                  </CardContent>
-                </Card>
-              </motion.div>
+        <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+          <div className="grid gap-5 lg:grid-cols-3">
+            {plans.map((plan) => (
+              <article key={plan.code} className={`relative rounded-lg border p-6 ${tone[plan.code]}`}>
+                {plan.code === "growth" && <span className="absolute right-4 top-4 rounded-md bg-emerald-600 px-3 py-1 text-xs font-bold text-white">Most Popular</span>}
+                <h2 className="text-2xl font-bold">{plan.name}</h2>
+                <p className="mt-2 min-h-12 text-sm text-muted-foreground">{plan.description}</p>
+                <div className="mt-6 flex items-end gap-1">
+                  <span className="text-4xl font-bold">{priceFor(plan, period)}</span>
+                  {Number(period === "yearly" ? plan.yearly_price : plan.monthly_price) > 0 && <span className="pb-1 text-sm text-muted-foreground">/{period === "yearly" ? "year" : "month"}</span>}
+                </div>
+                {period === "yearly" && plan.code !== "starter" && <p className="mt-2 text-sm font-semibold text-emerald-700">Two months included</p>}
+                <button type="button" onClick={startPlan} className="mt-6 w-full rounded-md bg-primary px-4 py-3 text-sm font-bold text-primary-foreground hover:bg-primary/90">
+                  {plan.code === "starter" ? "Start free" : "Test upgrade"}
+                </button>
+                <ul className="mt-6 space-y-3 text-sm">
+                  {features[plan.code].map((feature) => (
+                    <li key={feature} className="flex gap-2">
+                      <Check className="mt-0.5 h-4 w-4 flex-none text-emerald-600" />
+                      <span>{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+              </article>
             ))}
           </div>
+        </section>
 
-          {/* Feature comparison */}
-          <div className="mt-16 grid sm:grid-cols-3 gap-6 max-w-3xl mx-auto">
-            {[
-              { icon: WifiOff, title: "Offline Mode", desc: "Record sales and stock without internet. Auto-syncs when back online.", badge: "Business" },
-              { icon: ScanBarcode, title: "Barcode Scanning", desc: "Scan products with your phone camera for instant lookup and sales.", badge: "Growth & Business" },
-              { icon: ClipboardCheck, title: "Smart Audits", desc: "Background audit engine detects discrepancies before they become losses.", badge: "Business" },
-            ].map((item) => (
-              <Card key={item.title} className="shadow-soft">
-                <CardContent className="p-5 flex flex-col items-center text-center gap-3">
-                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <item.icon className="h-5 w-5 text-primary" />
+        <section className="border-y bg-white">
+          <div className="mx-auto grid max-w-7xl gap-4 px-4 py-10 sm:grid-cols-2 lg:grid-cols-4 lg:px-8">
+            {trustItems.map(([Icon, label]) => (
+              <div key={label} className="flex items-center gap-3 rounded-md border p-4">
+                <Icon className="h-5 w-5 text-emerald-700" />
+                <span className="text-sm font-semibold">{label}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+          <h2 className="text-2xl font-bold">Compare Plans</h2>
+          <div className="mt-6 overflow-hidden rounded-lg border">
+            <table className="w-full min-w-[720px] text-left text-sm">
+              <thead className="bg-muted">
+                <tr>
+                  <th className="p-4">Feature</th>
+                  <th className="p-4">Starter</th>
+                  <th className="p-4">Growth</th>
+                  <th className="p-4">Business</th>
+                </tr>
+              </thead>
+              <tbody>
+                {comparison.map((row) => (
+                  <tr key={row[0]} className="border-t">
+                    {row.map((cell) => (
+                      <td key={cell} className="p-4">{cell}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="bg-emerald-50">
+          <div className="mx-auto grid max-w-7xl gap-8 px-4 py-12 lg:grid-cols-[0.8fr_1.2fr] lg:px-8">
+            <div>
+              <p className="text-sm font-bold uppercase tracking-[0.18em] text-emerald-700">Questions</p>
+              <h2 className="mt-3 text-3xl font-bold">Built for testing today and payments tomorrow.</h2>
+            </div>
+            <div className="grid gap-4">
+              {faqs.map(([q, a]) => (
+                <div key={q} className="rounded-lg border bg-white p-5">
+                  <div className="flex gap-3">
+                    <HelpCircle className="mt-0.5 h-5 w-5 flex-none text-emerald-700" />
+                    <div>
+                      <h3 className="font-bold">{q}</h3>
+                      <p className="mt-2 text-sm text-muted-foreground">{a}</p>
+                    </div>
                   </div>
-                  <h3 className="font-display font-semibold text-sm">{item.title}</h3>
-                  <p className="text-xs text-muted-foreground">{item.desc}</p>
-                  <Badge className="bg-primary/10 text-primary hover:bg-primary/10">{item.badge}</Badge>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          {/* Detailed Feature Comparison */}
-          <div className="mt-20">
-            <div className="text-center mb-10">
-              <h2 className="font-display font-bold text-2xl mb-2">Detailed Feature Comparison</h2>
-              <p className="text-muted-foreground">See exactly what each plan includes</p>
+                </div>
+              ))}
             </div>
-            
-            {featureMatrix.map((section, idx) => (
-              <div key={section.category} className="mb-8">
-                <h3 className="font-display font-semibold text-lg mb-4 flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5 text-primary" />
-                  {section.category}
-                </h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border">
-                        <th className="text-left py-3 px-4 font-medium">Feature</th>
-                        <th className="text-center py-3 px-4 font-medium">Starter</th>
-                        <th className="text-center py-3 px-4 font-medium">Growth</th>
-                        <th className="text-center py-3 px-4 font-medium">Business</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {section.features.map((feature) => (
-                        <tr key={feature.name} className="border-b border-border/50 hover:bg-muted/30">
-                          <td className="py-3 px-4 font-medium text-foreground">{feature.name}</td>
-                          <td className="text-center py-3 px-4">
-                            {typeof feature.starter === 'boolean' ? (
-                              feature.starter ? <Check className="h-5 w-5 text-success mx-auto" /> : <X className="h-5 w-5 text-muted-foreground mx-auto" />
-                            ) : (
-                              <span className="text-muted-foreground">{feature.starter}</span>
-                            )}
-                          </td>
-                          <td className="text-center py-3 px-4">
-                            {typeof feature.growth === 'boolean' ? (
-                              feature.growth ? <Check className="h-5 w-5 text-success mx-auto" /> : <X className="h-5 w-5 text-muted-foreground mx-auto" />
-                            ) : (
-                              <span className="text-muted-foreground">{feature.growth}</span>
-                            )}
-                          </td>
-                          <td className="text-center py-3 px-4">
-                            {typeof feature.business === 'boolean' ? (
-                              feature.business ? <Check className="h-5 w-5 text-success mx-auto" /> : <X className="h-5 w-5 text-muted-foreground mx-auto" />
-                            ) : (
-                              <span className="text-muted-foreground">{feature.business}</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+          </div>
+        </section>
+
+        <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+          <div className="rounded-lg border bg-slate-950 p-8 text-white">
+            <div className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-center">
+              <div>
+                <p className="flex items-center gap-2 text-sm font-bold text-emerald-300"><Sparkles className="h-4 w-4" /> Local billing sandbox</p>
+                <h2 className="mt-3 text-3xl font-bold">Try the full subscription journey without touching real money.</h2>
+                <p className="mt-3 max-w-2xl text-slate-300">Use the in-app Billing page to activate plans, renew, cancel, resume, and test limits.</p>
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* FAQ Section */}
-      <section className="py-16 px-4 bg-muted/30">
-        <div className="container max-w-3xl">
-          <h2 className="font-display font-bold text-2xl mb-8 text-center">Frequently Asked Questions</h2>
-          <div className="space-y-4">
-            {[
-              {
-                q: "Can I change plans anytime?",
-                a: "Yes! You can upgrade or downgrade your plan at any time. Changes take effect immediately and we'll prorate any deposits."
-              },
-              {
-                q: "What happens to my data if I downgrade?",
-                a: "Your data is always safe. If you downgrade, you'll have access to your historical data but may be limited by the tier's features."
-              },
-              {
-                q: "Do you offer annual billing discounts?",
-                a: "Contact our sales team for custom pricing on annual plans. We typically offer 20% off for annual commitments."
-              },
-              {
-                q: "Is there a setup fee?",
-                a: "No! Starter is completely free with no setup fees. Growth and Business plans include 14 days free to try before you're charged."
-              },
-              {
-                q: "Can I export my data?",
-                a: "Yes! All plans allow you to export your data. Business plan offers advanced export options to Excel and API access."
-              },
-            ].map((item, i) => (
-              <Card key={i} className="shadow-soft">
-                <CardContent className="p-5">
-                  <h3 className="font-display font-semibold mb-2">{item.q}</h3>
-                  <p className="text-sm text-muted-foreground">{item.a}</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="py-16 px-4">
-        <div className="container max-w-2xl text-center">
-          <h2 className="font-display font-bold text-3xl mb-4">Ready to grow your business?</h2>
-          <p className="text-muted-foreground mb-6">Start free with Starter, or get full access for 14 days with Growth or Business.</p>
-          <div className="flex gap-4 justify-center">
-            <Button onClick={() => navigate(primaryPath)} className="bg-gradient-hero text-primary-foreground">
-              {isAuthenticated ? "Dashboard" : "Start Free Now"}
-            </Button>
-            <Button variant="outline" onClick={() => navigate("/contact")}>
-              Talk to Sales
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      {/* Checkout Modal */}
-      {checkoutPlan && (
-        <div className="fixed inset-0 z-50 bg-foreground/30 flex items-center justify-center p-4" onClick={() => setCheckoutPlan(null)}>
-          <motion.div
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            onClick={e => e.stopPropagation()}
-            className="bg-card rounded-2xl shadow-elevated max-w-md w-full"
-          >
-            <div className="flex items-center justify-between p-5 border-b border-border">
-              <div className="flex items-center gap-2">
-                <CreditCard className="h-5 w-5 text-primary" />
-                <h2 className="font-display font-semibold">Checkout — {checkoutPlan}</h2>
-              </div>
-              <button onClick={() => setCheckoutPlan(null)} title="Close checkout modal"><X className="h-5 w-5 text-muted-foreground" /></button>
+              <button type="button" onClick={startPlan} className="rounded-md bg-white px-6 py-3 text-sm font-bold text-slate-950 hover:bg-emerald-100">
+                Open billing
+              </button>
             </div>
-            <form onSubmit={handleCheckout} className="p-5 space-y-4">
-              <div>
-                <Label>Email</Label>
-                <Input type="email" placeholder="you@business.com" required className="mt-1.5" />
-              </div>
-              <div>
-                <Label>Card Number</Label>
-                <Input placeholder="4242 4242 4242 4242" required className="mt-1.5" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Expiry</Label>
-                  <Input placeholder="12/28" required className="mt-1.5" />
-                </div>
-                <div>
-                  <Label>CVC</Label>
-                  <Input placeholder="123" required className="mt-1.5" />
-                </div>
-              </div>
-              <div className="bg-muted/50 rounded-lg p-3 text-sm">
-                <div className="flex justify-between"><span>Plan</span><span className="font-medium">{checkoutPlan}</span></div>
-                <div className="flex justify-between mt-1"><span>Trial</span><span className="font-medium text-success">14 days free</span></div>
-                <div className="flex justify-between mt-1 font-display font-bold border-t border-border pt-2 mt-2">
-                  <span>Due today</span><span>R0.00</span>
-                </div>
-              </div>
-              <Button type="submit" className="w-full bg-gradient-hero text-primary-foreground" disabled={checkoutLoading}>
-                {checkoutLoading ? "Processing..." : "Start Free Trial"}
-              </Button>
-              <p className="text-xs text-muted-foreground text-center">Cancel anytime. No charge for 14 days.</p>
-            </form>
-          </motion.div>
-        </div>
-      )}
+          </div>
+        </section>
+      </main>
       <Footer />
     </div>
   );

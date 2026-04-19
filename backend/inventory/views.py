@@ -7,6 +7,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from billing.services import enforce_feature, enforce_limit
 from sales.models import SaleItem
 from .models import Branch, Category, Product, PurchaseOrder, StockMovement, StockTransfer, Supplier
 from .serializers import BranchSerializer, CategorySerializer, ProductSerializer, PurchaseOrderSerializer, StockMovementSerializer, StockTransferSerializer, SupplierSerializer
@@ -52,10 +53,12 @@ class ProductViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
+        enforce_limit(self.request.user, "products")
         serializer.save(user=self.request.user)
 
     @action(detail=False, methods=["get"], url_path="barcode-lookup")
     def barcode_lookup(self, request):
+        enforce_feature(request.user, "barcode_scanning")
         code = request.query_params.get("code")
         product = self.get_queryset().filter(barcode=code).first()
         if not product:
@@ -64,6 +67,8 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["post"], url_path="bulk-import")
     def bulk_import(self, request):
+        enforce_feature(request.user, "bulk_import_export")
+        enforce_limit(request.user, "products", increment=len(request.data.get("items", [])))
         created = []
         for row in request.data.get("items", []):
             serializer = ProductSerializer(data=row)
@@ -90,6 +95,7 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["post"], url_path="add-item")
     def add_item(self, request):
+        enforce_limit(request.user, "products")
         # Expects: name, stock, price, sku (optional), category (optional)
         name = request.data.get("name")
         stock = request.data.get("stock", 0)
@@ -118,6 +124,7 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="forecast")
     def forecast(self, request):
+        enforce_feature(request.user, "forecasting")
         horizon = int(request.query_params.get("days", 7))
         since = timezone.now() - timedelta(days=max(horizon, 1))
         rows = []

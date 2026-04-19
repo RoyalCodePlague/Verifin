@@ -5,6 +5,7 @@ from io import BytesIO
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from billing.services import enforce_feature, enforce_limit
 from .models import CreditTransaction, Customer, LoyaltyTransaction
 from .serializers import CreditTransactionSerializer, CustomerSerializer, LoyaltyTransactionSerializer
 
@@ -18,10 +19,12 @@ class CustomerViewSet(viewsets.ModelViewSet):
         return Customer.objects.filter(user=self.request.user, is_deleted=False)
 
     def perform_create(self, serializer):
+        enforce_limit(self.request.user, "customers")
         serializer.save(user=self.request.user)
 
     @action(detail=True, methods=["post"], url_path="add-credit")
     def add_credit(self, request, pk=None):
+        enforce_feature(request.user, "qr_loyalty")
         customer = self.get_object()
         amount = Decimal(str(request.data.get("amount", "0")))
         customer.credits += amount
@@ -31,6 +34,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="redeem-credit")
     def redeem_credit(self, request, pk=None):
+        enforce_feature(request.user, "qr_loyalty")
         customer = self.get_object()
         amount = Decimal(str(request.data.get("amount", "0")))
         if amount > customer.credits:
@@ -42,6 +46,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"], url_path="qr")
     def qr(self, request, pk=None):
+        enforce_feature(request.user, "qr_loyalty")
         customer = self.get_object()
         img = qrcode.make(f"customer:{customer.id}:{customer.qr_code}")
         buffer = BytesIO()
