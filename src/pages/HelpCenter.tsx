@@ -86,7 +86,7 @@ const HelpCenter = () => {
     <div className="min-h-screen bg-background">
       <Navbar />
       <section className="py-16 px-4">
-        <div className="container max-w-4xl">
+        <div className="container max-w-6xl">
           <div className="text-center mb-10">
             <h1 className="font-display font-bold text-3xl mb-3">Help Center</h1>
             <p className="text-muted-foreground mb-6">Find answers to common questions and learn how to get the most out of Verifin.</p>
@@ -96,20 +96,20 @@ const HelpCenter = () => {
             </div>
           </div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-12">
+          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-5 mb-12">
             {filteredCategories.map(c => (
-              <Card key={c.label} className="shadow-soft hover:shadow-md transition-shadow">
-                <CardContent className="p-4">
-                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
+              <Card key={c.label} className="shadow-soft hover:shadow-md transition-shadow h-full">
+                <CardContent className="p-5">
+                  <div className="h-11 w-11 rounded-lg bg-primary/10 flex items-center justify-center mb-4">
                     <c.icon className="h-5 w-5 text-primary" />
                   </div>
-                  <h3 className="font-display font-semibold text-sm mb-2">{c.label}</h3>
-                  <ul className="space-y-1">
-                    {c.articles.filter(a => !search || a.title.toLowerCase().includes(search.toLowerCase())).map(a => (
+                  <h3 className="font-display font-semibold text-base mb-3 leading-snug">{c.label}</h3>
+                  <ul className="space-y-2">
+                    {c.articles.filter(a => !search || a.title.toLowerCase().includes(search.toLowerCase()) || c.label.toLowerCase().includes(search.toLowerCase())).map(a => (
                       <li key={a.title}>
                         <button
                           onClick={() => setSelectedArticle(a)}
-                          className="text-xs text-muted-foreground hover:text-primary cursor-pointer transition-colors text-left w-full"
+                          className="text-sm leading-snug text-muted-foreground hover:text-primary cursor-pointer transition-colors text-left w-full break-words"
                         >
                           &bull; {a.title}
                         </button>

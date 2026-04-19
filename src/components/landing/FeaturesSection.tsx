@@ -23,6 +23,12 @@ const features = [
       "Snap a photo of any receipt and let AI extract the amount, date, and category automatically.",
   },
   {
+    icon: MessageSquare,
+    title: "Customer Loyalty",
+    description:
+      "Track customer visits, QR codes, store credit, and loyalty points so repeat buyers are easy to reward.",
+  },
+  {
     icon: WifiOff,
     title: "Offline-First",
     description:
