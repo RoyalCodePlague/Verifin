@@ -24,6 +24,7 @@ import Pricing from "./pages/Pricing";
 import About from "./pages/About";
 import Demo from "./pages/Demo";
 import Login from "./pages/Login";
+import VerifyEmail from "./pages/VerifyEmail";
 import Terms from "./pages/Terms";
 import Contact from "./pages/Contact";
 import Privacy from "./pages/Privacy";
@@ -64,6 +65,7 @@ const App = () => (
               <Route path="/about" element={<About />} />
               <Route path="/demo" element={<Demo />} />
               <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
+              <Route path="/verify-email" element={<VerifyEmail />} />
               <Route path="/terms" element={<Terms />} />
               <Route path="/contact" element={<Contact />} />
               <Route path="/privacy" element={<Privacy />} />

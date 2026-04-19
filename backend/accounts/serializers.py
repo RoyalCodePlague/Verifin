@@ -1,4 +1,8 @@
 from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.utils import timezone
+import secrets
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import Profile, Staff
@@ -19,7 +23,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     
     def validate(self, attrs):
         # Extract email and password
-        email = attrs.get('email')
+        email = attrs.get('email', '').strip().lower()
         password = attrs.get('password')
         
         if not email or not password:
@@ -27,12 +31,18 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 'detail': 'Email and password are required.'
             })
         
+        existing_user = User.objects.filter(email__iexact=email).first()
+        if existing_user and (not existing_user.email_verified or not existing_user.is_active):
+            raise serializers.ValidationError({
+                'detail': 'Please verify your email before signing in.'
+            })
+
         # Authenticate using email and password
-        user = authenticate(username=email, password=password)
+        user = authenticate(username=existing_user.email if existing_user else email, password=password)
         
         if user is None:
             # Check if user exists
-            if not User.objects.filter(email=email).exists():
+            if not existing_user:
                 raise serializers.ValidationError({
                     'detail': 'User Not Found. Please sign up to create an account.'
                 })
@@ -57,12 +67,30 @@ class RegisterSerializer(serializers.ModelSerializer):
         model = User
         fields = ["id", "email", "password", "phone", "business_name"]
 
+    def validate_email(self, value):
+        email = value.strip().lower()
+        if User.objects.filter(email__iexact=email).exists():
+            raise serializers.ValidationError("An account with this email already exists.")
+        return email
+
+    def validate_password(self, value):
+        try:
+            validate_password(value)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(list(exc.messages))
+        return value
+
     def create(self, validated_data):
         password = validated_data.pop("password")
         email = validated_data["email"]
+        validated_data["email"] = email
         validated_data.setdefault("username", email)
         user = User(**validated_data)
         user.set_password(password)
+        user.is_active = False
+        user.email_verified = False
+        user.email_verification_token = secrets.token_urlsafe(32)
+        user.email_verification_sent_at = timezone.now()
         user.save()
         Profile.objects.get_or_create(user=user)
         return user
@@ -81,6 +109,7 @@ class UserSerializer(serializers.ModelSerializer):
             "currency_symbol",
             "dark_mode",
             "onboarding_complete",
+            "email_verified",
         ]
 
 

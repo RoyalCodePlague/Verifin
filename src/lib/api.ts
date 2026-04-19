@@ -114,10 +114,26 @@ export async function registerRequest(body: {
   phone?: string;
   business_name?: string;
 }) {
-  return apiFetch<{ access: string; refresh: string; user: ApiUser }>("/api/v1/accounts/register/", {
+  return apiFetch<{ detail: string; user: ApiUser }>("/api/v1/accounts/register/", {
     method: "POST",
     skipAuth: true,
     body: JSON.stringify(body),
+  });
+}
+
+export async function verifyEmailRequest(token: string) {
+  return apiFetch<{ detail: string }>("/api/v1/accounts/verify-email/", {
+    method: "POST",
+    skipAuth: true,
+    body: JSON.stringify({ token }),
+  });
+}
+
+export async function resendVerificationRequest(email: string) {
+  return apiFetch<{ detail: string }>("/api/v1/accounts/resend-verification/", {
+    method: "POST",
+    skipAuth: true,
+    body: JSON.stringify({ email }),
   });
 }
 
