@@ -92,7 +92,7 @@ const ApiDocs = () => (
 
         <div className="mt-10 text-center p-8 rounded-2xl bg-muted/50">
           <h3 className="font-display font-semibold text-lg mb-2">Need API access?</h3>
-          <p className="text-sm text-muted-foreground">Upgrade to the Business plan to get your API key. Contact <strong>api@verifin.co.za</strong> for enterprise integrations.</p>
+          <p className="text-sm text-muted-foreground">Upgrade to the Business plan to get your API key. Contact <strong>robzmtambo@gmail.com</strong> for enterprise integrations.</p>
         </div>
       </div>
     </section>

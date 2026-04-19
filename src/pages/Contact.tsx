@@ -30,8 +30,8 @@ const Contact = () => {
 
           <div className="grid md:grid-cols-3 gap-6 mb-12">
             {[
-              { icon: Mail, label: "Email", value: "support@verifin.co.za", desc: "For general enquiries" },
-              { icon: Phone, label: "Phone", value: "+27 11 555 0100", desc: "Mon–Fri, 8am–5pm SAST" },
+              { icon: Mail, label: "Email", value: "robzmtambo@gmail.com", desc: "For general enquiries" },
+              { icon: Phone, label: "Phone", value: "+263 77 695 0947", desc: "Mon-Fri, 8am-5pm" },
               { icon: MapPin, label: "Office", value: "Johannesburg, South Africa", desc: "Sandton City, Gauteng" },
             ].map((c) => (
               <Card key={c.label} className="shadow-soft text-center">

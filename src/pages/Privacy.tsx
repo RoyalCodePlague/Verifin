@@ -18,7 +18,7 @@ const sections = [
   { icon: Cookie, title: "8. Cookies", content: "We use essential cookies for authentication and session management. Analytics cookies are used to improve our service. You can manage cookie preferences in your browser settings." },
   { icon: Shield, title: "9. Children's Privacy", content: "Verifin is not intended for use by individuals under 18 years of age. We do not knowingly collect data from minors." },
   { icon: FileText, title: "10. Changes to This Policy", content: "We may update this Privacy Policy periodically. We will notify you of material changes via email or in-app notification." },
-  { icon: Mail, title: "11. Contact", content: "For privacy-related enquiries, contact our Data Protection Officer at privacy@verifin.co.za or write to: Verifin (Pty) Ltd, Sandton City, Johannesburg, 2196, South Africa." },
+  { icon: Mail, title: "11. Contact", content: "For privacy-related enquiries, contact us at robzmtambo@gmail.com." },
 ];
 
 const Privacy = () => (

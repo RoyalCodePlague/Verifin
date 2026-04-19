@@ -35,7 +35,7 @@ const sections = [
   { icon: Gavel, title: "15. Dispute Resolution", content: "In the event of a dispute, both parties agree to attempt resolution through good-faith negotiation. If negotiation fails, the dispute shall be submitted to mediation before pursuing legal action." },
   { icon: FileText, title: "16. Changes to Terms", content: "We may update these Terms from time to time. We will notify you of material changes via email or in-app notification. Continued use of the Platform after changes constitutes acceptance of the revised Terms." },
   { icon: Scale, title: "17. Governing Law", content: "These Terms are governed by the laws of the Republic of South Africa. Any disputes shall be resolved in the courts of Johannesburg, South Africa." },
-  { icon: Mail, title: "18. Contact", content: "For questions about these Terms, contact us at legal@verifin.co.za or visit our Contact page." },
+  { icon: Mail, title: "18. Contact", content: "For questions about these Terms, contact us at robzmtambo@gmail.com or visit our Contact page." },
 ];
 
 const Terms = () => (
