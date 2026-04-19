@@ -88,8 +88,12 @@ export async function apiFetch<T = unknown>(
   if (!res.ok) {
     let detail = res.statusText;
     try {
-      const err = (await res.json()) as { detail?: string; non_field_errors?: string[] };
-      detail = err.detail || err.non_field_errors?.[0] || JSON.stringify(err);
+      const err = (await res.json()) as { detail?: string | string[]; non_field_errors?: string[] };
+      if (Array.isArray(err.detail)) {
+        detail = err.detail.join(" ");
+      } else {
+        detail = err.detail || err.non_field_errors?.[0] || JSON.stringify(err);
+      }
     } catch {
       /* ignore */
     }
@@ -114,7 +118,7 @@ export async function registerRequest(body: {
   phone?: string;
   business_name?: string;
 }) {
-  return apiFetch<{ detail: string; user: ApiUser }>("/api/v1/accounts/register/", {
+  return apiFetch<{ access: string; refresh: string; user: ApiUser }>("/api/v1/accounts/register/", {
     method: "POST",
     skipAuth: true,
     body: JSON.stringify(body),

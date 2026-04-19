@@ -11,7 +11,7 @@ class User(AbstractUser, TimeStampedSoftDeleteModel):
     currency_symbol = models.CharField(max_length=10, default="R")
     dark_mode = models.BooleanField(default=False)
     onboarding_complete = models.BooleanField(default=False)
-    email_verified = models.BooleanField(default=False)
+    email_verified = models.BooleanField(default=True)
     email_verification_token = models.CharField(max_length=128, blank=True)
     email_verification_sent_at = models.DateTimeField(blank=True, null=True)
 

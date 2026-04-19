@@ -6,7 +6,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/lib/auth-context";
-import { resendVerificationRequest } from "@/lib/api";
 import { toast } from "sonner";
 
 function AnimatedBackground() {
@@ -38,7 +37,6 @@ const Login = () => {
   const [isSignUp, setIsSignUp] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", password: "" });
-  const [pendingVerificationEmail, setPendingVerificationEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -54,28 +52,14 @@ const Login = () => {
     setLoading(true);
     try {
       if (isSignUp) {
-        const detail = await register(form.email, form.password, form.name.trim() || undefined);
-        setPendingVerificationEmail(form.email);
-        toast.success(detail);
+        await register(form.email, form.password, form.name.trim() || undefined);
+        toast.success("Account created!");
       } else {
         await login(form.email, form.password);
         toast.success("Welcome back!");
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleResendVerification = async () => {
-    if (!pendingVerificationEmail && !form.email) return;
-    setLoading(true);
-    try {
-      const res = await resendVerificationRequest(pendingVerificationEmail || form.email);
-      toast.success(res.detail);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not resend verification email");
     } finally {
       setLoading(false);
     }
@@ -113,25 +97,6 @@ const Login = () => {
 
         <Card className="shadow-elevated backdrop-blur-sm bg-card/95">
           <CardContent className="p-6">
-            {pendingVerificationEmail ? (
-              <div className="space-y-4 text-center">
-                <div className="mx-auto h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center">
-                  <Mail className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <h2 className="font-display font-semibold text-lg">Verify your email</h2>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    We sent a verification link to {pendingVerificationEmail}. Open it to activate your account, then sign in.
-                  </p>
-                </div>
-                <Button type="button" variant="outline" className="w-full" disabled={loading} onClick={handleResendVerification}>
-                  Resend verification email
-                </Button>
-                <Button type="button" className="w-full bg-gradient-hero text-primary-foreground" onClick={() => { setPendingVerificationEmail(""); setIsSignUp(false); }}>
-                  Back to sign in
-                </Button>
-              </div>
-            ) : (
             <>
             <Button
               type="button"
@@ -200,7 +165,6 @@ const Login = () => {
               </button>
             </div>
             </>
-            )}
           </CardContent>
         </Card>
       </div>

@@ -1,8 +1,4 @@
 from django.contrib.auth import authenticate, get_user_model
-from django.contrib.auth.password_validation import validate_password
-from django.core.exceptions import ValidationError as DjangoValidationError
-from django.utils import timezone
-import secrets
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import Profile, Staff
@@ -31,13 +27,8 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 'detail': 'Email and password are required.'
             })
         
-        existing_user = User.objects.filter(email__iexact=email).first()
-        if existing_user and (not existing_user.email_verified or not existing_user.is_active):
-            raise serializers.ValidationError({
-                'detail': 'Please verify your email before signing in.'
-            })
-
         # Authenticate using email and password
+        existing_user = User.objects.filter(email__iexact=email).first()
         user = authenticate(username=existing_user.email if existing_user else email, password=password)
         
         if user is None:
@@ -73,24 +64,17 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("An account with this email already exists.")
         return email
 
-    def validate_password(self, value):
-        try:
-            validate_password(value)
-        except DjangoValidationError as exc:
-            raise serializers.ValidationError(list(exc.messages))
-        return value
-
     def create(self, validated_data):
         password = validated_data.pop("password")
-        email = validated_data["email"]
+        email = validated_data["email"].strip().lower()
         validated_data["email"] = email
         validated_data.setdefault("username", email)
         user = User(**validated_data)
         user.set_password(password)
-        user.is_active = False
-        user.email_verified = False
-        user.email_verification_token = secrets.token_urlsafe(32)
-        user.email_verification_sent_at = timezone.now()
+        user.is_active = True
+        user.email_verified = True
+        user.email_verification_token = ""
+        user.email_verification_sent_at = None
         user.save()
         Profile.objects.get_or_create(user=user)
         return user
