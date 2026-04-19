@@ -70,7 +70,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
       syncInFlightRef.current = true;
       try {
         const result = await pushOfflineActions(queue);
-        const syncSucceeded = result.errors?.length === 0;
+        const syncSucceeded = (result.errors?.length ?? 0) === 0;
         if (syncSucceeded) {
           clearOfflineQueue();
         }
@@ -79,7 +79,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
           await refreshUser();
         }
         if (result.errors?.length) {
-          toast.warning(`${result.errors.length} offline changes need review.`);
+          toast.warning(`${result.errors.length} offline changes need review.`, { description: "Open Settings to resolve sync conflicts." });
         }
         return syncSucceeded;
       } catch (error) {

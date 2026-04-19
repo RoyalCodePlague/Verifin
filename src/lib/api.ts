@@ -180,8 +180,11 @@ export type ApiProduct = {
   barcode: string;
   category: number | null;
   category_name?: string | null;
+  branch: number | null;
+  branch_name?: string | null;
   stock: number;
   reorder_level: number;
+  cost_price: string;
   price: string;
   status: "ok" | "low" | "out";
   created_at?: string;
@@ -199,8 +202,11 @@ export function mapProductResponse(p: ApiProduct): Product {
     name: p.name,
     sku: p.sku,
     category: p.category_name || "",
+    branchId: p.branch ? String(p.branch) : undefined,
+    branchName: p.branch_name || "",
     stock: p.stock,
     reorder: p.reorder_level,
+    costPrice: parseFloat(p.cost_price || "0"),
     price: parseFloat(p.price),
     status: p.status,
     barcode: p.barcode || undefined,
@@ -237,7 +243,9 @@ export async function createProductApi(payload: {
   categoryName: string;
   stock: number;
   reorder_level: number;
+  cost_price: number;
   price: number;
+  branch?: string;
 }) {
   const categoryId = await ensureInventoryCategoryId(payload.categoryName);
   const body: Record<string, unknown> = {
@@ -246,8 +254,10 @@ export async function createProductApi(payload: {
     barcode: payload.barcode || "",
     stock: payload.stock,
     reorder_level: payload.reorder_level,
+    cost_price: payload.cost_price.toFixed(2),
     price: payload.price.toFixed(2),
   };
+  if (payload.branch) body.branch = Number(payload.branch);
   if (categoryId != null) body.category = categoryId;
   return apiFetch<ApiProduct>("/api/v1/inventory/products/", {
     method: "POST",
@@ -264,7 +274,9 @@ export async function updateProductApi(
     categoryName: string;
     stock: number;
     reorder_level: number;
+    cost_price: number;
     price: number;
+    branch: string;
   }>
 ) {
   const body: Record<string, unknown> = {};
@@ -273,7 +285,9 @@ export async function updateProductApi(
   if (payload.barcode != null) body.barcode = payload.barcode;
   if (payload.stock != null) body.stock = payload.stock;
   if (payload.reorder_level != null) body.reorder_level = payload.reorder_level;
+  if (payload.cost_price != null) body.cost_price = Number(payload.cost_price).toFixed(2);
   if (payload.price != null) body.price = Number(payload.price).toFixed(2);
+  if (payload.branch != null) body.branch = payload.branch ? Number(payload.branch) : null;
   if (payload.categoryName != null) {
     const cid = await ensureInventoryCategoryId(payload.categoryName);
     if (cid != null) body.category = cid;
@@ -288,11 +302,58 @@ export async function deleteProductApi(id: string) {
   await apiFetch(`/api/v1/inventory/products/${id}/`, { method: "DELETE" });
 }
 
+export type ApiBranch = {
+  id: number;
+  name: string;
+  code: string;
+  phone: string;
+  address: string;
+  is_primary: boolean;
+};
+
+export async function listBranchesApi(): Promise<ApiBranch[]> {
+  return fetchAllPages<ApiBranch>("/api/v1/inventory/branches/");
+}
+
+export async function createBranchApi(payload: Omit<ApiBranch, "id">) {
+  return apiFetch<ApiBranch>("/api/v1/inventory/branches/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateBranchApi(id: string, payload: Partial<Omit<ApiBranch, "id">>) {
+  return apiFetch<ApiBranch>(`/api/v1/inventory/branches/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteBranchApi(id: string) {
+  await apiFetch(`/api/v1/inventory/branches/${id}/`, { method: "DELETE" });
+}
+
+export type ApiForecastItem = {
+  product: ApiProduct;
+  sold_in_period: number;
+  average_daily_sales: number;
+  days_remaining: number | null;
+  suggested_reorder: number;
+  risk: "stockout" | "high" | "low";
+};
+
+export async function fetchInventoryForecast(days = 7) {
+  return apiFetch<{ horizon_days: number; items: ApiForecastItem[] }>(`/api/v1/inventory/products/forecast/?days=${days}`);
+}
+
 type ApiSale = {
   id: number;
   items: string;
   total: string;
+  total_cost?: string;
+  gross_profit?: string;
   payment_method: string;
+  branch?: number | null;
   date: string;
   time: string;
   created_at?: string;
@@ -300,6 +361,7 @@ type ApiSale = {
 
 export async function createSaleApi(payload: {
   payment_method: string;
+  branch?: number | null;
   customer: number | null;
   sale_items: { product: number; quantity: number; unit_price: string; subtotal: string }[];
 }) {
@@ -370,5 +432,28 @@ export async function pushOfflineActions(actions: ApiOfflineAction[]) {
   return apiFetch<{ processed: number; conflicts?: number[]; errors?: unknown[]; resolution: string }>("/api/v1/sync/push/", {
     method: "POST",
     body: JSON.stringify({ actions }),
+  });
+}
+
+export type ApiSyncConflict = {
+  id: number;
+  action_id: string;
+  action_type: string;
+  payload: Record<string, unknown>;
+  reason: string;
+  status: "open" | "resolved" | "ignored";
+  resolution_note: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function listSyncConflicts(status = "open") {
+  return fetchAllPages<ApiSyncConflict>(`/api/v1/sync/conflicts/?status=${status}`);
+}
+
+export async function resolveSyncConflict(id: number, resolution_note = "") {
+  return apiFetch<ApiSyncConflict>(`/api/v1/sync/conflicts/${id}/resolve/`, {
+    method: "POST",
+    body: JSON.stringify({ status: "resolved", resolution_note }),
   });
 }

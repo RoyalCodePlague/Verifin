@@ -16,7 +16,7 @@ class SaleItemReadSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SaleItem
-        fields = ["id", "product", "product_name", "quantity", "unit_price", "subtotal"]
+        fields = ["id", "product", "product_name", "quantity", "unit_cost", "unit_price", "subtotal", "cost_total", "profit"]
 
 
 class SaleSerializer(serializers.ModelSerializer):
@@ -29,7 +29,10 @@ class SaleSerializer(serializers.ModelSerializer):
             "id",
             "items",
             "total",
+            "total_cost",
+            "gross_profit",
             "payment_method",
+            "branch",
             "customer",
             "created_by",
             "date",
@@ -39,13 +42,30 @@ class SaleSerializer(serializers.ModelSerializer):
             "sale_items",
             "line_items",
         ]
-        read_only_fields = ["created_by", "date", "time", "created_at", "updated_at", "items", "total"]
+        read_only_fields = ["created_by", "date", "time", "created_at", "updated_at", "items", "total", "total_cost", "gross_profit"]
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        branch = attrs.get("branch")
+        items = attrs.get("sale_items", [])
+        if user and user.is_authenticated:
+            if branch and branch.user_id != user.id:
+                raise serializers.ValidationError({"branch": "Branch does not belong to this account."})
+            for item in items:
+                product = item.get("product")
+                if product and product.user_id != user.id:
+                    raise serializers.ValidationError({"sale_items": f"{product.name} does not belong to this account."})
+                if branch and product and product.branch_id and product.branch_id != branch.id:
+                    raise serializers.ValidationError({"sale_items": f"{product.name} belongs to another branch."})
+        return attrs
 
     @transaction.atomic
     def create(self, validated_data):
         items = validated_data.pop("sale_items", [])
         sale = Sale.objects.create(**validated_data)
         total = 0
+        total_cost = 0
         item_labels = []
         for item in items:
             product = item["product"]
@@ -54,22 +74,31 @@ class SaleSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(f"Insufficient stock for {product.name}")
             unit_price = item["unit_price"]
             subtotal = item.get("subtotal") or (unit_price * qty)
+            unit_cost = product.cost_price
+            cost_total = unit_cost * qty
+            profit = subtotal - cost_total
             
             # Create SaleItem without spreading item dict since it contains subtotal
             SaleItem.objects.create(
                 sale=sale,
                 product=product,
                 quantity=qty,
+                unit_cost=unit_cost,
                 unit_price=unit_price,
-                subtotal=subtotal
+                subtotal=subtotal,
+                cost_total=cost_total,
+                profit=profit,
             )
             
             product.stock -= qty
             product.save()
             total += subtotal
+            total_cost += cost_total
             item_labels.append(f"{qty}x {product.name}")
         
         sale.total = total
+        sale.total_cost = total_cost
+        sale.gross_profit = total - total_cost
         sale.items = ", ".join(item_labels) if item_labels else ""
         sale.save()
         

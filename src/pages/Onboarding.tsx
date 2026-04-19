@@ -82,6 +82,7 @@ const Onboarding = () => {
           categoryName: p.category,
           stock: parseInt(p.stock) || 0,
           reorder_level: 5,
+          cost_price: 0,
           price: parseFloat(p.price) || 0,
         });
       }

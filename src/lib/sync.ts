@@ -1,5 +1,6 @@
 import { fetchAllPages } from "@/lib/api";
 import type {
+  Branch,
   Product,
   Sale,
   Expense,
@@ -44,8 +45,11 @@ type ApiProduct = {
   sku: string;
   barcode: string;
   category_name?: string | null;
+  branch?: number | null;
+  branch_name?: string | null;
   stock: number;
   reorder_level: number;
+  cost_price: string;
   price: string;
   status: "ok" | "low" | "out";
   created_at?: string;
@@ -56,7 +60,10 @@ type ApiSale = {
   id: number;
   items: string;
   total: string;
+  total_cost?: string;
+  gross_profit?: string;
   payment_method: "Cash" | "EFT" | "Card";
+  branch?: number | null;
   date: string;
   time: string;
   created_at?: string;
@@ -89,6 +96,17 @@ type ApiStaff = {
   role: StaffMember["role"];
   status: StaffMember["status"];
   last_active: string | null;
+  branch?: number | null;
+  branch_name?: string | null;
+};
+
+type ApiBranch = {
+  id: number;
+  name: string;
+  code: string;
+  phone: string;
+  address: string;
+  is_primary: boolean;
 };
 
 type ApiAudit = {
@@ -123,6 +141,7 @@ export async function loadServerData(user: {
   expenses: Expense[];
   customers: Customer[];
   staff: StaffMember[];
+  branches: Branch[];
   audits: AuditRecord[];
   discrepancies: Discrepancy[];
 }> {
@@ -136,8 +155,9 @@ export async function loadServerData(user: {
     }
   };
 
-  const [rawProducts, rawSales, rawExpenses, rawCustomers, rawStaff, rawAudits, rawDiscrepancies] =
+  const [rawBranches, rawProducts, rawSales, rawExpenses, rawCustomers, rawStaff, rawAudits, rawDiscrepancies] =
     await Promise.all([
+      safeFetch<ApiBranch>("/api/v1/inventory/branches/"),
       safeFetch<ApiProduct>("/api/v1/inventory/products/"),
       safeFetch<ApiSale>("/api/v1/sales/"),
       safeFetch<ApiExpense>("/api/v1/expenses/"),
@@ -150,13 +170,25 @@ export async function loadServerData(user: {
   const productNameById = new Map<number, string>();
   rawProducts.forEach((p) => productNameById.set(p.id, p.name));
 
+  const branches: Branch[] = rawBranches.map((b) => ({
+    id: String(b.id),
+    name: b.name,
+    code: b.code || "",
+    phone: b.phone || "",
+    address: b.address || "",
+    isPrimary: b.is_primary,
+  }));
+
   const products: Product[] = rawProducts.map((p) => ({
     id: String(p.id),
     name: p.name,
     sku: p.sku,
     category: p.category_name || "",
+    branchId: p.branch ? String(p.branch) : undefined,
+    branchName: p.branch_name || "",
     stock: p.stock,
     reorder: p.reorder_level,
+    costPrice: parseFloat(p.cost_price || "0"),
     price: parseFloat(p.price),
     status: p.status,
     barcode: p.barcode || undefined,
@@ -168,9 +200,12 @@ export async function loadServerData(user: {
     id: String(s.id),
     items: s.items || "",
     total: parseFloat(s.total),
+    totalCost: parseFloat(s.total_cost || "0"),
+    grossProfit: parseFloat(s.gross_profit || "0"),
     time: saleTime(s.time, s.created_at),
     date: saleDisplayDate(s.date, s.created_at),
     method: s.payment_method,
+    branchId: s.branch ? String(s.branch) : undefined,
   }));
 
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -201,6 +236,8 @@ export async function loadServerData(user: {
     role: s.role,
     status: s.status,
     lastActive: s.last_active ? fmtDate(s.last_active) : "",
+    branchId: s.branch ? String(s.branch) : undefined,
+    branchName: s.branch_name || "",
   }));
 
   const audits: AuditRecord[] = rawAudits.map((a) => ({
@@ -236,5 +273,5 @@ export async function loadServerData(user: {
     darkMode: user.dark_mode,
   };
 
-  return { profile, products, sales, expenses, customers, staff, audits, discrepancies };
+  return { profile, branches, products, sales, expenses, customers, staff, audits, discrepancies };
 }

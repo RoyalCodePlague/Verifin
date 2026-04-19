@@ -5,8 +5,11 @@ export interface Product {
   name: string;
   sku: string;
   category: string;
+  branchId?: string;
+  branchName?: string;
   stock: number;
   reorder: number;
+  costPrice: number;
   price: number;
   status: "ok" | "low" | "out";
   barcode?: string;
@@ -24,9 +27,12 @@ export interface Sale {
   id: string;
   items: string;
   total: number;
+  totalCost?: number;
+  grossProfit?: number;
   time: string;
   date: string;
   method: "Cash" | "EFT" | "Card";
+  branchId?: string;
   customerId?: string;
   saleItems?: SaleItem[];
 }
@@ -79,6 +85,17 @@ export interface StaffMember {
   role: "Owner" | "Cashier" | "Stock Manager" | "Manager";
   status: "Active" | "Inactive";
   lastActive: string;
+  branchId?: string;
+  branchName?: string;
+}
+
+export interface Branch {
+  id: string;
+  name: string;
+  code: string;
+  phone: string;
+  address: string;
+  isPrimary: boolean;
 }
 
 export interface BusinessProfile {
@@ -109,6 +126,7 @@ interface StoreState {
   discrepancies: Discrepancy[];
   customers: Customer[];
   staff: StaffMember[];
+  branches: Branch[];
   activities: ActivityItem[];
   setProfile: (p: BusinessProfile) => void;
   addProduct: (p: Omit<Product, "id" | "status">) => string;
@@ -124,6 +142,9 @@ interface StoreState {
   addStaff: (s: Omit<StaffMember, "id">) => void;
   updateStaff: (id: string, s: Partial<StaffMember>) => void;
   deleteStaff: (id: string) => void;
+  addBranch: (b: Omit<Branch, "id">) => string;
+  updateBranch: (id: string, b: Partial<Branch>) => void;
+  deleteBranch: (id: string) => void;
   addActivity: (a: Omit<ActivityItem, "id">) => void;
   resolveDiscrepancy: (id: string) => void;
   addAudit: (a: Omit<AuditRecord, "id">) => string;
@@ -139,6 +160,7 @@ interface StoreState {
     discrepancies: Discrepancy[];
     customers: Customer[];
     staff: StaffMember[];
+    branches: Branch[];
   }) => void;
   resetForLogout: () => void;
 }
@@ -186,6 +208,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [discrepancies, setDiscrepancies] = useState<Discrepancy[]>(() => loadState("discrepancies", []));
   const [customers, setCustomers] = useState<Customer[]>(() => loadState("customers", []));
   const [staff, setStaff] = useState<StaffMember[]>(() => loadState("staff", []));
+  const [branches, setBranches] = useState<Branch[]>(() => loadState("branches", []));
   const [activities, setActivities] = useState<ActivityItem[]>(() => loadState("activities", []));
 
   useEffect(() => {
@@ -204,6 +227,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => saveState("discrepancies", discrepancies), [discrepancies]);
   useEffect(() => saveState("customers", customers), [customers]);
   useEffect(() => saveState("staff", staff), [staff]);
+  useEffect(() => saveState("branches", branches), [branches]);
   useEffect(() => saveState("activities", activities), [activities]);
 
   const setProfile = useCallback((p: BusinessProfile) => setProfileState(p), []);
@@ -231,7 +255,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const deleteProduct = useCallback((id: string) => setProducts(prev => prev.filter(p => p.id !== id)), []);
 
   const addSale = useCallback((s: Omit<Sale, "id">) => {
-    setSales(prev => [{ ...s, id: uid() }, ...prev]);
+    const totalCost = s.saleItems?.reduce((sum, item) => {
+      const product = products.find(p => p.name.toLowerCase() === item.productName.toLowerCase());
+      return sum + ((product?.costPrice || 0) * item.quantity);
+    }, 0) || s.totalCost || 0;
+    setSales(prev => [{ ...s, id: uid(), totalCost, grossProfit: s.total - totalCost }, ...prev]);
     
     // Subtract sold items from inventory
     if (s.saleItems && s.saleItems.length > 0) {
@@ -287,6 +315,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
   const deleteStaff = useCallback((id: string) => setStaff(prev => prev.filter(s => s.id !== id)), []);
 
+  const addBranch = useCallback((b: Omit<Branch, "id">) => {
+    const id = uid();
+    setBranches(prev => [{ ...b, id }, ...prev.map(branch => b.isPrimary ? { ...branch, isPrimary: false } : branch)]);
+    return id;
+  }, [products]);
+
+  const updateBranch = useCallback((id: string, updates: Partial<Branch>) => {
+    setBranches(prev => prev.map(branch => {
+      if (branch.id === id) return { ...branch, ...updates };
+      if (updates.isPrimary) return { ...branch, isPrimary: false };
+      return branch;
+    }));
+  }, []);
+
+  const deleteBranch = useCallback((id: string) => setBranches(prev => prev.filter(b => b.id !== id)), []);
+
   const addActivity = useCallback((a: Omit<ActivityItem, "id">) => {
     setActivities(prev => [{ ...a, id: uid() }, ...prev].slice(0, 50));
   }, []);
@@ -316,12 +360,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const todayExpenses = expenses.filter(e => e.date === "Today").reduce((sum, e) => sum + e.amount, 0);
     const lowStock = products.filter(p => p.status === "low" || p.status === "out");
     const invValue = products.reduce((sum, p) => sum + p.stock * p.price, 0);
+    const invCost = products.reduce((sum, p) => sum + p.stock * (p.costPrice || 0), 0);
 
     let msg = `*Verifin Daily Summary*\n`;
     msg += `${new Date().toLocaleDateString("en-ZA", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}\n\n`;
     msg += `*Sales:* ${sym}${todayTotal.toLocaleString()} (${todaySales.length} transactions)\n`;
     msg += `*Expenses:* ${sym}${todayExpenses.toLocaleString()}\n`;
     msg += `*Net:* ${sym}${(todayTotal - todayExpenses).toLocaleString()}\n`;
+    msg += `*Inventory Cost:* ${sym}${invCost.toLocaleString()}\n`;
     msg += `*Inventory Value:* ${sym}${invValue.toLocaleString()}\n\n`;
     if (lowStock.length > 0) {
       msg += `*Low Stock Alerts:*\n`;
@@ -341,6 +387,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       discrepancies: Discrepancy[];
       customers: Customer[];
       staff: StaffMember[];
+      branches: Branch[];
     }) => {
       setProfileState(data.profile);
       setProducts(data.products);
@@ -350,6 +397,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setDiscrepancies(data.discrepancies);
       setCustomers(data.customers);
       setStaff(data.staff);
+      setBranches(data.branches);
     },
     []
   );
@@ -363,19 +411,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setDiscrepancies([]);
     setCustomers([]);
     setStaff([]);
+    setBranches([]);
     setActivities([]);
-    ["profile", "products", "sales", "expenses", "audits", "discrepancies", "customers", "staff", "activities"].forEach((key) => {
+    ["profile", "products", "sales", "expenses", "audits", "discrepancies", "customers", "staff", "branches", "activities"].forEach((key) => {
       localStorage.removeItem(`sp_${key}`);
     });
   }, []);
 
   return (
     <StoreContext.Provider value={{
-      profile, products, sales, expenses, audits, discrepancies, customers, staff, activities,
+      profile, products, sales, expenses, audits, discrepancies, customers, staff, branches, activities,
       setProfile, addProduct, updateProduct, deleteProduct,
       addSale, deleteSale, addExpense, deleteExpense,
       addCustomer, updateCustomer, deleteCustomer, addStaff, updateStaff, deleteStaff,
-      addActivity, resolveDiscrepancy, addAudit, updateAudit, addDiscrepancy, generateWhatsAppSummary,
+      addBranch, updateBranch, deleteBranch, addActivity, resolveDiscrepancy, addAudit, updateAudit, addDiscrepancy, generateWhatsAppSummary,
       hydrateFromServer, resetForLogout,
     }}>
       {children}

@@ -1,16 +1,49 @@
 from django.utils.dateparse import parse_datetime
 from django.utils import timezone
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework import status
 from .models import SyncConflict
+from .serializers import SyncConflictSerializer
 from audits.models import Audit, Discrepancy
 from sales.serializers import SaleSerializer
 from expenses.serializers import ExpenseSerializer
 from expenses.models import ExpenseCategory
 from inventory.models import Category, Product
 from inventory.serializers import ProductSerializer
+
+
+def record_conflict(user, action, reason):
+    return SyncConflict.objects.create(
+        user=user,
+        action_id=action.get("id", ""),
+        action_type=action.get("type", ""),
+        payload=action,
+        reason=reason,
+    )
+
+
+class SyncConflictViewSet(viewsets.ModelViewSet):
+    serializer_class = SyncConflictSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ["status", "action_type"]
+    search_fields = ["reason", "action_type", "action_id"]
+
+    def get_queryset(self):
+        return SyncConflict.objects.filter(user=self.request.user, is_deleted=False).order_by("-created_at")
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    @action(detail=True, methods=["post"])
+    def resolve(self, request, pk=None):
+        conflict = self.get_object()
+        conflict.status = request.data.get("status", "resolved")
+        conflict.resolution_note = request.data.get("resolution_note", "")
+        conflict.save()
+        return Response(SyncConflictSerializer(conflict).data)
 
 
 class SyncPushView(APIView):
@@ -78,7 +111,7 @@ class SyncPushView(APIView):
                     }
                 except ValueError as exc:
                     errors.append({"action": action, "detail": str(exc)})
-                    SyncConflict.objects.create(user=request.user, payload=action, reason=str(exc))
+                    conflicts.append(record_conflict(request.user, action, str(exc)).id)
                     continue
 
                 serializer = SaleSerializer(data=sale_payload, context={"request": request})
@@ -87,7 +120,7 @@ class SyncPushView(APIView):
                     processed += 1
                 else:
                     errors.append({"action": action, "errors": serializer.errors})
-                    SyncConflict.objects.create(user=request.user, payload=action, reason="Sale sync failed")
+                    conflicts.append(record_conflict(request.user, action, "Sale sync failed").id)
 
             elif action_type == "expense":
                 category_name = payload.get("categoryName") or payload.get("category_name")
@@ -100,7 +133,7 @@ class SyncPushView(APIView):
                     processed += 1
                 else:
                     errors.append({"action": action, "errors": serializer.errors})
-                    SyncConflict.objects.create(user=request.user, payload=action, reason="Expense sync failed")
+                    conflicts.append(record_conflict(request.user, action, "Expense sync failed").id)
             elif action_type == "product_create":
                 product_payload = {
                     "name": payload.get("name"),
@@ -109,7 +142,9 @@ class SyncPushView(APIView):
                     "category": self._inventory_category_id(request, payload),
                     "stock": payload.get("stock", 0),
                     "reorder_level": payload.get("reorder_level", payload.get("reorder", 0)),
+                    "cost_price": payload.get("cost_price", 0),
                     "price": payload.get("price", 0),
+                    "branch": payload.get("branch"),
                 }
                 serializer = ProductSerializer(data=product_payload, context={"request": request})
                 if serializer.is_valid():
@@ -120,13 +155,13 @@ class SyncPushView(APIView):
                     processed += 1
                 else:
                     errors.append({"action": action, "errors": serializer.errors})
-                    SyncConflict.objects.create(user=request.user, payload=action, reason="Product create sync failed")
+                    conflicts.append(record_conflict(request.user, action, "Product create sync failed").id)
             elif action_type == "product_update":
                 try:
                     product = Product.objects.get(id=payload.get("id"), user=request.user, is_deleted=False)
                 except Product.DoesNotExist:
                     errors.append({"action": action, "detail": "Product not found"})
-                    SyncConflict.objects.create(user=request.user, payload=action, reason="Product update target missing")
+                    conflicts.append(record_conflict(request.user, action, "Product update target missing").id)
                     continue
 
                 product_payload = {
@@ -136,7 +171,9 @@ class SyncPushView(APIView):
                     "category": self._inventory_category_id(request, payload),
                     "stock": payload.get("stock", product.stock),
                     "reorder_level": payload.get("reorder_level", payload.get("reorder", product.reorder_level)),
+                    "cost_price": payload.get("cost_price", product.cost_price),
                     "price": payload.get("price", product.price),
+                    "branch": payload.get("branch", product.branch_id),
                 }
                 serializer = ProductSerializer(product, data=product_payload, partial=True, context={"request": request})
                 if serializer.is_valid():
@@ -144,14 +181,14 @@ class SyncPushView(APIView):
                     processed += 1
                 else:
                     errors.append({"action": action, "errors": serializer.errors})
-                    SyncConflict.objects.create(user=request.user, payload=action, reason="Product update sync failed")
+                    conflicts.append(record_conflict(request.user, action, "Product update sync failed").id)
             elif action_type == "product_delete":
                 updated = Product.objects.filter(id=payload.get("id"), user=request.user, is_deleted=False).update(is_deleted=True)
                 if updated:
                     processed += 1
                 else:
                     errors.append({"action": action, "detail": "Product not found"})
-                    SyncConflict.objects.create(user=request.user, payload=action, reason="Product delete target missing")
+                    conflicts.append(record_conflict(request.user, action, "Product delete target missing").id)
             elif action_type == "audit_create":
                 audit = Audit.objects.create(
                     conductor=request.user,
@@ -170,7 +207,7 @@ class SyncPushView(APIView):
                     audit = Audit.objects.get(id=audit_id, conductor=request.user, is_deleted=False)
                 except Audit.DoesNotExist:
                     errors.append({"action": action, "detail": "Audit not found"})
-                    SyncConflict.objects.create(user=request.user, payload=action, reason="Audit update target missing")
+                    conflicts.append(record_conflict(request.user, action, "Audit update target missing").id)
                     continue
 
                 if payload.get("status"):
@@ -191,7 +228,7 @@ class SyncPushView(APIView):
                     product = Product.objects.get(id=product_id, user=request.user, is_deleted=False)
                 except (Audit.DoesNotExist, Product.DoesNotExist):
                     errors.append({"action": action, "detail": "Audit or product not found"})
-                    SyncConflict.objects.create(user=request.user, payload=action, reason="Discrepancy create target missing")
+                    conflicts.append(record_conflict(request.user, action, "Discrepancy create target missing").id)
                     continue
 
                 Discrepancy.objects.create(
@@ -213,13 +250,14 @@ class SyncPushView(APIView):
                     processed += 1
                 else:
                     errors.append({"action": action, "detail": "Discrepancy not found"})
-                    SyncConflict.objects.create(user=request.user, payload=action, reason="Discrepancy resolve target missing")
+                    conflicts.append(record_conflict(request.user, action, "Discrepancy resolve target missing").id)
             else:
                 errors.append({"action": action, "detail": "Unsupported sync action type"})
-                SyncConflict.objects.create(user=request.user, payload=action, reason="Unsupported sync action")
+                conflicts.append(record_conflict(request.user, action, "Unsupported sync action").id)
 
         response_data = {
             "processed": processed,
+            "conflicts": conflicts,
             "errors": errors,
             "resolution": "server_wins",
         }
@@ -234,5 +272,5 @@ class SyncPullView(APIView):
         qs = SyncConflict.objects.filter(user=request.user)
         if since:
             qs = qs.filter(updated_at__gte=since)
-        data = [{"id": item.id, "payload": item.payload, "updated_at": item.updated_at} for item in qs]
+        data = [SyncConflictSerializer(item).data for item in qs]
         return Response({"changes": data})

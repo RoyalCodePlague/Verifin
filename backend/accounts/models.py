@@ -41,6 +41,7 @@ class Staff(TimeStampedSoftDeleteModel):
     STATUS_CHOICES = [(ACTIVE, ACTIVE), (INACTIVE, INACTIVE)]
 
     user = models.ForeignKey(User, related_name="staff_members", on_delete=models.CASCADE)
+    branch = models.ForeignKey("inventory.Branch", related_name="staff_members", on_delete=models.SET_NULL, blank=True, null=True)
     name = models.CharField(max_length=255)
     role = models.CharField(max_length=30, choices=ROLE_CHOICES, default=CASHIER)
     status = models.CharField(max_length=15, choices=STATUS_CHOICES, default=ACTIVE)

@@ -15,6 +15,10 @@ const Reports = () => {
   const todaySalesTotal = todaySales.reduce((sum, s) => sum + s.total, 0);
   const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
   const totalSales = sales.reduce((sum, s) => sum + s.total, 0);
+  const totalCostOfGoods = sales.reduce((sum, s) => sum + (s.totalCost || 0), 0);
+  const grossProfit = sales.reduce((sum, s) => sum + (s.grossProfit ?? s.total), 0);
+  const inventoryCost = products.reduce((sum, p) => sum + p.stock * (p.costPrice || 0), 0);
+  const inventoryMarginValue = products.reduce((sum, p) => sum + p.stock * (p.price - (p.costPrice || 0)), 0);
   const weeklyData = buildWeeklyFinanceData(sales, expenses);
   const weeklySalesTotal = weeklyData.reduce((sum, d) => sum + d.sales, 0);
   const weeklyExpensesTotal = weeklyData.reduce((sum, d) => sum + d.expenses, 0);
@@ -36,7 +40,7 @@ const Reports = () => {
     { title: "Discrepancy Report", desc: `${discrepancies.filter(d => d.status !== "resolved").length} open issues`, icon: AlertTriangle },
     { title: "Customer Report", desc: `${customers.length} customers - ${formatMoney(customers.reduce((s, c) => s + c.totalSpent, 0), sym)} total revenue`, icon: Users },
     { title: "Expense Analysis", desc: `${expenses.length} expenses across ${Object.keys(expenseByCat).length} categories`, icon: Receipt },
-    { title: "Profit & Loss", desc: `Revenue: ${formatMoney(totalSales, sym)} - Costs: ${formatMoney(totalExpenses, sym)} - Net: ${formatMoney(totalSales - totalExpenses, sym)}`, icon: TrendingUp },
+    { title: "Profit & Loss", desc: `Revenue: ${formatMoney(totalSales, sym)} - COGS: ${formatMoney(totalCostOfGoods, sym)} - Gross profit: ${formatMoney(grossProfit, sym)}`, icon: TrendingUp },
     { title: "Monthly Overview", desc: "Full month breakdown of sales, expenses, and stock", icon: Calendar },
   ];
 
@@ -65,13 +69,15 @@ const Reports = () => {
       csvRows = [
         "Currency,Metric,Value",
         row([profile.currency, "Total Sales", formatMoney(totalSales, sym)]),
-        row([profile.currency, "Total Expenses", formatMoney(totalExpenses, sym)]),
-        row([profile.currency, "Net Profit", formatMoney(totalSales - totalExpenses, sym)]),
+        row([profile.currency, "Cost of Goods Sold", formatMoney(totalCostOfGoods, sym)]),
+        row([profile.currency, "Gross Profit", formatMoney(grossProfit, sym)]),
+        row([profile.currency, "Expenses", formatMoney(totalExpenses, sym)]),
+        row([profile.currency, "Net Profit", formatMoney(grossProfit - totalExpenses, sym)]),
       ];
     } else if (title.includes("Stock")) {
       csvRows = [
-        "Currency,Product,SKU,Category,Stock,Reorder Level,Price,Status,Value,Added Date,Last Restocked",
-        ...products.map(p => row([profile.currency, p.name, p.sku, p.category, p.stock, p.reorder, formatMoney(p.price, sym), p.status, formatMoney(p.stock * p.price, sym), p.addedDate || "N/A", p.lastRestocked || "N/A"])),
+        "Currency,Product,SKU,Category,Branch,Stock,Reorder Level,Cost,Price,Margin %,Status,Value,Cost Value,Added Date,Last Restocked",
+        ...products.map(p => row([profile.currency, p.name, p.sku, p.category, p.branchName || "Main", p.stock, p.reorder, formatMoney(p.costPrice || 0, sym), formatMoney(p.price, sym), p.price ? (((p.price - (p.costPrice || 0)) / p.price) * 100).toFixed(1) : "0.0", p.status, formatMoney(p.stock * p.price, sym), formatMoney(p.stock * (p.costPrice || 0), sym), p.addedDate || "N/A", p.lastRestocked || "N/A"])),
       ];
     } else if (title.includes("Discrepancy")) {
       csvRows = [
@@ -93,6 +99,8 @@ const Reports = () => {
         "Currency,Metric,Value",
         row([profile.currency, "Total Sales", formatMoney(totalSales, sym)]),
         row([profile.currency, "Total Expenses", formatMoney(totalExpenses, sym)]),
+        row([profile.currency, "Inventory Cost", formatMoney(inventoryCost, sym)]),
+        row([profile.currency, "Inventory Margin Value", formatMoney(inventoryMarginValue, sym)]),
         row([profile.currency, "Total Products", products.length]),
         row([profile.currency, "Total Customers", customers.length]),
         row([profile.currency, "Net Profit", formatMoney(totalSales - totalExpenses, sym)]),
@@ -115,6 +123,27 @@ const Reports = () => {
       <p className="text-muted-foreground text-sm">Generate and export business reports</p>
 
       <div className="grid lg:grid-cols-2 gap-6">
+        <Card className="shadow-soft lg:col-span-2">
+          <CardContent className="p-5 grid sm:grid-cols-4 gap-4">
+            <div>
+              <p className="text-xs text-muted-foreground">Gross Profit</p>
+              <p className="text-xl font-display font-bold">{formatMoney(grossProfit, sym)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Cost of Goods</p>
+              <p className="text-xl font-display font-bold">{formatMoney(totalCostOfGoods, sym)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Inventory Cost</p>
+              <p className="text-xl font-display font-bold">{formatMoney(inventoryCost, sym)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Inventory Margin</p>
+              <p className="text-xl font-display font-bold">{formatMoney(inventoryMarginValue, sym)}</p>
+            </div>
+          </CardContent>
+        </Card>
+
         <Card className="shadow-soft">
           <CardHeader className="pb-2"><CardTitle className="text-base font-display">Sales vs Expenses (Weekly)</CardTitle></CardHeader>
           <CardContent>

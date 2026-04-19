@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Search, Plus, Package, Edit2, Trash2, ScanBarcode, Calendar } from "lucide-react";
+import { Search, Plus, Package, Edit2, Trash2, ScanBarcode, Calendar, TrendingUp } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { useStore } from "@/lib/store";
-import { createProductApi, deleteProductApi, updateProductApi } from "@/lib/api";
+import { createProductApi, deleteProductApi, fetchInventoryForecast, updateProductApi, type ApiForecastItem } from "@/lib/api";
 import { addToOfflineQueue, canQueueOfflineAction } from "@/lib/offlineQueue";
 import { useAuth } from "@/lib/auth-context";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -22,8 +22,15 @@ const allCategories = [
   "Bakery", "Frozen Foods", "Health & Beauty", "Tools", "Other"
 ];
 
+const pricePreview = (price: string, cost: string) => {
+  const salePrice = parseFloat(price) || 0;
+  const costPrice = parseFloat(cost) || 0;
+  if (!salePrice) return "0.0";
+  return (((salePrice - costPrice) / salePrice) * 100).toFixed(1);
+};
+
 const Inventory = () => {
-  const { products, addProduct, updateProduct, deleteProduct, profile, addActivity } = useStore();
+  const { products, branches, addProduct, updateProduct, deleteProduct, profile, addActivity } = useStore();
   const { refreshUser } = useAuth();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
@@ -31,7 +38,8 @@ const Inventory = () => {
   const [editProduct, setEditProduct] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", category: "", stock: "", reorder: "", price: "", barcode: "" });
+  const [form, setForm] = useState({ name: "", category: "", branchId: "", stock: "", reorder: "", costPrice: "", price: "", barcode: "" });
+  const [forecast, setForecast] = useState<ApiForecastItem[]>([]);
   const [saving, setSaving] = useState(false);
   const [canUseCameraScan, setCanUseCameraScan] = useState(false);
   const sym = profile.currencySymbol || "R";
@@ -46,6 +54,13 @@ const Inventory = () => {
     return () => window.removeEventListener("resize", updateCameraSupport);
   }, []);
 
+  useEffect(() => {
+    if (!navigator.onLine) return;
+    fetchInventoryForecast(7)
+      .then((data) => setForecast(data.items.slice(0, 5)))
+      .catch(() => setForecast([]));
+  }, [products.length]);
+
   const mergedCategories = Array.from(new Set([...profile.categories, ...allCategories]));
   const categories = ["All", ...mergedCategories];
 
@@ -55,14 +70,14 @@ const Inventory = () => {
   );
 
   const openAdd = () => {
-    setForm({ name: "", category: mergedCategories[0] || "", stock: "", reorder: "5", price: "", barcode: "" });
+    setForm({ name: "", category: mergedCategories[0] || "", branchId: branches.find(b => b.isPrimary)?.id || branches[0]?.id || "", stock: "", reorder: "5", costPrice: "", price: "", barcode: "" });
     setAddOpen(true);
   };
 
   const openEdit = (id: string) => {
     const p = products.find(x => x.id === id);
     if (!p) return;
-    setForm({ name: p.name, category: p.category, stock: String(p.stock), reorder: String(p.reorder), price: String(p.price), barcode: p.barcode || "" });
+    setForm({ name: p.name, category: p.category, branchId: p.branchId || "", stock: String(p.stock), reorder: String(p.reorder), costPrice: String(p.costPrice || ""), price: String(p.price), barcode: p.barcode || "" });
     setEditProduct(id);
   };
 
@@ -76,6 +91,7 @@ const Inventory = () => {
     setSaving(true);
     const stock = parseInt(form.stock) || 0;
     const reorder = parseInt(form.reorder) || 5;
+    const costPrice = parseFloat(form.costPrice) || 0;
     const price = parseFloat(form.price) || 0;
 
     const saveOffline = () => {
@@ -83,8 +99,11 @@ const Inventory = () => {
         updateProduct(editProduct, {
           name: form.name,
           category: form.category,
+          branchId: form.branchId || undefined,
+          branchName: branches.find(b => b.id === form.branchId)?.name || "",
           stock,
           reorder,
+          costPrice,
           price,
           barcode: form.barcode,
         });
@@ -95,8 +114,10 @@ const Inventory = () => {
               id: parseInt(editProduct, 10),
               name: form.name,
               categoryName: form.category,
+              branch: form.branchId || undefined,
               stock,
               reorder_level: reorder,
+              cost_price: costPrice,
               price,
               barcode: form.barcode,
             },
@@ -110,8 +131,11 @@ const Inventory = () => {
           name: form.name,
           sku,
           category: form.category,
+          branchId: form.branchId || undefined,
+          branchName: branches.find(b => b.id === form.branchId)?.name || "",
           stock,
           reorder,
+          costPrice,
           price,
           barcode: form.barcode,
         });
@@ -122,8 +146,10 @@ const Inventory = () => {
             name: form.name,
             sku,
             categoryName: form.category,
+            branch: form.branchId || undefined,
             stock,
             reorder_level: reorder,
+            cost_price: costPrice,
             price,
             barcode: form.barcode,
           },
@@ -150,8 +176,10 @@ const Inventory = () => {
         await updateProductApi(editProduct, {
           name: form.name,
           categoryName: form.category,
+          branch: form.branchId || undefined,
           stock,
           reorder_level: reorder,
+          cost_price: costPrice,
           price,
           barcode: form.barcode,
         });
@@ -164,8 +192,10 @@ const Inventory = () => {
           name: form.name,
           sku,
           categoryName: form.category,
+          branch: form.branchId || undefined,
           stock,
           reorder_level: reorder,
+          cost_price: costPrice,
           price,
           barcode: form.barcode,
         });
@@ -192,7 +222,7 @@ const Inventory = () => {
       setSearch(found.name);
     } else {
       toast.info(`New barcode: ${code}. Fill in the product details and save.`);
-      setForm({ name: "", category: mergedCategories[0] || "", stock: "", reorder: "5", price: "", barcode: code });
+      setForm({ name: "", category: mergedCategories[0] || "", branchId: branches.find(b => b.isPrimary)?.id || branches[0]?.id || "", stock: "", reorder: "5", costPrice: "", price: "", barcode: code });
       setAddOpen(true);
     }
     setScanOpen(false);
@@ -209,10 +239,21 @@ const Inventory = () => {
             {mergedCategories.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
+        <div>
+          <Label>Branch</Label>
+          <select value={form.branchId} onChange={e => setForm({ ...form, branchId: e.target.value })} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
+            <option value="">No branch assigned</option>
+            {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+        </div>
         <div className="grid grid-cols-3 gap-2">
           <div><Label>Stock</Label><Input type="number" value={form.stock} onChange={e => setForm({ ...form, stock: e.target.value })} className="mt-1" /></div>
           <div><Label>Reorder At</Label><Input type="number" value={form.reorder} onChange={e => setForm({ ...form, reorder: e.target.value })} className="mt-1" /></div>
-          <div><Label>Price ({sym})</Label><Input type="number" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} className="mt-1" /></div>
+          <div><Label>Cost ({sym})</Label><Input type="number" value={form.costPrice} onChange={e => setForm({ ...form, costPrice: e.target.value })} className="mt-1" /></div>
+        </div>
+        <div>
+          <Label>Price ({sym})</Label><Input type="number" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} className="mt-1" />
+          <p className="text-xs text-muted-foreground mt-1">Margin: {pricePreview(form.price, form.costPrice)}%</p>
         </div>
         <div>
           <Label>Barcode <span className="text-muted-foreground font-normal">(optional)</span></Label>
@@ -246,6 +287,25 @@ const Inventory = () => {
         ))}
       </div>
 
+      {forecast.length > 0 && (
+        <Card className="shadow-soft p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingUp className="h-4 w-4 text-primary" />
+            <p className="text-sm font-medium">Inventory Forecast</p>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            {forecast.map((item) => (
+              <div key={item.product.id} className="rounded-lg border border-border p-3">
+                <p className="text-sm font-medium truncate">{item.product.name}</p>
+                <p className="text-xs text-muted-foreground">{item.days_remaining == null ? "No recent sales" : `${item.days_remaining} days left`}</p>
+                <p className="text-xs mt-2">Reorder: <span className="font-semibold">{item.suggested_reorder}</span></p>
+                <Badge variant={item.risk === "low" ? "default" : "destructive"} className="mt-2">{item.risk}</Badge>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       {filtered.length === 0 ? (
         <EmptyState icon={Package} title="No products found" description={search ? "Try a different search term" : "Add your first product to get started"} actionLabel="Add Product" onAction={openAdd} />
       ) : (
@@ -257,7 +317,9 @@ const Inventory = () => {
                   <th className="text-left p-3 font-medium text-muted-foreground">Product</th>
                   <th className="text-left p-3 font-medium text-muted-foreground hidden sm:table-cell">SKU</th>
                   <th className="text-left p-3 font-medium text-muted-foreground hidden md:table-cell">Category</th>
+                  <th className="text-left p-3 font-medium text-muted-foreground hidden lg:table-cell">Branch</th>
                   <th className="text-center p-3 font-medium text-muted-foreground">Stock</th>
+                  <th className="text-right p-3 font-medium text-muted-foreground hidden lg:table-cell">Cost</th>
                   <th className="text-right p-3 font-medium text-muted-foreground">Price</th>
                   <th className="text-center p-3 font-medium text-muted-foreground hidden md:table-cell">Added</th>
                   <th className="text-center p-3 font-medium text-muted-foreground hidden lg:table-cell">Restocked</th>
@@ -274,7 +336,9 @@ const Inventory = () => {
                     </td>
                     <td className="p-3 text-muted-foreground hidden sm:table-cell">{p.sku}</td>
                     <td className="p-3 text-muted-foreground hidden md:table-cell">{p.category}</td>
+                    <td className="p-3 text-muted-foreground hidden lg:table-cell">{p.branchName || "Main"}</td>
                     <td className="p-3 text-center">{p.stock}</td>
+                    <td className="p-3 text-right hidden lg:table-cell">{sym}{(p.costPrice || 0).toFixed(2)}</td>
                     <td className="p-3 text-right">{sym}{p.price.toFixed(2)}</td>
                     <td className="p-3 text-center hidden md:table-cell">
                       <span className="text-xs text-muted-foreground">{p.addedDate || "N/A"}</span>

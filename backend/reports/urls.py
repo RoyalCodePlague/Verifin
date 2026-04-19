@@ -4,6 +4,7 @@ from .views import (
     ExpenseAnalysisView,
     ExportView,
     GenericStubView,
+    MarginReportView,
     ProfitLossView,
     StockMovementView,
     WeeklyPerformanceView,
@@ -17,6 +18,7 @@ urlpatterns = [
     path("customer/", GenericStubView.as_view()),
     path("expense-analysis/", ExpenseAnalysisView.as_view()),
     path("profit-loss/", ProfitLossView.as_view()),
+    path("margins/", MarginReportView.as_view()),
     path("monthly-overview/", GenericStubView.as_view()),
     path("export/", ExportView.as_view()),
 ]

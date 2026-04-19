@@ -72,6 +72,7 @@ export function AdminAssistant({ autoExpand = false, onDismissAutoExpand }: Admi
               name,
               stock: stock || 0,
               price: price || 0,
+              costPrice: 0,
               sku: sku || `SKU${products.length + 1}`,
               category: "General",
               reorder: 5

@@ -1,8 +1,14 @@
-from rest_framework import viewsets
+from datetime import timedelta
+from decimal import Decimal
+from django.db import transaction
+from django.db.models import Sum
+from django.utils import timezone
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from .models import Category, Product, StockMovement
-from .serializers import CategorySerializer, ProductSerializer, StockMovementSerializer
+from sales.models import SaleItem
+from .models import Branch, Category, Product, StockMovement, StockTransfer
+from .serializers import BranchSerializer, CategorySerializer, ProductSerializer, StockMovementSerializer, StockTransferSerializer
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -16,14 +22,31 @@ class CategoryViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
 
+class BranchViewSet(viewsets.ModelViewSet):
+    serializer_class = BranchSerializer
+    search_fields = ["name", "code", "address"]
+
+    def get_queryset(self):
+        return Branch.objects.filter(user=self.request.user, is_deleted=False)
+
+    def perform_create(self, serializer):
+        branch = serializer.save(user=self.request.user)
+        if not Branch.objects.filter(user=self.request.user, is_deleted=False).exclude(id=branch.id).exists():
+            branch.is_primary = True
+            branch.save()
+
 
 class ProductViewSet(viewsets.ModelViewSet):
     serializer_class = ProductSerializer
-    filterset_fields = ["status", "category"]
+    filterset_fields = ["status", "category", "branch"]
     search_fields = ["name", "sku", "barcode"]
 
     def get_queryset(self):
-        return Product.objects.filter(user=self.request.user, is_deleted=False)
+        qs = Product.objects.filter(user=self.request.user, is_deleted=False)
+        branch = self.request.query_params.get("branch")
+        if branch:
+            qs = qs.filter(branch_id=branch)
+        return qs
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
@@ -49,8 +72,13 @@ class ProductViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="inventory-value")
     def inventory_value(self, request):
         products = self.get_queryset()
-        total_value = sum([p.stock * float(p.price) for p in products])
-        return Response({"inventory_value": total_value})
+        total_value = sum([p.stock * p.price for p in products])
+        total_cost = sum([p.stock * p.cost_price for p in products])
+        return Response({
+            "inventory_value": total_value,
+            "inventory_cost": total_cost,
+            "potential_profit": total_value - total_cost,
+        })
 
     @action(detail=False, methods=["get"], url_path="low-stock")
     def low_stock(self, request):
@@ -78,10 +106,87 @@ class ProductViewSet(viewsets.ModelViewSet):
             name=name,
             stock=stock,
             price=price,
+            cost_price=request.data.get("cost_price", 0),
             sku=sku,
             category=category,
+            branch_id=request.data.get("branch"),
         )
         return Response(ProductSerializer(product).data)
+
+    @action(detail=False, methods=["get"], url_path="forecast")
+    def forecast(self, request):
+        horizon = int(request.query_params.get("days", 7))
+        since = timezone.now() - timedelta(days=max(horizon, 1))
+        rows = []
+        for product in self.get_queryset():
+            sold = SaleItem.objects.filter(
+                product=product,
+                sale__created_by=request.user,
+                sale__created_at__gte=since,
+                is_deleted=False,
+            ).aggregate(total=Sum("quantity"))["total"] or 0
+            average_daily_sales = Decimal(sold) / Decimal(max(horizon, 1))
+            days_remaining = None
+            if average_daily_sales > 0:
+                days_remaining = Decimal(product.stock) / average_daily_sales
+            suggested_reorder = max(0, int((average_daily_sales * Decimal(horizon * 2)) - product.stock))
+            rows.append({
+                "product": ProductSerializer(product).data,
+                "sold_in_period": sold,
+                "average_daily_sales": round(average_daily_sales, 2),
+                "days_remaining": round(days_remaining, 1) if days_remaining is not None else None,
+                "suggested_reorder": suggested_reorder,
+                "risk": "stockout" if product.stock <= 0 else "high" if days_remaining is not None and days_remaining <= horizon else "low",
+            })
+        rows.sort(key=lambda item: (item["risk"] != "stockout", item["risk"] != "high", item["days_remaining"] is None, item["days_remaining"] or 9999))
+        return Response({"horizon_days": horizon, "items": rows})
+
+    @action(detail=True, methods=["post"], url_path="transfer")
+    @transaction.atomic
+    def transfer(self, request, pk=None):
+        product = self.get_object()
+        to_branch_id = request.data.get("to_branch")
+        quantity = int(request.data.get("quantity", 0))
+        if quantity <= 0:
+            return Response({"detail": "Quantity must be greater than zero."}, status=status.HTTP_400_BAD_REQUEST)
+        if product.stock < quantity:
+            return Response({"detail": "Insufficient stock for transfer."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            to_branch = Branch.objects.get(id=to_branch_id, user=request.user, is_deleted=False)
+        except Branch.DoesNotExist:
+            return Response({"detail": "Destination branch not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        product.stock -= quantity
+        product.save()
+        target, _ = Product.objects.get_or_create(
+            user=request.user,
+            branch=to_branch,
+            sku=product.sku,
+            defaults={
+                "name": product.name,
+                "barcode": product.barcode,
+                "category": product.category,
+                "stock": 0,
+                "reorder_level": product.reorder_level,
+                "cost_price": product.cost_price,
+                "price": product.price,
+            },
+        )
+        target.stock += quantity
+        target.save()
+        transfer = StockTransfer.objects.create(
+            from_branch=product.branch or to_branch,
+            to_branch=to_branch,
+            product=product,
+            quantity=quantity,
+            created_by=request.user,
+            note=request.data.get("note", ""),
+        )
+        return Response({
+            "transfer": StockTransferSerializer(transfer).data,
+            "source": ProductSerializer(product).data,
+            "target": ProductSerializer(target).data,
+        })
 
 
 class StockMovementViewSet(viewsets.ModelViewSet):
@@ -101,3 +206,11 @@ class StockMovementViewSet(viewsets.ModelViewSet):
         else:
             product.stock = movement.quantity
         product.save()
+
+
+class StockTransferViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = StockTransferSerializer
+    filterset_fields = ["from_branch", "to_branch", "product"]
+
+    def get_queryset(self):
+        return StockTransfer.objects.filter(created_by=self.request.user, is_deleted=False)

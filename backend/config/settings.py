@@ -7,9 +7,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-SECRET_KEY = "dev-only-secret-key-change-in-production"
-DEBUG = False
-ALLOWED_HOSTS = ["*"]
+SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-secret-key-change-in-production")
+DEBUG = os.getenv("DEBUG", "False").lower() in ("1", "true", "yes")
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,testserver,.railway.app,.vercel.app").split(",")
+    if host.strip()
+]
+if DEBUG and "*" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append("*")
 
 # Groq AI Configuration
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
@@ -124,7 +130,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',
+        'rest_framework.permissions.IsAuthenticated',
     ],
     "DEFAULT_AUTHENTICATION_CLASSES": ("rest_framework_simplejwt.authentication.JWTAuthentication",),
     "DEFAULT_FILTER_BACKENDS": (

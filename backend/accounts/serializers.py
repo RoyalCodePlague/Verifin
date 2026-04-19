@@ -92,6 +92,8 @@ class ProfileSerializer(serializers.ModelSerializer):
 
 
 class StaffSerializer(serializers.ModelSerializer):
+    branch_name = serializers.CharField(source="branch.name", read_only=True, allow_null=True)
+
     class Meta:
         model = Staff
         fields = "__all__"
