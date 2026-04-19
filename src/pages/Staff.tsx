@@ -40,7 +40,7 @@ const Staff = () => {
       </div>
 
       {filtered.length === 0 ? (
-        <EmptyState icon={UserCog} title="No team members found" description={search ? "Try a different search" : "Add your staff to manage roles and access"} actionLabel="Add Staff" onAction={() => setAddOpen(true)} />
+        <EmptyState icon={UserCog} title="No team members found" description={search ? "Try a different search" : "Add your staff to track roles and active team members"} actionLabel="Add Staff" onAction={() => setAddOpen(true)} />
       ) : (
         <div className="grid sm:grid-cols-2 gap-4">
           {filtered.map((s) => (

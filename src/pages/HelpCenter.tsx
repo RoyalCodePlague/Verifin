@@ -41,7 +41,7 @@ const categories = [
   ]},
   { icon: Settings, label: "Settings & Configuration", articles: [
     { title: "Changing currency and business name", content: "Go to Settings and update your business name and currency. Currency options include ZAR, USD, GBP, EUR, KES, NGN, ZWL, BWP, and TZS. Changes apply immediately across all pages." },
-    { title: "Managing staff roles", content: "In the Staff tab, add team members with roles: Owner, Manager, Cashier, or Stock Manager. Roles determine access levels in the full backend version." },
+    { title: "Managing staff records", content: "In the Staff tab, add team members with roles like Owner, Manager, Cashier, or Stock Manager so you can track who works in the business and who is active." },
     { title: "Notification preferences", content: "In Settings, toggle WhatsApp daily summaries, low stock alerts, and discrepancy alerts on or off. When enabled, notifications appear in the bell icon on the navbar." },
     { title: "Dark mode toggle", content: "Click the sun/moon icon in the navbar or toggle dark mode in Settings. The entire app switches between light and dark themes with consistent colors." },
   ]},

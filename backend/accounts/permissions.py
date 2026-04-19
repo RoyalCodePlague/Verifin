@@ -14,8 +14,6 @@ class IsOwnerOrManager(BasePermission):
             return False
         if request.user.is_superuser:
             return True
-        # New owners (just registered) can access their own staff
-        # More restrictive checks can be added later
         return True
     
     def has_object_permission(self, request, view, obj):

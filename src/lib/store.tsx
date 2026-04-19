@@ -7,6 +7,8 @@ export interface Product {
   category: string;
   branchId?: string;
   branchName?: string;
+  supplierId?: string;
+  supplierName?: string;
   stock: number;
   reorder: number;
   costPrice: number;

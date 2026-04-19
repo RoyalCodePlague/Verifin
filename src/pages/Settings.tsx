@@ -6,8 +6,8 @@ import { Switch } from "@/components/ui/switch";
 import { useStore } from "@/lib/store";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
-import { Building2, GitPullRequest, Moon, Sun } from "lucide-react";
-import { createBranchApi, deleteBranchApi, listSyncConflicts, patchMe, resolveSyncConflict, updateBranchApi, type ApiSyncConflict } from "@/lib/api";
+import { Building2, Moon, Sun } from "lucide-react";
+import { createBranchApi, deleteBranchApi, patchMe, updateBranchApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useNavigate } from "react-router-dom";
 
@@ -31,12 +31,11 @@ const SettingsPage = () => {
   const [currency, setCurrency] = useState(profile.currency);
   const [saving, setSaving] = useState(false);
   const [branchForm, setBranchForm] = useState({ name: "", code: "", phone: "", address: "" });
-  const [conflicts, setConflicts] = useState<ApiSyncConflict[]>([]);
 
   useEffect(() => {
-    if (!navigator.onLine) return;
-    listSyncConflicts("open").then(setConflicts).catch(() => setConflicts([]));
-  }, []);
+    setName(profile.name);
+    setCurrency(profile.currency);
+  }, [profile.name, profile.currency]);
 
   const handleSave = async () => {
     const selected = currencyOptions.find(c => c.code === currency);
@@ -125,16 +124,6 @@ const SettingsPage = () => {
     }
   };
 
-  const handleResolveConflict = async (id: number) => {
-    try {
-      await resolveSyncConflict(id, "Reviewed from settings");
-      setConflicts(prev => prev.filter(c => c.id !== id));
-      toast.success("Conflict marked resolved");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not resolve conflict");
-    }
-  };
-
   return (
     <div className="space-y-6 max-w-2xl">
       <Card className="shadow-soft">
@@ -182,26 +171,6 @@ const SettingsPage = () => {
             ))}
             {branches.length === 0 && <p className="text-sm text-muted-foreground">Add branches to track stock, sales, and staff by location.</p>}
           </div>
-        </CardContent>
-      </Card>
-
-      <Card className="shadow-soft">
-        <CardHeader><CardTitle className="font-display text-base flex items-center gap-2"><GitPullRequest className="h-4 w-4" /> Offline Conflict Review</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          {conflicts.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No open sync conflicts.</p>
-          ) : conflicts.map(conflict => (
-            <div key={conflict.id} className="rounded-lg border border-border p-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium">{conflict.action_type || "Offline action"}</p>
-                  <p className="text-xs text-muted-foreground">{conflict.reason}</p>
-                </div>
-                <Button size="sm" variant="outline" onClick={() => handleResolveConflict(conflict.id)}>Mark Resolved</Button>
-              </div>
-              <pre className="mt-3 max-h-32 overflow-auto rounded bg-muted p-2 text-xs">{JSON.stringify(conflict.payload, null, 2)}</pre>
-            </div>
-          ))}
         </CardContent>
       </Card>
 

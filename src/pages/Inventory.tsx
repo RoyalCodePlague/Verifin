@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { useStore } from "@/lib/store";
-import { createProductApi, deleteProductApi, fetchInventoryForecast, updateProductApi, type ApiForecastItem } from "@/lib/api";
+import { createProductApi, deleteProductApi, fetchInventoryForecast, listSuppliersApi, updateProductApi, type ApiForecastItem, type ApiSupplier } from "@/lib/api";
 import { addToOfflineQueue, canQueueOfflineAction } from "@/lib/offlineQueue";
 import { useAuth } from "@/lib/auth-context";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -38,8 +38,9 @@ const Inventory = () => {
   const [editProduct, setEditProduct] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", category: "", branchId: "", stock: "", reorder: "", costPrice: "", price: "", barcode: "" });
+  const [form, setForm] = useState({ name: "", category: "", branchId: "", supplierId: "", stock: "", reorder: "", costPrice: "", price: "", barcode: "" });
   const [forecast, setForecast] = useState<ApiForecastItem[]>([]);
+  const [suppliers, setSuppliers] = useState<ApiSupplier[]>([]);
   const [saving, setSaving] = useState(false);
   const [canUseCameraScan, setCanUseCameraScan] = useState(false);
   const sym = profile.currencySymbol || "R";
@@ -59,6 +60,7 @@ const Inventory = () => {
     fetchInventoryForecast(7)
       .then((data) => setForecast(data.items.slice(0, 5)))
       .catch(() => setForecast([]));
+    listSuppliersApi().then(setSuppliers).catch(() => setSuppliers([]));
   }, [products.length]);
 
   const mergedCategories = Array.from(new Set([...profile.categories, ...allCategories]));
@@ -70,14 +72,14 @@ const Inventory = () => {
   );
 
   const openAdd = () => {
-    setForm({ name: "", category: mergedCategories[0] || "", branchId: branches.find(b => b.isPrimary)?.id || branches[0]?.id || "", stock: "", reorder: "5", costPrice: "", price: "", barcode: "" });
+    setForm({ name: "", category: mergedCategories[0] || "", branchId: branches.find(b => b.isPrimary)?.id || branches[0]?.id || "", supplierId: "", stock: "", reorder: "5", costPrice: "", price: "", barcode: "" });
     setAddOpen(true);
   };
 
   const openEdit = (id: string) => {
     const p = products.find(x => x.id === id);
     if (!p) return;
-    setForm({ name: p.name, category: p.category, branchId: p.branchId || "", stock: String(p.stock), reorder: String(p.reorder), costPrice: String(p.costPrice || ""), price: String(p.price), barcode: p.barcode || "" });
+    setForm({ name: p.name, category: p.category, branchId: p.branchId || "", supplierId: p.supplierId || "", stock: String(p.stock), reorder: String(p.reorder), costPrice: String(p.costPrice || ""), price: String(p.price), barcode: p.barcode || "" });
     setEditProduct(id);
   };
 
@@ -101,6 +103,8 @@ const Inventory = () => {
           category: form.category,
           branchId: form.branchId || undefined,
           branchName: branches.find(b => b.id === form.branchId)?.name || "",
+          supplierId: form.supplierId || undefined,
+          supplierName: suppliers.find(s => String(s.id) === form.supplierId)?.name || "",
           stock,
           reorder,
           costPrice,
@@ -115,6 +119,7 @@ const Inventory = () => {
               name: form.name,
               categoryName: form.category,
               branch: form.branchId || undefined,
+              preferred_supplier: form.supplierId || undefined,
               stock,
               reorder_level: reorder,
               cost_price: costPrice,
@@ -133,6 +138,8 @@ const Inventory = () => {
           category: form.category,
           branchId: form.branchId || undefined,
           branchName: branches.find(b => b.id === form.branchId)?.name || "",
+          supplierId: form.supplierId || undefined,
+          supplierName: suppliers.find(s => String(s.id) === form.supplierId)?.name || "",
           stock,
           reorder,
           costPrice,
@@ -147,6 +154,7 @@ const Inventory = () => {
             sku,
             categoryName: form.category,
             branch: form.branchId || undefined,
+            preferred_supplier: form.supplierId || undefined,
             stock,
             reorder_level: reorder,
             cost_price: costPrice,
@@ -177,6 +185,7 @@ const Inventory = () => {
           name: form.name,
           categoryName: form.category,
           branch: form.branchId || undefined,
+          preferred_supplier: form.supplierId || undefined,
           stock,
           reorder_level: reorder,
           cost_price: costPrice,
@@ -193,6 +202,7 @@ const Inventory = () => {
           sku,
           categoryName: form.category,
           branch: form.branchId || undefined,
+          preferred_supplier: form.supplierId || undefined,
           stock,
           reorder_level: reorder,
           cost_price: costPrice,
@@ -222,7 +232,7 @@ const Inventory = () => {
       setSearch(found.name);
     } else {
       toast.info(`New barcode: ${code}. Fill in the product details and save.`);
-      setForm({ name: "", category: mergedCategories[0] || "", branchId: branches.find(b => b.isPrimary)?.id || branches[0]?.id || "", stock: "", reorder: "5", costPrice: "", price: "", barcode: code });
+      setForm({ name: "", category: mergedCategories[0] || "", branchId: branches.find(b => b.isPrimary)?.id || branches[0]?.id || "", supplierId: "", stock: "", reorder: "5", costPrice: "", price: "", barcode: code });
       setAddOpen(true);
     }
     setScanOpen(false);
@@ -244,6 +254,13 @@ const Inventory = () => {
           <select value={form.branchId} onChange={e => setForm({ ...form, branchId: e.target.value })} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
             <option value="">No branch assigned</option>
             {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <Label>Preferred Supplier</Label>
+          <select value={form.supplierId} onChange={e => setForm({ ...form, supplierId: e.target.value })} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
+            <option value="">Not assigned</option>
+            {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </div>
         <div className="grid grid-cols-3 gap-2">
@@ -318,6 +335,7 @@ const Inventory = () => {
                   <th className="text-left p-3 font-medium text-muted-foreground hidden sm:table-cell">SKU</th>
                   <th className="text-left p-3 font-medium text-muted-foreground hidden md:table-cell">Category</th>
                   <th className="text-left p-3 font-medium text-muted-foreground hidden lg:table-cell">Branch</th>
+                  <th className="text-left p-3 font-medium text-muted-foreground hidden lg:table-cell">Supplier</th>
                   <th className="text-center p-3 font-medium text-muted-foreground">Stock</th>
                   <th className="text-right p-3 font-medium text-muted-foreground hidden lg:table-cell">Cost</th>
                   <th className="text-right p-3 font-medium text-muted-foreground">Price</th>
@@ -337,6 +355,7 @@ const Inventory = () => {
                     <td className="p-3 text-muted-foreground hidden sm:table-cell">{p.sku}</td>
                     <td className="p-3 text-muted-foreground hidden md:table-cell">{p.category}</td>
                     <td className="p-3 text-muted-foreground hidden lg:table-cell">{p.branchName || "Main"}</td>
+                    <td className="p-3 text-muted-foreground hidden lg:table-cell">{p.supplierName || "Unassigned"}</td>
                     <td className="p-3 text-center">{p.stock}</td>
                     <td className="p-3 text-right hidden lg:table-cell">{sym}{(p.costPrice || 0).toFixed(2)}</td>
                     <td className="p-3 text-right">{sym}{p.price.toFixed(2)}</td>

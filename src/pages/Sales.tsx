@@ -1,9 +1,9 @@
-import { useState } from "react";
-import { createSaleApi, deleteSaleApi } from "@/lib/api";
+import { useEffect, useState } from "react";
+import { closeTillApi, createSaleApi, deleteSaleApi, fetchReceiptApi, getCurrentTillApi, openTillApi, type ApiTillSession } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { addToOfflineQueue, canQueueOfflineAction } from "@/lib/offlineQueue";
 import { motion } from "framer-motion";
-import { Plus, Search, ArrowUpRight, Trash2, ShoppingCart } from "lucide-react";
+import { Plus, Search, ArrowUpRight, Trash2, ShoppingCart, Receipt, Wallet } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,17 +22,26 @@ interface SaleLineItem {
 }
 
 const Sales = () => {
-  const { sales, deleteSale, profile, products, addSale } = useStore();
+  const { sales, deleteSale, profile, products, branches, addSale } = useStore();
   const { refreshUser } = useAuth();
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [tillOpen, setTillOpen] = useState(false);
+  const [receiptOpen, setReceiptOpen] = useState(false);
+  const [receiptText, setReceiptText] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [till, setTill] = useState<ApiTillSession | null>(null);
+  const [tillForm, setTillForm] = useState({ branch: "", cashier: "", openingCash: "0", closingCash: "" });
   const [method, setMethod] = useState<"Cash" | "EFT" | "Card">("Cash");
   const [lineItems, setLineItems] = useState<SaleLineItem[]>([]);
   const [selectedProduct, setSelectedProduct] = useState("");
   const [qty, setQty] = useState("1");
   const sym = profile.currencySymbol || "R";
+
+  useEffect(() => {
+    getCurrentTillApi().then(setTill).catch(() => setTill(null));
+  }, []);
 
   const filtered = sales.filter(s => s.items.toLowerCase().includes(search.toLowerCase()));
   const todayTotal = sales.filter(s => s.date === "Today").reduce((sum, s) => sum + s.total, 0);
@@ -83,6 +92,8 @@ const Sales = () => {
 
     const apiPayload = {
       payment_method: method,
+      branch: till?.branch || null,
+      till_session: till?.id || null,
       customer: null,
       sale_items: lineItems.map((l) => ({
         product: parseInt(l.productId, 10),
@@ -144,6 +155,55 @@ const Sales = () => {
     }
   };
 
+  const handleOpenTill = async () => {
+    try {
+      const opened = await openTillApi({
+        branch: tillForm.branch ? Number(tillForm.branch) : null,
+        cashier_name: tillForm.cashier,
+        opening_cash: tillForm.openingCash || "0",
+      });
+      setTill(opened);
+      setTillOpen(false);
+      toast.success("Till opened");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not open till");
+    }
+  };
+
+  const handleCloseTill = async () => {
+    if (!till) return;
+    try {
+      const closed = await closeTillApi(till.id, { closing_cash: tillForm.closingCash || "0" });
+      setTill(null);
+      setTillOpen(false);
+      toast.success(`Till closed. Variance: ${sym}${Number(closed.cash_variance).toLocaleString()}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not close till");
+    }
+  };
+
+  const showReceipt = async (id: string) => {
+    try {
+      const receipt = await fetchReceiptApi(id);
+      const lines = [
+        receipt.business_name || "Verifin Receipt",
+        receipt.branch ? `Branch: ${receipt.branch}` : "",
+        `Receipt: ${receipt.receipt_number}`,
+        receipt.invoice_number ? `Invoice: ${receipt.invoice_number}` : "",
+        `${receipt.date} ${receipt.time}`,
+        `Payment: ${receipt.payment_method}`,
+        "",
+        ...receipt.items.map((item) => `${item.quantity} ${item.product_name || "Item"} - ${sym}${Number(item.subtotal || 0).toLocaleString()}`),
+        "",
+        `Total: ${sym}${Number(receipt.total).toLocaleString()}`,
+      ].filter(Boolean);
+      setReceiptText(lines.join("\n"));
+      setReceiptOpen(true);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not load receipt");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
@@ -161,6 +221,19 @@ const Sales = () => {
           </Card>
         ))}
       </div>
+
+      <Card className="shadow-soft">
+        <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center"><Wallet className="h-4 w-4 text-primary" /></div>
+            <div>
+              <p className="text-sm font-medium">{till ? `Till open - ${till.cashier_name || "Cashier"}` : "No till session open"}</p>
+              <p className="text-xs text-muted-foreground">{till ? `Opening cash: ${sym}${Number(till.opening_cash).toLocaleString()}` : "Open a till to track cash variance for the shift."}</p>
+            </div>
+          </div>
+          <Button variant={till ? "outline" : "default"} onClick={() => setTillOpen(true)}>{till ? "Close Till" : "Open Till"}</Button>
+        </CardContent>
+      </Card>
 
       <div className="flex gap-3 items-center">
         <div className="relative flex-1 max-w-sm">
@@ -185,6 +258,7 @@ const Sales = () => {
                   </div>
                   <div className="flex items-center gap-2">
                     <p className="font-display font-bold">{sym}{s.total.toLocaleString()}</p>
+                    <button onClick={() => showReceipt(s.id)} className="p-1.5 rounded hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"><Receipt className="h-3.5 w-3.5 text-muted-foreground" /></button>
                     <button onClick={() => setDeleteId(s.id)} className="p-1.5 rounded hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="h-3.5 w-3.5 text-destructive" /></button>
                   </div>
                 </motion.div>
@@ -252,6 +326,34 @@ const Sales = () => {
               {saving ? "Saving…" : `Record Sale — ${sym}${saleTotal.toLocaleString()}`}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={tillOpen} onOpenChange={setTillOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle className="font-display">{till ? "Close Till" : "Open Till"}</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            {!till ? (
+              <>
+                <div><Label>Branch</Label><select value={tillForm.branch} onChange={e => setTillForm({ ...tillForm, branch: e.target.value })} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm"><option value="">No branch</option>{branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
+                <div><Label>Cashier Name</Label><Input value={tillForm.cashier} onChange={e => setTillForm({ ...tillForm, cashier: e.target.value })} className="mt-1" /></div>
+                <div><Label>Opening Cash ({sym})</Label><Input type="number" value={tillForm.openingCash} onChange={e => setTillForm({ ...tillForm, openingCash: e.target.value })} className="mt-1" /></div>
+                <Button onClick={handleOpenTill} className="w-full">Open Till</Button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">Cash sales: {sym}{Number(till.cash_sales || 0).toLocaleString()}</p>
+                <div><Label>Actual Cash Counted ({sym})</Label><Input type="number" value={tillForm.closingCash} onChange={e => setTillForm({ ...tillForm, closingCash: e.target.value })} className="mt-1" /></div>
+                <Button onClick={handleCloseTill} className="w-full">Close Till</Button>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={receiptOpen} onOpenChange={setReceiptOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle className="font-display">Receipt</DialogTitle></DialogHeader>
+          <pre className="rounded-lg bg-muted p-4 text-sm whitespace-pre-wrap">{receiptText}</pre>
+          <Button variant="outline" onClick={() => navigator.clipboard.writeText(receiptText)}>Copy Receipt</Button>
         </DialogContent>
       </Dialog>
       <ConfirmationModal

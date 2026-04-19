@@ -76,7 +76,15 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-if DATABASE_URL:
+def is_usable_database_url(value):
+    if not value:
+        return False
+    parsed = urlparse(value)
+    db_name = parsed.path.lstrip("/")
+    return bool(parsed.hostname and parsed.hostname != "host" and db_name and db_name != "dbname")
+
+
+if is_usable_database_url(DATABASE_URL):
     db_url = urlparse(DATABASE_URL)
     try:
         db_port = db_url.port or 5432

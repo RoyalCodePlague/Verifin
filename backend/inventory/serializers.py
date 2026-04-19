@@ -1,6 +1,6 @@
 from decimal import Decimal
 from rest_framework import serializers
-from .models import Branch, Category, Product, StockMovement, StockTransfer
+from .models import Branch, Category, Product, PurchaseOrder, PurchaseOrderItem, StockMovement, StockTransfer, Supplier
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -17,9 +17,17 @@ class BranchSerializer(serializers.ModelSerializer):
         read_only_fields = ["user", "created_at", "updated_at"]
 
 
+class SupplierSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Supplier
+        fields = "__all__"
+        read_only_fields = ["user", "created_at", "updated_at"]
+
+
 class ProductSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source="category.name", read_only=True, allow_null=True)
     branch_name = serializers.CharField(source="branch.name", read_only=True, allow_null=True)
+    supplier_name = serializers.CharField(source="preferred_supplier.name", read_only=True, allow_null=True)
     inventory_value = serializers.SerializerMethodField()
     inventory_cost = serializers.SerializerMethodField()
     potential_profit = serializers.SerializerMethodField()
@@ -54,6 +62,9 @@ class ProductSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"branch": "Branch does not belong to this account."})
             if category and category.user_id != user.id:
                 raise serializers.ValidationError({"category": "Category does not belong to this account."})
+            supplier = attrs.get("preferred_supplier")
+            if supplier and supplier.user_id != user.id:
+                raise serializers.ValidationError({"preferred_supplier": "Supplier does not belong to this account."})
         return attrs
 
 
@@ -73,3 +84,72 @@ class StockTransferSerializer(serializers.ModelSerializer):
         model = StockTransfer
         fields = "__all__"
         read_only_fields = ["created_by", "created_at", "updated_at"]
+
+
+class PurchaseOrderItemSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(source="product.name", read_only=True)
+    sku = serializers.CharField(source="product.sku", read_only=True)
+
+    class Meta:
+        model = PurchaseOrderItem
+        fields = "__all__"
+        read_only_fields = ["line_total", "created_at", "updated_at"]
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        product = attrs.get("product")
+        if user and user.is_authenticated and product and product.user_id != user.id:
+            raise serializers.ValidationError({"product": "Product does not belong to this account."})
+        return attrs
+
+
+class PurchaseOrderSerializer(serializers.ModelSerializer):
+    items = PurchaseOrderItemSerializer(many=True)
+    supplier_name = serializers.CharField(source="supplier.name", read_only=True)
+    branch_name = serializers.CharField(source="branch.name", read_only=True, allow_null=True)
+
+    class Meta:
+        model = PurchaseOrder
+        fields = "__all__"
+        read_only_fields = ["user", "order_number", "total_cost", "created_at", "updated_at"]
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        supplier = attrs.get("supplier")
+        branch = attrs.get("branch")
+        if user and user.is_authenticated:
+            if supplier and supplier.user_id != user.id:
+                raise serializers.ValidationError({"supplier": "Supplier does not belong to this account."})
+            if branch and branch.user_id != user.id:
+                raise serializers.ValidationError({"branch": "Branch does not belong to this account."})
+        return attrs
+
+    def create(self, validated_data):
+        items = validated_data.pop("items", [])
+        order = PurchaseOrder.objects.create(**validated_data)
+        total = Decimal("0")
+        for item in items:
+            line_total = item["unit_cost"] * item["quantity_ordered"]
+            PurchaseOrderItem.objects.create(purchase_order=order, line_total=line_total, **item)
+            total += line_total
+        order.total_cost = total
+        order.save()
+        return order
+
+    def update(self, instance, validated_data):
+        items = validated_data.pop("items", None)
+        for key, value in validated_data.items():
+            setattr(instance, key, value)
+        instance.save()
+        if items is not None:
+            instance.items.all().delete()
+            total = Decimal("0")
+            for item in items:
+                line_total = item["unit_cost"] * item["quantity_ordered"]
+                PurchaseOrderItem.objects.create(purchase_order=instance, line_total=line_total, **item)
+                total += line_total
+            instance.total_cost = total
+            instance.save()
+        return instance

@@ -47,6 +47,8 @@ type ApiProduct = {
   category_name?: string | null;
   branch?: number | null;
   branch_name?: string | null;
+  preferred_supplier?: number | null;
+  supplier_name?: string | null;
   stock: number;
   reorder_level: number;
   cost_price: string;
@@ -186,6 +188,8 @@ export async function loadServerData(user: {
     category: p.category_name || "",
     branchId: p.branch ? String(p.branch) : undefined,
     branchName: p.branch_name || "",
+    supplierId: p.preferred_supplier ? String(p.preferred_supplier) : undefined,
+    supplierName: p.supplier_name || "",
     stock: p.stock,
     reorder: p.reorder_level,
     costPrice: parseFloat(p.cost_price || "0"),

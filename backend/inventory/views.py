@@ -1,14 +1,15 @@
 from datetime import timedelta
 from decimal import Decimal
-from django.db import transaction
+from django.db import models, transaction
 from django.db.models import Sum
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from sales.models import SaleItem
-from .models import Branch, Category, Product, StockMovement, StockTransfer
-from .serializers import BranchSerializer, CategorySerializer, ProductSerializer, StockMovementSerializer, StockTransferSerializer
+from .models import Branch, Category, Product, PurchaseOrder, StockMovement, StockTransfer, Supplier
+from .serializers import BranchSerializer, CategorySerializer, ProductSerializer, PurchaseOrderSerializer, StockMovementSerializer, StockTransferSerializer, SupplierSerializer
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -24,6 +25,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
 class BranchViewSet(viewsets.ModelViewSet):
     serializer_class = BranchSerializer
+    permission_classes = [IsAuthenticated]
     search_fields = ["name", "code", "address"]
 
     def get_queryset(self):
@@ -40,6 +42,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     serializer_class = ProductSerializer
     filterset_fields = ["status", "category", "branch"]
     search_fields = ["name", "sku", "barcode"]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         qs = Product.objects.filter(user=self.request.user, is_deleted=False)
@@ -164,7 +167,8 @@ class ProductViewSet(viewsets.ModelViewSet):
             sku=product.sku,
             defaults={
                 "name": product.name,
-                "barcode": product.barcode,
+            "barcode": product.barcode,
+            "preferred_supplier": product.preferred_supplier_id,
                 "category": product.category,
                 "stock": 0,
                 "reorder_level": product.reorder_level,
@@ -191,6 +195,7 @@ class ProductViewSet(viewsets.ModelViewSet):
 
 class StockMovementViewSet(viewsets.ModelViewSet):
     serializer_class = StockMovementSerializer
+    permission_classes = [IsAuthenticated]
     filterset_fields = ["movement_type", "product"]
 
     def get_queryset(self):
@@ -210,7 +215,83 @@ class StockMovementViewSet(viewsets.ModelViewSet):
 
 class StockTransferViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = StockTransferSerializer
+    permission_classes = [IsAuthenticated]
     filterset_fields = ["from_branch", "to_branch", "product"]
 
     def get_queryset(self):
         return StockTransfer.objects.filter(created_by=self.request.user, is_deleted=False)
+
+
+class SupplierViewSet(viewsets.ModelViewSet):
+    serializer_class = SupplierSerializer
+    permission_classes = [IsAuthenticated]
+    search_fields = ["name", "contact_name", "phone", "email"]
+
+    def get_queryset(self):
+        return Supplier.objects.filter(user=self.request.user, is_deleted=False)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+
+class PurchaseOrderViewSet(viewsets.ModelViewSet):
+    serializer_class = PurchaseOrderSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ["status", "supplier", "branch"]
+    search_fields = ["order_number", "supplier__name"]
+
+    def get_queryset(self):
+        return PurchaseOrder.objects.filter(user=self.request.user, is_deleted=False).prefetch_related("items")
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    @action(detail=True, methods=["post"], url_path="receive")
+    @transaction.atomic
+    def receive(self, request, pk=None):
+        order = self.get_object()
+        received_any = False
+        for item in order.items.select_related("product"):
+            qty = int(request.data.get(str(item.id), item.quantity_ordered - item.quantity_received))
+            qty = max(0, min(qty, item.quantity_ordered - item.quantity_received))
+            if qty <= 0:
+                continue
+            product = item.product
+            product.stock += qty
+            product.cost_price = item.unit_cost
+            product.save()
+            item.quantity_received += qty
+            item.save()
+            received_any = True
+        if received_any:
+            remaining = order.items.filter(quantity_received__lt=models.F("quantity_ordered")).exists()
+            order.status = "partially_received" if remaining else "received"
+            order.save()
+        return Response(PurchaseOrderSerializer(order, context={"request": request}).data)
+
+    @action(detail=False, methods=["get"], url_path="suggestions")
+    def suggestions(self, request):
+        horizon = int(request.query_params.get("days", 7))
+        since = timezone.now() - timedelta(days=max(horizon, 1))
+        suggestions = []
+        products = Product.objects.filter(user=request.user, is_deleted=False).select_related("preferred_supplier", "branch")
+        for product in products:
+            sold = SaleItem.objects.filter(
+                product=product,
+                sale__created_by=request.user,
+                sale__created_at__gte=since,
+                is_deleted=False,
+            ).aggregate(total=Sum("quantity"))["total"] or 0
+            average_daily_sales = Decimal(sold) / Decimal(max(horizon, 1))
+            target_stock = max(product.reorder_level * 2, int(average_daily_sales * Decimal(horizon * 2)))
+            suggested_quantity = max(0, target_stock - product.stock)
+            if suggested_quantity <= 0 and product.status == "ok":
+                continue
+            suggestions.append({
+                "product": ProductSerializer(product).data,
+                "supplier": SupplierSerializer(product.preferred_supplier).data if product.preferred_supplier else None,
+                "average_daily_sales": round(average_daily_sales, 2),
+                "suggested_quantity": max(suggested_quantity, product.reorder_level - product.stock if product.stock <= product.reorder_level else 0),
+                "estimated_cost": max(suggested_quantity, 0) * product.cost_price,
+            })
+        return Response({"horizon_days": horizon, "items": suggestions})

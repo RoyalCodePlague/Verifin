@@ -31,6 +31,22 @@ class Branch(TimeStampedSoftDeleteModel):
         return self.name
 
 
+class Supplier(TimeStampedSoftDeleteModel):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="suppliers")
+    name = models.CharField(max_length=160)
+    contact_name = models.CharField(max_length=120, blank=True)
+    phone = models.CharField(max_length=30, blank=True)
+    email = models.EmailField(blank=True)
+    address = models.CharField(max_length=255, blank=True)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        unique_together = ("user", "name")
+
+    def __str__(self):
+        return self.name
+
+
 class Product(TimeStampedSoftDeleteModel):
     STATUS_CHOICES = [("ok", "ok"), ("low", "low"), ("out", "out")]
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="products")
@@ -39,6 +55,7 @@ class Product(TimeStampedSoftDeleteModel):
     sku = models.CharField(max_length=100)
     barcode = models.CharField(max_length=100, blank=True)
     category = models.ForeignKey(Category, on_delete=models.SET_NULL, blank=True, null=True, related_name="products")
+    preferred_supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, blank=True, null=True, related_name="products")
     stock = models.IntegerField(default=0)
     reorder_level = models.IntegerField(default=0)
     cost_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
@@ -74,3 +91,39 @@ class StockTransfer(TimeStampedSoftDeleteModel):
     quantity = models.PositiveIntegerField()
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="stock_transfers")
     note = models.CharField(max_length=255, blank=True)
+
+
+class PurchaseOrder(TimeStampedSoftDeleteModel):
+    STATUS_CHOICES = [
+        ("draft", "draft"),
+        ("ordered", "ordered"),
+        ("partially_received", "partially_received"),
+        ("received", "received"),
+        ("cancelled", "cancelled"),
+    ]
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="purchase_orders")
+    supplier = models.ForeignKey(Supplier, on_delete=models.PROTECT, related_name="purchase_orders")
+    branch = models.ForeignKey(Branch, on_delete=models.SET_NULL, blank=True, null=True, related_name="purchase_orders")
+    order_number = models.CharField(max_length=40)
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="draft")
+    expected_date = models.DateField(blank=True, null=True)
+    notes = models.TextField(blank=True)
+    total_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+
+    class Meta:
+        unique_together = ("user", "order_number")
+
+    def save(self, *args, **kwargs):
+        if not self.order_number:
+            count = PurchaseOrder.objects.filter(user=self.user).count() + 1
+            self.order_number = f"PO-{count:05d}"
+        super().save(*args, **kwargs)
+
+
+class PurchaseOrderItem(TimeStampedSoftDeleteModel):
+    purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name="items")
+    product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name="purchase_order_items")
+    quantity_ordered = models.PositiveIntegerField(default=1)
+    quantity_received = models.PositiveIntegerField(default=0)
+    unit_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    line_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)

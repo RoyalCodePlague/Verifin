@@ -3,7 +3,7 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Package, ShoppingCart, Receipt, ClipboardCheck,
   BarChart3, Users, UserCog, Settings, Menu, X, LogOut,
-  CheckCircle, Moon, Sun, Clock,
+  CheckCircle, Moon, Sun, Clock, Truck,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth-context";
@@ -26,6 +26,7 @@ const navItems = [
   { to: "/audits", icon: ClipboardCheck, label: "Audits" },
   { to: "/reports", icon: BarChart3, label: "Reports" },
   { to: "/customers", icon: Users, label: "Customers" },
+  { to: "/suppliers", icon: Truck, label: "Suppliers" },
   { to: "/staff", icon: UserCog, label: "Staff" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];

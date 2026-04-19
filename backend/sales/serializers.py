@@ -1,8 +1,10 @@
 from django.db import transaction
+from decimal import Decimal
+from django.utils import timezone
 from rest_framework import serializers
 from customers.models import Customer, LoyaltyTransaction
 from inventory.models import Product
-from .models import Sale, SaleItem
+from .models import Sale, SaleItem, TillSession
 
 
 class SaleItemSerializer(serializers.ModelSerializer):
@@ -33,6 +35,9 @@ class SaleSerializer(serializers.ModelSerializer):
             "gross_profit",
             "payment_method",
             "branch",
+            "till_session",
+            "receipt_number",
+            "invoice_number",
             "customer",
             "created_by",
             "date",
@@ -42,7 +47,7 @@ class SaleSerializer(serializers.ModelSerializer):
             "sale_items",
             "line_items",
         ]
-        read_only_fields = ["created_by", "date", "time", "created_at", "updated_at", "items", "total", "total_cost", "gross_profit"]
+        read_only_fields = ["created_by", "date", "time", "created_at", "updated_at", "items", "total", "total_cost", "gross_profit", "receipt_number", "invoice_number"]
 
     def validate(self, attrs):
         request = self.context.get("request")
@@ -52,6 +57,9 @@ class SaleSerializer(serializers.ModelSerializer):
         if user and user.is_authenticated:
             if branch and branch.user_id != user.id:
                 raise serializers.ValidationError({"branch": "Branch does not belong to this account."})
+            till_session = attrs.get("till_session")
+            if till_session and till_session.user_id != user.id:
+                raise serializers.ValidationError({"till_session": "Till session does not belong to this account."})
             for item in items:
                 product = item.get("product")
                 if product and product.user_id != user.id:
@@ -112,3 +120,41 @@ class SaleSerializer(serializers.ModelSerializer):
             LoyaltyTransaction.objects.create(customer=customer, points_change=points, reason="Sale purchase")
         
         return sale
+
+
+class TillSessionSerializer(serializers.ModelSerializer):
+    sales_total = serializers.SerializerMethodField()
+    cash_sales = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TillSession
+        fields = "__all__"
+        read_only_fields = ["user", "expected_cash", "cash_variance", "card_total", "eft_total", "opened_at", "closed_at", "created_at", "updated_at"]
+
+    def get_sales_total(self, obj):
+        return sum(sale.total for sale in obj.sales.filter(is_deleted=False))
+
+    def get_cash_sales(self, obj):
+        return sum(sale.total for sale in obj.sales.filter(is_deleted=False, payment_method="Cash"))
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        branch = attrs.get("branch")
+        if user and user.is_authenticated and branch and branch.user_id != user.id:
+            raise serializers.ValidationError({"branch": "Branch does not belong to this account."})
+        return attrs
+
+    def close(self, instance, closing_cash, notes=""):
+        closing_cash = Decimal(str(closing_cash or 0))
+        cash_sales = sum(sale.total for sale in instance.sales.filter(is_deleted=False, payment_method="Cash"))
+        instance.closing_cash = closing_cash
+        instance.expected_cash = instance.opening_cash + cash_sales
+        instance.cash_variance = closing_cash - instance.expected_cash
+        instance.card_total = sum(sale.total for sale in instance.sales.filter(is_deleted=False, payment_method="Card"))
+        instance.eft_total = sum(sale.total for sale in instance.sales.filter(is_deleted=False, payment_method="EFT"))
+        instance.notes = notes
+        instance.status = "closed"
+        instance.closed_at = timezone.now()
+        instance.save()
+        return instance
