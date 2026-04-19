@@ -6,8 +6,8 @@ import { Switch } from "@/components/ui/switch";
 import { useStore } from "@/lib/store";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
-import { Building2, Moon, Sun } from "lucide-react";
-import { createBranchApi, deleteBranchApi, patchMe, updateBranchApi } from "@/lib/api";
+import { Moon, Sun } from "lucide-react";
+import { patchMe } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useNavigate } from "react-router-dom";
 
@@ -24,13 +24,12 @@ const currencyOptions = [
 ];
 
 const SettingsPage = () => {
-  const { profile, branches, setProfile, addBranch, updateBranch, deleteBranch } = useStore();
+  const { profile, setProfile } = useStore();
   const { logout } = useAuth();
   const navigate = useNavigate();
   const [name, setName] = useState(profile.name);
   const [currency, setCurrency] = useState(profile.currency);
   const [saving, setSaving] = useState(false);
-  const [branchForm, setBranchForm] = useState({ name: "", code: "", phone: "", address: "" });
 
   useEffect(() => {
     setName(profile.name);
@@ -75,55 +74,6 @@ const SettingsPage = () => {
     navigate("/login");
   };
 
-  const handleAddBranch = async () => {
-    if (!branchForm.name.trim()) return;
-    const isPrimary = branches.length === 0;
-    try {
-      const created = await createBranchApi({
-        name: branchForm.name,
-        code: branchForm.code,
-        phone: branchForm.phone,
-        address: branchForm.address,
-        is_primary: isPrimary,
-      });
-      addBranch({
-        name: created.name,
-        code: created.code,
-        phone: created.phone,
-        address: created.address,
-        isPrimary: created.is_primary,
-      });
-      setBranchForm({ name: "", code: "", phone: "", address: "" });
-      toast.success("Branch added");
-    } catch (e) {
-      addBranch({ ...branchForm, isPrimary });
-      setBranchForm({ name: "", code: "", phone: "", address: "" });
-      toast.warning("Branch saved on this device.", { description: e instanceof Error ? e.message : "Server sync will retry later." });
-    }
-  };
-
-  const handlePrimaryBranch = async (id: string) => {
-    updateBranch(id, { isPrimary: true });
-    if (/^\d+$/.test(id)) {
-      try {
-        await updateBranchApi(id, { is_primary: true });
-      } catch {
-        toast.warning("Primary branch changed locally.");
-      }
-    }
-  };
-
-  const handleDeleteBranch = async (id: string) => {
-    deleteBranch(id);
-    if (/^\d+$/.test(id)) {
-      try {
-        await deleteBranchApi(id);
-      } catch {
-        toast.warning("Branch removed locally. Server removal can be retried later.");
-      }
-    }
-  };
-
   return (
     <div className="space-y-6 max-w-2xl">
       <Card className="shadow-soft">
@@ -146,6 +96,8 @@ const SettingsPage = () => {
         </CardContent>
       </Card>
 
+      {/*
+      Multiple branches are disabled for now. Keep this block for later reactivation.
       <Card className="shadow-soft">
         <CardHeader><CardTitle className="font-display text-base flex items-center gap-2"><Building2 className="h-4 w-4" /> Branches</CardTitle></CardHeader>
         <CardContent className="space-y-4">
@@ -173,6 +125,7 @@ const SettingsPage = () => {
           </div>
         </CardContent>
       </Card>
+      */}
 
       <Card className="shadow-soft">
         <CardHeader><CardTitle className="font-display text-base">Appearance</CardTitle></CardHeader>

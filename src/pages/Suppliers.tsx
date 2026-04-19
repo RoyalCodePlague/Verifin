@@ -24,14 +24,14 @@ type Suggestion = Awaited<ReturnType<typeof fetchPurchaseSuggestions>>["items"][
 const emptySupplier = { name: "", contact_name: "", phone: "", email: "", address: "", notes: "" };
 
 const Suppliers = () => {
-  const { products, branches, profile } = useStore();
+  const { products, profile } = useStore();
   const [suppliers, setSuppliers] = useState<ApiSupplier[]>([]);
   const [orders, setOrders] = useState<ApiPurchaseOrder[]>([]);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [supplierOpen, setSupplierOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
   const [supplierForm, setSupplierForm] = useState(emptySupplier);
-  const [orderForm, setOrderForm] = useState({ supplier: "", branch: "", product: "", quantity: "1", unitCost: "", expectedDate: "" });
+  const [orderForm, setOrderForm] = useState({ supplier: "", product: "", quantity: "1", unitCost: "", expectedDate: "" });
   const sym = profile.currencySymbol || "R";
 
   const loadData = async () => {
@@ -72,7 +72,7 @@ const Suppliers = () => {
     try {
       const created = await createPurchaseOrderApi({
         supplier: Number(orderForm.supplier),
-        branch: orderForm.branch ? Number(orderForm.branch) : null,
+        branch: null,
         expected_date: orderForm.expectedDate || null,
         status: "ordered",
         items: [{
@@ -103,7 +103,6 @@ const Suppliers = () => {
   const startSuggestionOrder = (item: Suggestion) => {
     setOrderForm({
       supplier: item.supplier ? String(item.supplier.id) : "",
-      branch: item.product.branch ? String(item.product.branch) : "",
       product: String(item.product.id),
       quantity: String(item.suggested_quantity || 1),
       unitCost: item.product.cost_price || "0",
@@ -128,7 +127,7 @@ const Suppliers = () => {
           {suggestions.length === 0 ? <p className="text-sm text-muted-foreground">No purchase suggestions right now.</p> : suggestions.map(item => (
             <div key={item.product.id} className="rounded-lg border border-border p-3">
               <p className="text-sm font-medium">{item.product.name}</p>
-              <p className="text-xs text-muted-foreground">{item.product.branch_name || "Main"} - {item.product.stock} in stock</p>
+              <p className="text-xs text-muted-foreground">{item.product.stock} in stock</p>
               <p className="text-sm mt-2">Suggested: <span className="font-semibold">{item.suggested_quantity}</span></p>
               <p className="text-xs text-muted-foreground">Supplier: {item.supplier?.name || "Not assigned"}</p>
               <Button size="sm" variant="outline" className="mt-3" onClick={() => startSuggestionOrder(item)}>Create PO</Button>
@@ -193,7 +192,10 @@ const Suppliers = () => {
           <DialogHeader><DialogTitle className="font-display">Create Purchase Order</DialogTitle></DialogHeader>
           <div className="space-y-3">
             <div><Label>Supplier</Label><select value={orderForm.supplier} onChange={e => setOrderForm({ ...orderForm, supplier: e.target.value })} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm"><option value="">Select supplier</option>{suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+            {/*
+            Multiple branches are disabled for now. Keep this field for later reactivation.
             <div><Label>Branch</Label><select value={orderForm.branch} onChange={e => setOrderForm({ ...orderForm, branch: e.target.value })} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm"><option value="">No branch</option>{branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
+            */}
             <div><Label>Product</Label><select value={orderForm.product} onChange={e => { const product = products.find(p => p.id === e.target.value); setOrderForm({ ...orderForm, product: e.target.value, unitCost: String(product?.costPrice || "") }); }} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm"><option value="">Select product</option>{products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
             <div className="grid grid-cols-3 gap-2">
               <div><Label>Quantity</Label><Input type="number" value={orderForm.quantity} onChange={e => setOrderForm({ ...orderForm, quantity: e.target.value })} className="mt-1" /></div>

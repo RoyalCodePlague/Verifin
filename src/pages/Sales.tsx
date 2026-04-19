@@ -22,7 +22,7 @@ interface SaleLineItem {
 }
 
 const Sales = () => {
-  const { sales, deleteSale, profile, products, branches, addSale } = useStore();
+  const { sales, deleteSale, profile, products, addSale } = useStore();
   const { refreshUser } = useAuth();
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
@@ -32,7 +32,7 @@ const Sales = () => {
   const [receiptText, setReceiptText] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [till, setTill] = useState<ApiTillSession | null>(null);
-  const [tillForm, setTillForm] = useState({ branch: "", cashier: "", openingCash: "0", closingCash: "" });
+  const [tillForm, setTillForm] = useState({ cashier: "", openingCash: "0", closingCash: "" });
   const [method, setMethod] = useState<"Cash" | "EFT" | "Card">("Cash");
   const [lineItems, setLineItems] = useState<SaleLineItem[]>([]);
   const [selectedProduct, setSelectedProduct] = useState("");
@@ -92,7 +92,7 @@ const Sales = () => {
 
     const apiPayload = {
       payment_method: method,
-      branch: till?.branch || null,
+      branch: null,
       till_session: till?.id || null,
       customer: null,
       sale_items: lineItems.map((l) => ({
@@ -158,7 +158,7 @@ const Sales = () => {
   const handleOpenTill = async () => {
     try {
       const opened = await openTillApi({
-        branch: tillForm.branch ? Number(tillForm.branch) : null,
+        branch: null,
         cashier_name: tillForm.cashier,
         opening_cash: tillForm.openingCash || "0",
       });
@@ -334,7 +334,10 @@ const Sales = () => {
           <div className="space-y-3">
             {!till ? (
               <>
+                {/*
+                Multiple branches are disabled for now. Keep this field for later reactivation.
                 <div><Label>Branch</Label><select value={tillForm.branch} onChange={e => setTillForm({ ...tillForm, branch: e.target.value })} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm"><option value="">No branch</option>{branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
+                */}
                 <div><Label>Cashier Name</Label><Input value={tillForm.cashier} onChange={e => setTillForm({ ...tillForm, cashier: e.target.value })} className="mt-1" /></div>
                 <div><Label>Opening Cash ({sym})</Label><Input type="number" value={tillForm.openingCash} onChange={e => setTillForm({ ...tillForm, openingCash: e.target.value })} className="mt-1" /></div>
                 <Button onClick={handleOpenTill} className="w-full">Open Till</Button>

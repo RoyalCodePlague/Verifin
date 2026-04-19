@@ -30,7 +30,7 @@ const pricePreview = (price: string, cost: string) => {
 };
 
 const Inventory = () => {
-  const { products, branches, addProduct, updateProduct, deleteProduct, profile, addActivity } = useStore();
+  const { products, addProduct, updateProduct, deleteProduct, profile, addActivity } = useStore();
   const { refreshUser } = useAuth();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
@@ -72,7 +72,7 @@ const Inventory = () => {
   );
 
   const openAdd = () => {
-    setForm({ name: "", category: mergedCategories[0] || "", branchId: branches.find(b => b.isPrimary)?.id || branches[0]?.id || "", supplierId: "", stock: "", reorder: "5", costPrice: "", price: "", barcode: "" });
+    setForm({ name: "", category: mergedCategories[0] || "", branchId: "", supplierId: "", stock: "", reorder: "5", costPrice: "", price: "", barcode: "" });
     setAddOpen(true);
   };
 
@@ -101,8 +101,8 @@ const Inventory = () => {
         updateProduct(editProduct, {
           name: form.name,
           category: form.category,
-          branchId: form.branchId || undefined,
-          branchName: branches.find(b => b.id === form.branchId)?.name || "",
+          branchId: undefined,
+          branchName: "",
           supplierId: form.supplierId || undefined,
           supplierName: suppliers.find(s => String(s.id) === form.supplierId)?.name || "",
           stock,
@@ -118,7 +118,6 @@ const Inventory = () => {
               id: parseInt(editProduct, 10),
               name: form.name,
               categoryName: form.category,
-              branch: form.branchId || undefined,
               preferred_supplier: form.supplierId || undefined,
               stock,
               reorder_level: reorder,
@@ -136,8 +135,8 @@ const Inventory = () => {
           name: form.name,
           sku,
           category: form.category,
-          branchId: form.branchId || undefined,
-          branchName: branches.find(b => b.id === form.branchId)?.name || "",
+          branchId: undefined,
+          branchName: "",
           supplierId: form.supplierId || undefined,
           supplierName: suppliers.find(s => String(s.id) === form.supplierId)?.name || "",
           stock,
@@ -153,7 +152,6 @@ const Inventory = () => {
             name: form.name,
             sku,
             categoryName: form.category,
-            branch: form.branchId || undefined,
             preferred_supplier: form.supplierId || undefined,
             stock,
             reorder_level: reorder,
@@ -184,7 +182,6 @@ const Inventory = () => {
         await updateProductApi(editProduct, {
           name: form.name,
           categoryName: form.category,
-          branch: form.branchId || undefined,
           preferred_supplier: form.supplierId || undefined,
           stock,
           reorder_level: reorder,
@@ -201,7 +198,6 @@ const Inventory = () => {
           name: form.name,
           sku,
           categoryName: form.category,
-          branch: form.branchId || undefined,
           preferred_supplier: form.supplierId || undefined,
           stock,
           reorder_level: reorder,
@@ -232,7 +228,7 @@ const Inventory = () => {
       setSearch(found.name);
     } else {
       toast.info(`New barcode: ${code}. Fill in the product details and save.`);
-      setForm({ name: "", category: mergedCategories[0] || "", branchId: branches.find(b => b.isPrimary)?.id || branches[0]?.id || "", supplierId: "", stock: "", reorder: "5", costPrice: "", price: "", barcode: code });
+      setForm({ name: "", category: mergedCategories[0] || "", branchId: "", supplierId: "", stock: "", reorder: "5", costPrice: "", price: "", barcode: code });
       setAddOpen(true);
     }
     setScanOpen(false);
@@ -249,6 +245,8 @@ const Inventory = () => {
             {mergedCategories.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
+        {/*
+        Multiple branches are disabled for now. Keep this field for later reactivation.
         <div>
           <Label>Branch</Label>
           <select value={form.branchId} onChange={e => setForm({ ...form, branchId: e.target.value })} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
@@ -256,6 +254,7 @@ const Inventory = () => {
             {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
         </div>
+        */}
         <div>
           <Label>Preferred Supplier</Label>
           <select value={form.supplierId} onChange={e => setForm({ ...form, supplierId: e.target.value })} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
@@ -334,7 +333,7 @@ const Inventory = () => {
                   <th className="text-left p-3 font-medium text-muted-foreground">Product</th>
                   <th className="text-left p-3 font-medium text-muted-foreground hidden sm:table-cell">SKU</th>
                   <th className="text-left p-3 font-medium text-muted-foreground hidden md:table-cell">Category</th>
-                  <th className="text-left p-3 font-medium text-muted-foreground hidden lg:table-cell">Branch</th>
+                  {/* Multiple branches disabled: branch column hidden for now. */}
                   <th className="text-left p-3 font-medium text-muted-foreground hidden lg:table-cell">Supplier</th>
                   <th className="text-center p-3 font-medium text-muted-foreground">Stock</th>
                   <th className="text-right p-3 font-medium text-muted-foreground hidden lg:table-cell">Cost</th>
@@ -354,7 +353,7 @@ const Inventory = () => {
                     </td>
                     <td className="p-3 text-muted-foreground hidden sm:table-cell">{p.sku}</td>
                     <td className="p-3 text-muted-foreground hidden md:table-cell">{p.category}</td>
-                    <td className="p-3 text-muted-foreground hidden lg:table-cell">{p.branchName || "Main"}</td>
+                    {/* Multiple branches disabled: branch value hidden for now. */}
                     <td className="p-3 text-muted-foreground hidden lg:table-cell">{p.supplierName || "Unassigned"}</td>
                     <td className="p-3 text-center">{p.stock}</td>
                     <td className="p-3 text-right hidden lg:table-cell">{sym}{(p.costPrice || 0).toFixed(2)}</td>

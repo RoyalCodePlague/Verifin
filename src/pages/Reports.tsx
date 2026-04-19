@@ -76,8 +76,8 @@ const Reports = () => {
       ];
     } else if (title.includes("Stock")) {
       csvRows = [
-        "Currency,Product,SKU,Category,Branch,Stock,Reorder Level,Cost,Price,Margin %,Status,Value,Cost Value,Added Date,Last Restocked",
-        ...products.map(p => row([profile.currency, p.name, p.sku, p.category, p.branchName || "Main", p.stock, p.reorder, formatMoney(p.costPrice || 0, sym), formatMoney(p.price, sym), p.price ? (((p.price - (p.costPrice || 0)) / p.price) * 100).toFixed(1) : "0.0", p.status, formatMoney(p.stock * p.price, sym), formatMoney(p.stock * (p.costPrice || 0), sym), p.addedDate || "N/A", p.lastRestocked || "N/A"])),
+        "Currency,Product,SKU,Category,Stock,Reorder Level,Cost,Price,Margin %,Status,Value,Cost Value,Added Date,Last Restocked",
+        ...products.map(p => row([profile.currency, p.name, p.sku, p.category, p.stock, p.reorder, formatMoney(p.costPrice || 0, sym), formatMoney(p.price, sym), p.price ? (((p.price - (p.costPrice || 0)) / p.price) * 100).toFixed(1) : "0.0", p.status, formatMoney(p.stock * p.price, sym), formatMoney(p.stock * (p.costPrice || 0), sym), p.addedDate || "N/A", p.lastRestocked || "N/A"])),
       ];
     } else if (title.includes("Discrepancy")) {
       csvRows = [
