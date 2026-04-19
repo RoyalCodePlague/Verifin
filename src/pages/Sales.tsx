@@ -288,7 +288,7 @@ const Sales = () => {
                 <Input type="number" min="1" value={qty} onChange={e => setQty(e.target.value)} className="mt-1" />
               </div>
               <Button type="button" variant="outline" onClick={addLineItem} disabled={!selectedProduct} className="mb-0">
-                <Plus className="h-4 w-4" />
+                Add
               </Button>
             </div>
 
