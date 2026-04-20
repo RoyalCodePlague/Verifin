@@ -122,7 +122,7 @@ export async function registerRequest(body: {
   phone?: string;
   business_name?: string;
 }) {
-  return apiFetch<{ detail: string; user: ApiUser }>("/api/v1/accounts/register/", {
+  return apiFetch<{ access: string; refresh: string; user: ApiUser }>("/api/v1/accounts/register/", {
     method: "POST",
     skipAuth: true,
     body: JSON.stringify(body),

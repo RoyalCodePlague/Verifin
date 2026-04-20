@@ -103,16 +103,11 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        try:
-            send_verification_email(user)
-        except VerificationEmailError as exc:
-            return Response({
-                "user": UserSerializer(user).data,
-                "detail": str(exc),
-            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        refresh = RefreshToken.for_user(user)
         return Response({
             "user": UserSerializer(user).data,
-            "detail": "Account created. Check your email to verify your account before signing in.",
+            "refresh": str(refresh),
+            "access": str(refresh.access_token),
         }, status=status.HTTP_201_CREATED)
 
 

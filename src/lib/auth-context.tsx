@@ -49,7 +49,7 @@ type AuthContextValue = {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name?: string) => Promise<string>;
+  register: (email: string, password: string, name?: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 };
@@ -127,9 +127,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password,
         business_name: name || "",
       });
-      return res.detail;
+      setTokens(res.access, res.refresh);
+      await refreshUser();
     },
-    []
+    [refreshUser]
   );
 
   const logout = useCallback(async () => {

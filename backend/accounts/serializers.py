@@ -28,11 +28,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             })
         
         existing_user = User.objects.filter(email__iexact=email).first()
-        if existing_user and not existing_user.email_verified:
-            if existing_user.check_password(password):
-                raise serializers.ValidationError({
-                    'detail': 'Please verify your email before signing in. Check your inbox or request a new verification email.'
-                })
 
         # Authenticate using email and password
         user = authenticate(username=existing_user.email if existing_user else email, password=password)
@@ -47,11 +42,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 'detail': 'Invalid email or password.'
             })
 
-        if not user.email_verified:
-            raise serializers.ValidationError({
-                'detail': 'Please verify your email before signing in.'
-            })
-        
         # Return refresh and access tokens
         from rest_framework_simplejwt.tokens import RefreshToken
         refresh = RefreshToken.for_user(user)
@@ -83,7 +73,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         user = User(**validated_data)
         user.set_password(password)
         user.is_active = True
-        user.email_verified = False
+        user.email_verified = True
         user.email_verification_token = ""
         user.email_verification_sent_at = None
         user.save()
