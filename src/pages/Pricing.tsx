@@ -5,7 +5,7 @@ import { BarChart3, Check, HelpCircle, Lock, ScanBarcode, ShieldCheck, Sparkles,
 import Navbar from "@/components/landing/Navbar";
 import Footer from "@/components/landing/Footer";
 import { useAuth } from "@/lib/auth-context";
-import { getPricingContextApi, type BillingPeriod, type BillingPlan, type PlanCode, type PricingContext, type RegionalPlanPrice } from "@/lib/api";
+import { getDetectedPricingCountry, getPricingContextApi, type BillingPeriod, type BillingPlan, type PlanCode, type PricingContext, type RegionalPlanPrice } from "@/lib/api";
 
 const fallbackPlans: BillingPlan[] = [
   {
@@ -110,10 +110,10 @@ function priceFor(price: RegionalPlanPrice, period: BillingPeriod) {
 
 const Pricing = () => {
   const [period, setPeriod] = useState<BillingPeriod>("monthly");
-  const [country, setCountry] = useState("");
+  const [country, setCountry] = useState(() => getDetectedPricingCountry());
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
-  const { data } = useQuery({ queryKey: ["pricing-context", country], queryFn: () => getPricingContextApi(country || undefined) });
+  const { data } = useQuery({ queryKey: ["pricing-context", country], queryFn: () => getPricingContextApi(country) });
   const pricing = data ?? fallbackPricingContext;
   const prices = (pricing.prices.length ? pricing.prices : fallbackPricingContext.prices).sort((a, b) => a.plan.sort_order - b.plan.sort_order);
 

@@ -717,12 +717,47 @@ export type PricingContext = PricingCountry & {
   available_countries: PricingCountry[];
 };
 
+const TIMEZONE_COUNTRY: Record<string, string> = {
+  "Africa/Blantyre": "ZW",
+  "Africa/Bujumbura": "TZ",
+  "Africa/Dar_es_Salaam": "TZ",
+  "Africa/Gaborone": "BW",
+  "Africa/Harare": "ZW",
+  "Africa/Johannesburg": "ZA",
+  "Africa/Lagos": "NG",
+  "Africa/Lusaka": "ZM",
+  "Africa/Nairobi": "KE",
+  "Africa/Windhoek": "ZA",
+};
+
+const SUPPORTED_PRICING_COUNTRIES = new Set(["ZA", "ZW", "BW", "KE", "NG", "GH", "TZ", "ZM"]);
+
+export function getDetectedPricingCountry(): string {
+  const languageRegion = navigator.languages
+    ?.map((language) => {
+      try {
+        return new Intl.Locale(language).region;
+      } catch {
+        return "";
+      }
+    })
+    .find(Boolean);
+
+  const region = (languageRegion || "").toUpperCase();
+  if (SUPPORTED_PRICING_COUNTRIES.has(region)) return region;
+
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const timezoneCountry = TIMEZONE_COUNTRY[timezone];
+  return SUPPORTED_PRICING_COUNTRIES.has(timezoneCountry) ? timezoneCountry : "ZA";
+}
+
 export async function listBillingPlansApi() {
   return fetchAllPages<BillingPlan>("/api/v1/billing/plans/");
 }
 
 export async function getPricingContextApi(countryCode?: string) {
-  const suffix = countryCode ? `?country=${encodeURIComponent(countryCode)}` : "";
+  const detectedCountry = (countryCode || getDetectedPricingCountry()).trim().toUpperCase();
+  const suffix = detectedCountry ? `?country=${encodeURIComponent(detectedCountry)}` : "";
   return apiFetch<PricingContext>(`/api/v1/billing/pricing-context/${suffix}`, { skipAuth: true });
 }
 
