@@ -17,7 +17,7 @@ import Audits from "./pages/Audits";
 import Reports from "./pages/Reports";
 import Customers from "./pages/Customers";
 import Staff from "./pages/Staff";
-import Suppliers from "./pages/Suppliers";
+// import Suppliers from "./pages/Suppliers";
 import SettingsPage from "./pages/Settings";
 import Onboarding from "./pages/Onboarding";
 import Pricing from "./pages/Pricing";
@@ -80,7 +80,7 @@ const App = () => (
               <Route path="/audits" element={<ProtectedRoute><AppRoute><Audits /></AppRoute></ProtectedRoute>} />
               <Route path="/reports" element={<ProtectedRoute><AppRoute><Reports /></AppRoute></ProtectedRoute>} />
               <Route path="/customers" element={<ProtectedRoute><AppRoute><Customers /></AppRoute></ProtectedRoute>} />
-              <Route path="/suppliers" element={<ProtectedRoute><AppRoute><Suppliers /></AppRoute></ProtectedRoute>} />
+              {/* <Route path="/suppliers" element={<ProtectedRoute><AppRoute><Suppliers /></AppRoute></ProtectedRoute>} /> */}
               <Route path="/staff" element={<ProtectedRoute><AppRoute><Staff /></AppRoute></ProtectedRoute>} />
               <Route path="/settings" element={<ProtectedRoute><AppRoute><SettingsPage /></AppRoute></ProtectedRoute>} />
               <Route path="/billing" element={<ProtectedRoute><AppRoute><Billing /></AppRoute></ProtectedRoute>} />

@@ -28,7 +28,7 @@ const navItems = [
   { to: "/audits", icon: ClipboardCheck, label: "Audits", feature: "audits" },
   { to: "/reports", icon: BarChart3, label: "Reports" },
   { to: "/customers", icon: Users, label: "Customers" },
-  { to: "/suppliers", icon: Truck, label: "Suppliers" },
+  // { to: "/suppliers", icon: Truck, label: "Suppliers" },
   { to: "/staff", icon: UserCog, label: "Staff" },
   { to: "/billing", icon: CreditCard, label: "Billing" },
   { to: "/settings", icon: Settings, label: "Settings" },
