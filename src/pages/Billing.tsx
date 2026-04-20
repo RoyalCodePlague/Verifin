@@ -5,7 +5,6 @@ import { toast } from "sonner";
 import {
   getBillingOverviewApi,
   getPricingContextApi,
-  listBillingPlansApi,
   mockCheckoutApi,
   subscriptionActionApi,
   type BillingPeriod,
@@ -104,19 +103,18 @@ const Billing = () => {
   const [period, setPeriod] = useState<BillingPeriod>("monthly");
   const [checkoutPlan, setCheckoutPlan] = useState<BillingPlan | null>(null);
   const queryClient = useQueryClient();
-  const plansQuery = useQuery({ queryKey: ["billing-plans"], queryFn: listBillingPlansApi });
-  const billingQuery = useQuery({ queryKey: ["billing-overview"], queryFn: getBillingOverviewApi });
-  const pricingQuery = useQuery({ queryKey: ["pricing-context"], queryFn: () => getPricingContextApi() });
+  const billingQuery = useQuery({ queryKey: ["billing-overview"], queryFn: getBillingOverviewApi, staleTime: 60_000 });
+  const pricingQuery = useQuery({ queryKey: ["pricing-context"], queryFn: () => getPricingContextApi(), staleTime: 5 * 60_000 });
 
   const billing = billingQuery.data;
   const currentCode = billing?.plan.code;
   const usageLimits = useMemo(() => billing?.limits.filter((limit) => visibleLimits.includes(limit.key)) ?? [], [billing]);
   const pricing = pricingQuery.data;
   const regionalByPlan = useMemo(() => new Map((pricing?.prices ?? []).map((price) => [price.plan.code, price])), [pricing]);
+  const plans = useMemo(() => (pricing?.prices ?? []).map((price) => price.plan), [pricing]);
 
   const refreshBilling = async () => {
     await queryClient.invalidateQueries({ queryKey: ["billing-overview"] });
-    await queryClient.invalidateQueries({ queryKey: ["billing-plans"] });
   };
 
   const checkoutMutation = useMutation({
@@ -200,7 +198,7 @@ const Billing = () => {
         </div>
 
         <div className="mt-6 grid gap-4 lg:grid-cols-3">
-          {(plansQuery.data ?? []).map((plan) => {
+          {plans.map((plan) => {
             const regional = regionalByPlan.get(plan.code);
             const price = regional ? (period === "yearly" ? regional.yearly_price : regional.monthly_price) : (period === "yearly" ? plan.yearly_price : plan.monthly_price);
             const isCurrent = currentCode === plan.code;

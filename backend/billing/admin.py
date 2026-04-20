@@ -6,7 +6,7 @@ from .services import activate_plan, cancel_subscription, renew_subscription, sy
 
 @admin.action(description="Sync built-in billing plans")
 def sync_plans(modeladmin, request, queryset):
-    sync_plan_catalog()
+    sync_plan_catalog(force=True)
 
 
 class FeatureLimitInline(admin.TabularInline):

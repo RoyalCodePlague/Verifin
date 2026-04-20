@@ -12,9 +12,23 @@ from .regional_pricing import COUNTRY_PRICING, DEFAULT_COUNTRY, normalize_countr
 
 
 GRACE_PERIOD_DAYS = 7
+_CATALOG_SYNCED = False
 
 
-def sync_plan_catalog():
+def sync_plan_catalog(force=False):
+    global _CATALOG_SYNCED
+    if _CATALOG_SYNCED and not force:
+        return Plan.objects.filter(is_deleted=False).prefetch_related("limits")
+
+    expected_region_prices = len(COUNTRY_PRICING) * len(PLAN_DEFINITIONS)
+    if (
+        not force
+        and Plan.objects.filter(is_deleted=False).count() >= len(PLAN_DEFINITIONS)
+        and RegionPrice.objects.filter(is_deleted=False).count() >= expected_region_prices
+    ):
+        _CATALOG_SYNCED = True
+        return Plan.objects.filter(is_deleted=False).prefetch_related("limits")
+
     for code, definition in PLAN_DEFINITIONS.items():
         plan, _ = Plan.objects.update_or_create(
             code=code,
@@ -34,6 +48,7 @@ def sync_plan_catalog():
                 defaults={"label": label, "enabled": enabled, "limit": limit, "unit": unit},
             )
     sync_region_prices()
+    _CATALOG_SYNCED = True
     return Plan.objects.filter(is_deleted=False).prefetch_related("limits")
 
 
@@ -82,7 +97,6 @@ def detect_country_code(request):
 
 
 def region_price_for(plan, country_code):
-    sync_plan_catalog()
     country = normalize_country_code(country_code) or DEFAULT_COUNTRY
     price = RegionPrice.objects.filter(plan=plan, country_code=country, is_deleted=False).first()
     if price:
@@ -442,11 +456,13 @@ def enforce_limit(user, key, increment=1):
 
 def subscription_payload(user):
     subscription = get_or_create_subscription(user)
-    refresh_usage_snapshot(user)
+    usage_counts = {key: current_usage(user, key) for key in ["users", "products", "customers", "reports"]}
+    plan_features = list(subscription.plan.limits.filter(is_deleted=False).order_by("key"))
+    features_by_key = {feature.key: feature for feature in plan_features}
     limits = []
     locked = []
-    for feature in subscription.plan.limits.filter(is_deleted=False).order_by("key"):
-        used = current_usage(user, feature.key) if feature.key in ["users", "products", "customers", "reports"] else None
+    for feature in plan_features:
+        used = usage_counts.get(feature.key)
         item = {
             "key": feature.key,
             "label": feature.label,
@@ -464,19 +480,26 @@ def subscription_payload(user):
         "plan": subscription.plan,
         "limits": limits,
         "locked_features": locked,
-        "features": feature_access_payload(user),
+        "features": feature_access_payload(user, subscription=subscription, features_by_key=features_by_key, usage_counts=usage_counts),
         "events": subscription.events.filter(is_deleted=False)[:10],
         "cycles": subscription.cycles.filter(is_deleted=False)[:6],
         "available_actions": ["mock_checkout", "renew", "upgrade", "downgrade", "cancel", "resume"],
     }
 
 
-def feature_access_payload(user):
-    subscription = get_or_create_subscription(user)
+def feature_access_payload(user, subscription=None, features_by_key=None, usage_counts=None):
+    subscription = subscription or get_or_create_subscription(user)
+    if features_by_key is None:
+        features_by_key = {
+            feature.key: feature
+            for feature in subscription.plan.limits.filter(is_deleted=False)
+        }
+    if usage_counts is None:
+        usage_counts = {key: current_usage(user, key) for key in ["users", "products", "customers", "reports"]}
     access = []
     for key, meta in FEATURE_METADATA.items():
-        feature = _feature(subscription, key)
-        enabled = has_feature(user, key) if feature else meta["plan"] == "starter"
+        feature = features_by_key.get(key)
+        enabled = bool(subscription.is_entitled and feature and feature.enabled) if feature else meta["plan"] == "starter"
         access.append({
             "key": key,
             "label": meta["label"],
@@ -486,6 +509,6 @@ def feature_access_payload(user):
             "current_plan": subscription.plan.code,
             "upgrade_plan": None if enabled else _upgrade_plan_for(key, subscription.plan),
             "limit": feature.limit if feature else None,
-            "used": current_usage(user, key) if key in ["users", "products", "customers", "reports"] else None,
+            "used": usage_counts.get(key) if key in ["users", "products", "customers", "reports"] else None,
         })
     return access
