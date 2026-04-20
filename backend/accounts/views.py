@@ -5,6 +5,8 @@ from django.utils import timezone
 from datetime import timedelta
 import secrets
 import logging
+import smtplib
+from django.core.exceptions import ImproperlyConfigured
 from rest_framework import exceptions, permissions, status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -19,6 +21,10 @@ User = get_user_model()
 logger = logging.getLogger(__name__)
 
 
+class VerificationEmailError(Exception):
+    pass
+
+
 def verification_token_expired(user):
     sent_at = user.email_verification_sent_at
     if not sent_at:
@@ -28,6 +34,23 @@ def verification_token_expired(user):
 
 
 def send_verification_email(user):
+    if settings.EMAIL_BACKEND.endswith("console.EmailBackend"):
+        logger.error(
+            "Verification email is using console backend",
+            extra={"user_id": user.id, "email_backend": settings.EMAIL_BACKEND},
+        )
+        if not settings.DEBUG:
+            raise VerificationEmailError("Email delivery is not configured on the server.")
+
+    if settings.EMAIL_BACKEND.endswith("smtp.EmailBackend") and (
+        not settings.EMAIL_HOST or not settings.EMAIL_HOST_USER or not settings.EMAIL_HOST_PASSWORD
+    ):
+        logger.error(
+            "SMTP verification email is missing required settings",
+            extra={"user_id": user.id, "email_host_set": bool(settings.EMAIL_HOST), "email_user_set": bool(settings.EMAIL_HOST_USER)},
+        )
+        raise VerificationEmailError("Email delivery is missing SMTP settings.")
+
     token = user.email_verification_token or secrets.token_urlsafe(32)
     if token != user.email_verification_token:
         user.email_verification_token = token
@@ -35,17 +58,21 @@ def send_verification_email(user):
     user.save(update_fields=["email_verification_token", "email_verification_sent_at"])
 
     verify_url = f"{settings.FRONTEND_URL}/verify-email?token={token}"
-    sent_count = send_mail(
-        subject="Verify your Verifin email",
-        message=(
-            f"Welcome to Verifin.\n\n"
-            f"Verify your email to activate your account:\n{verify_url}\n\n"
-            f"If you did not create this account, you can ignore this email."
-        ),
-        from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "Verifin <noreply@verifin.app>"),
-        recipient_list=[user.email],
-        fail_silently=False,
-    )
+    try:
+        sent_count = send_mail(
+            subject="Verify your Verifin email",
+            message=(
+                f"Welcome to Verifin.\n\n"
+                f"Verify your email to activate your account:\n{verify_url}\n\n"
+                f"If you did not create this account, you can ignore this email."
+            ),
+            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "Verifin <noreply@verifin.app>"),
+            recipient_list=[user.email],
+            fail_silently=False,
+        )
+    except (smtplib.SMTPException, OSError, ImproperlyConfigured, Exception) as exc:
+        logger.exception("Verification email failed", extra={"user_id": user.id})
+        raise VerificationEmailError("Verification email could not be sent. Please try again in a minute.") from exc
     logger.info(
         "Verification email accepted by backend",
         extra={"user_id": user.id, "email_sent_count": sent_count},
@@ -76,7 +103,13 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        send_verification_email(user)
+        try:
+            send_verification_email(user)
+        except VerificationEmailError as exc:
+            return Response({
+                "user": UserSerializer(user).data,
+                "detail": str(exc),
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response({
             "user": UserSerializer(user).data,
             "detail": "Account created. Check your email to verify your account before signing in.",
@@ -97,7 +130,10 @@ class VerifyEmailView(APIView):
             user.email_verification_token = secrets.token_urlsafe(32)
             user.email_verification_sent_at = timezone.now()
             user.save(update_fields=["email_verification_token", "email_verification_sent_at"])
-            send_verification_email(user)
+            try:
+                send_verification_email(user)
+            except VerificationEmailError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
             return Response({"detail": "Verification link expired. We sent you a new one."}, status=400)
         user.email_verified = True
         user.is_active = True
@@ -122,7 +158,10 @@ class ResendVerificationEmailView(APIView):
         user.email_verification_token = secrets.token_urlsafe(32)
         user.email_verification_sent_at = timezone.now()
         user.save(update_fields=["email_verification_token", "email_verification_sent_at"])
-        send_verification_email(user)
+        try:
+            send_verification_email(user)
+        except VerificationEmailError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response({"detail": "Verification email sent."})
 
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'verifin-cache-v5';
+const CACHE_NAME = 'verifin-cache-v6';
 const APP_SHELL = '/index.html';
 const OFFLINE_FALLBACK = '<!doctype html><title>Verifin</title><p>Verifin is offline. Reconnect and try again.</p>';
 const STATIC_ASSETS = [
@@ -46,13 +46,17 @@ self.addEventListener('fetch', event => {
     event.respondWith(
       fetch(request)
         .then(response => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(APP_SHELL, copy));
+          if (response && response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(APP_SHELL, copy));
+          }
           return response;
         })
         .catch(async () => {
           const cached = await caches.match(APP_SHELL);
           return cached || new Response(OFFLINE_FALLBACK, {
+            status: 503,
+            statusText: 'Offline',
             headers: { 'Content-Type': 'text/html; charset=utf-8' },
           });
         })
