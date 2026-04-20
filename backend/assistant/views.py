@@ -16,13 +16,13 @@ logger = logging.getLogger(__name__)
 
 def _assistant_response(command, user):
     parsed = services.command_assistant(command, user=user)
-    return {
+    return services.make_json_safe({
         "parsed_action": parsed.get("action", "unknown"),
         "confidence": 1.0 if parsed.get("action") != "unknown" else 0.2,
         "message": parsed.get("message", ""),
         "requires_confirmation": False,
         "execution_result": {"data": parsed.get("data", {})},
-    }
+    })
 
 
 @csrf_exempt

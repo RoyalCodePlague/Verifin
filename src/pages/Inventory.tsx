@@ -37,6 +37,7 @@ const Inventory = () => {
   const navigate = useNavigate();
   const { canUse } = useFeatureAccess();
   const promptUpgrade = useUpgradePrompt();
+  const canUseForecasting = canUse("forecasting");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [addOpen, setAddOpen] = useState(false);
@@ -61,12 +62,15 @@ const Inventory = () => {
   }, []);
 
   useEffect(() => {
-    if (!navigator.onLine) return;
-    fetchInventoryForecast(7)
-      .then((data) => setForecast(data.items.slice(0, 5)))
-      .catch(() => setForecast([]));
+    if (!navigator.onLine || !canUseForecasting) {
+      setForecast([]);
+    } else {
+      fetchInventoryForecast(7)
+        .then((data) => setForecast(data.items.slice(0, 5)))
+        .catch(() => setForecast([]));
+    }
     listSuppliersApi().then(setSuppliers).catch(() => setSuppliers([]));
-  }, [products.length]);
+  }, [canUseForecasting, products.length]);
 
   const mergedCategories = Array.from(new Set([...profile.categories, ...allCategories]));
   const categories = ["All", ...mergedCategories];

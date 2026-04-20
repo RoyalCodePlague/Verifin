@@ -32,6 +32,7 @@ const formatDate = (value: string | null) => {
 };
 
 const visibleLimits = ["users", "products", "customers", "reports"];
+const SHOW_BILLING_TEST_CONTROLS = false;
 
 function UsageRow({ limit }: { limit: FeatureLimit }) {
   const used = limit.used ?? 0;
@@ -245,27 +246,29 @@ const Billing = () => {
             {billing?.locked_features.length === 0 && <p className="text-sm text-muted-foreground">Everything is unlocked on this plan.</p>}
           </div>
         </div>
-        <div className="rounded-lg border bg-background p-6">
-          <h2 className="text-xl font-bold">Billing Controls</h2>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <button type="button" onClick={() => actionMutation.mutate({ action: "renew" })} className="flex items-center justify-center gap-2 rounded-md border px-4 py-3 text-sm font-semibold hover:bg-muted">
-              <RefreshCw className="h-4 w-4" /> Renew now
-            </button>
-            <button type="button" onClick={() => actionMutation.mutate({ action: "resume" })} className="flex items-center justify-center gap-2 rounded-md border px-4 py-3 text-sm font-semibold hover:bg-muted">
-              <ShieldCheck className="h-4 w-4" /> Resume
-            </button>
-            <button type="button" onClick={() => actionMutation.mutate({ action: "cancel", payload: { at_period_end: true } })} className="flex items-center justify-center gap-2 rounded-md border border-amber-300 px-4 py-3 text-sm font-semibold text-amber-800 hover:bg-amber-50">
-              <Zap className="h-4 w-4" /> Cancel at renewal
-            </button>
-            <button type="button" onClick={() => actionMutation.mutate({ action: "cancel", payload: { at_period_end: false } })} className="flex items-center justify-center gap-2 rounded-md border border-rose-300 px-4 py-3 text-sm font-semibold text-rose-700 hover:bg-rose-50">
-              <Crown className="h-4 w-4" /> Cancel now
-            </button>
+        {SHOW_BILLING_TEST_CONTROLS && (
+          <div className="rounded-lg border bg-background p-6">
+            <h2 className="text-xl font-bold">Billing Controls</h2>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <button type="button" onClick={() => actionMutation.mutate({ action: "renew" })} className="flex items-center justify-center gap-2 rounded-md border px-4 py-3 text-sm font-semibold hover:bg-muted">
+                <RefreshCw className="h-4 w-4" /> Renew now
+              </button>
+              <button type="button" onClick={() => actionMutation.mutate({ action: "resume" })} className="flex items-center justify-center gap-2 rounded-md border px-4 py-3 text-sm font-semibold hover:bg-muted">
+                <ShieldCheck className="h-4 w-4" /> Resume
+              </button>
+              <button type="button" onClick={() => actionMutation.mutate({ action: "cancel", payload: { at_period_end: true } })} className="flex items-center justify-center gap-2 rounded-md border border-amber-300 px-4 py-3 text-sm font-semibold text-amber-800 hover:bg-amber-50">
+                <Zap className="h-4 w-4" /> Cancel at renewal
+              </button>
+              <button type="button" onClick={() => actionMutation.mutate({ action: "cancel", payload: { at_period_end: false } })} className="flex items-center justify-center gap-2 rounded-md border border-rose-300 px-4 py-3 text-sm font-semibold text-rose-700 hover:bg-rose-50">
+                <Crown className="h-4 w-4" /> Cancel now
+              </button>
+            </div>
+            <p className="mt-4 flex gap-2 text-xs text-muted-foreground">
+              <Sparkles className="h-4 w-4 flex-none" />
+              These actions are local test controls. A real provider can later drive the same subscription events through webhooks.
+            </p>
           </div>
-          <p className="mt-4 flex gap-2 text-xs text-muted-foreground">
-            <Sparkles className="h-4 w-4 flex-none" />
-            These actions are local test controls. A real provider can later drive the same subscription events through webhooks.
-          </p>
-        </div>
+        )}
       </section>
 
       {checkoutPlan && (

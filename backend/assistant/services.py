@@ -1,7 +1,8 @@
 import json
 import logging
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import date as date_class, datetime, time as time_class, timedelta, timezone
+from decimal import Decimal
 from groq import Groq
 from django.conf import settings
 from django.db import models
@@ -51,6 +52,19 @@ IMPORTANT: Always respond with ONLY a valid JSON object in this exact format:
 Valid action types: query_stock, query_expenses, query_sales, query_customers, generate_insights, record_sale, log_expense, restock_product, create_product, create_sale, create_expense
 
 Do NOT wrap your response in markdown code blocks. Return plain JSON only."""
+
+
+def make_json_safe(value):
+    """Convert Django/queryset values into plain JSON primitives."""
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, (datetime, date_class, time_class)):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {key: make_json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [make_json_safe(item) for item in value]
+    return value
 
 def parse_and_clean_groq_response(raw_content: str) -> dict:
     """

@@ -17,7 +17,7 @@ import { useFeatureAccess, useUpgradePrompt, LockedBadge } from "@/lib/features"
 import { useQuery } from "@tanstack/react-query";
 
 const Dashboard = () => {
-  const { products, sales, expenses, discrepancies, customers, activities, profile, generateWhatsAppSummary } = useStore();
+  const { products, sales, expenses, discrepancies, activities, profile, generateWhatsAppSummary } = useStore();
   const navigate = useNavigate();
   const { canUse, limits } = useFeatureAccess();
   const promptUpgrade = useUpgradePrompt();
@@ -96,13 +96,6 @@ const Dashboard = () => {
     ...(discrepancies.filter(d => d.status !== "resolved").length > 0 ? [{ text: `${discrepancies.filter(d => d.status !== "resolved").length} stock discrepancies still need attention`, type: "warning" }] : []),
   ];
 
-  const onboarding = [
-    { label: "Add your first product", done: products.length > 0, to: "/inventory" },
-    { label: "Make your first sale", done: sales.length > 0, to: "/sales" },
-    { label: "Log your first expense", done: expenses.length > 0, to: "/expenses" },
-    { label: "Add a customer", done: customers.length > 0, to: "/customers" },
-  ];
-
   const usage = limits.filter((limit) => ["products", "customers", "users"].includes(limit.key));
 
   const handleWhatsAppShare = () => {
@@ -155,18 +148,7 @@ const Dashboard = () => {
         ))}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-        <Card className="shadow-soft">
-          <CardHeader className="pb-2"><CardTitle className="text-base font-display">Starter Checklist</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            {onboarding.map((item) => (
-              <button key={item.label} onClick={() => navigate(item.to)} className="flex w-full items-center justify-between rounded-lg border px-3 py-2 text-sm hover:bg-muted">
-                <span>{item.label}</span>
-                <span className={item.done ? "text-success" : "text-muted-foreground"}>{item.done ? "Done" : "Start"}</span>
-              </button>
-            ))}
-          </CardContent>
-        </Card>
+      <div className="grid gap-4">
         <Card className="shadow-soft">
           <CardHeader className="pb-2"><CardTitle className="text-base font-display">Plan Usage</CardTitle></CardHeader>
           <CardContent className="space-y-4">

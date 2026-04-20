@@ -137,16 +137,17 @@ class ProductViewSet(viewsets.ModelViewSet):
     def forecast(self, request):
         enforce_feature(request.user, "forecasting")
         horizon = int(request.query_params.get("days", 7))
-        since = timezone.now() - timedelta(days=max(horizon, 1))
+        horizon = max(horizon, 1)
+        since = timezone.localdate() - timedelta(days=horizon)
         rows = []
         for product in self.get_queryset():
             sold = SaleItem.objects.filter(
                 product=product,
                 sale__created_by=request.user,
-                sale__created_at__gte=since,
+                sale__date__gte=since,
                 is_deleted=False,
             ).aggregate(total=Sum("quantity"))["total"] or 0
-            average_daily_sales = Decimal(sold) / Decimal(max(horizon, 1))
+            average_daily_sales = Decimal(sold) / Decimal(horizon)
             days_remaining = None
             if average_daily_sales > 0:
                 days_remaining = Decimal(product.stock) / average_daily_sales
@@ -154,8 +155,8 @@ class ProductViewSet(viewsets.ModelViewSet):
             rows.append({
                 "product": ProductSerializer(product).data,
                 "sold_in_period": sold,
-                "average_daily_sales": round(average_daily_sales, 2),
-                "days_remaining": round(days_remaining, 1) if days_remaining is not None else None,
+                "average_daily_sales": float(round(average_daily_sales, 2)),
+                "days_remaining": float(round(days_remaining, 1)) if days_remaining is not None else None,
                 "suggested_reorder": suggested_reorder,
                 "risk": "stockout" if product.stock <= 0 else "high" if days_remaining is not None and days_remaining <= horizon else "low",
             })

@@ -21,6 +21,8 @@ interface SaleLineItem {
   unitPrice: number;
 }
 
+const SHOW_TILL_CONTROLS = false;
+
 const Sales = () => {
   const { sales, deleteSale, profile, products, addSale } = useStore();
   const { refreshUser } = useAuth();
@@ -40,6 +42,7 @@ const Sales = () => {
   const sym = profile.currencySymbol || "R";
 
   useEffect(() => {
+    if (!SHOW_TILL_CONTROLS) return;
     getCurrentTillApi().then(setTill).catch(() => setTill(null));
   }, []);
 
@@ -222,18 +225,20 @@ const Sales = () => {
         ))}
       </div>
 
-      <Card className="shadow-soft">
-        <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center"><Wallet className="h-4 w-4 text-primary" /></div>
-            <div>
-              <p className="text-sm font-medium">{till ? `Till open - ${till.cashier_name || "Cashier"}` : "No till session open"}</p>
-              <p className="text-xs text-muted-foreground">{till ? `Opening cash: ${sym}${Number(till.opening_cash).toLocaleString()}` : "Open a till to track cash variance for the shift."}</p>
+      {SHOW_TILL_CONTROLS && (
+        <Card className="shadow-soft">
+          <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center"><Wallet className="h-4 w-4 text-primary" /></div>
+              <div>
+                <p className="text-sm font-medium">{till ? `Till open - ${till.cashier_name || "Cashier"}` : "No till session open"}</p>
+                <p className="text-xs text-muted-foreground">{till ? `Opening cash: ${sym}${Number(till.opening_cash).toLocaleString()}` : "Open a till to track cash variance for the shift."}</p>
+              </div>
             </div>
-          </div>
-          <Button variant={till ? "outline" : "default"} onClick={() => setTillOpen(true)}>{till ? "Close Till" : "Open Till"}</Button>
-        </CardContent>
-      </Card>
+            <Button variant={till ? "outline" : "default"} onClick={() => setTillOpen(true)}>{till ? "Close Till" : "Open Till"}</Button>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="flex gap-3 items-center">
         <div className="relative flex-1 max-w-sm">
@@ -328,30 +333,32 @@ const Sales = () => {
           </div>
         </DialogContent>
       </Dialog>
-      <Dialog open={tillOpen} onOpenChange={setTillOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle className="font-display">{till ? "Close Till" : "Open Till"}</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            {!till ? (
-              <>
-                {/*
-                Multiple branches are disabled for now. Keep this field for later reactivation.
-                <div><Label>Branch</Label><select value={tillForm.branch} onChange={e => setTillForm({ ...tillForm, branch: e.target.value })} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm"><option value="">No branch</option>{branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
-                */}
-                <div><Label>Cashier Name</Label><Input value={tillForm.cashier} onChange={e => setTillForm({ ...tillForm, cashier: e.target.value })} className="mt-1" /></div>
-                <div><Label>Opening Cash ({sym})</Label><Input type="number" value={tillForm.openingCash} onChange={e => setTillForm({ ...tillForm, openingCash: e.target.value })} className="mt-1" /></div>
-                <Button onClick={handleOpenTill} className="w-full">Open Till</Button>
-              </>
-            ) : (
-              <>
-                <p className="text-sm text-muted-foreground">Cash sales: {sym}{Number(till.cash_sales || 0).toLocaleString()}</p>
-                <div><Label>Actual Cash Counted ({sym})</Label><Input type="number" value={tillForm.closingCash} onChange={e => setTillForm({ ...tillForm, closingCash: e.target.value })} className="mt-1" /></div>
-                <Button onClick={handleCloseTill} className="w-full">Close Till</Button>
-              </>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {SHOW_TILL_CONTROLS && (
+        <Dialog open={tillOpen} onOpenChange={setTillOpen}>
+          <DialogContent>
+            <DialogHeader><DialogTitle className="font-display">{till ? "Close Till" : "Open Till"}</DialogTitle></DialogHeader>
+            <div className="space-y-3">
+              {!till ? (
+                <>
+                  {/*
+                  Multiple branches are disabled for now. Keep this field for later reactivation.
+                  <div><Label>Branch</Label><select value={tillForm.branch} onChange={e => setTillForm({ ...tillForm, branch: e.target.value })} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm"><option value="">No branch</option>{branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
+                  */}
+                  <div><Label>Cashier Name</Label><Input value={tillForm.cashier} onChange={e => setTillForm({ ...tillForm, cashier: e.target.value })} className="mt-1" /></div>
+                  <div><Label>Opening Cash ({sym})</Label><Input type="number" value={tillForm.openingCash} onChange={e => setTillForm({ ...tillForm, openingCash: e.target.value })} className="mt-1" /></div>
+                  <Button onClick={handleOpenTill} className="w-full">Open Till</Button>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">Cash sales: {sym}{Number(till.cash_sales || 0).toLocaleString()}</p>
+                  <div><Label>Actual Cash Counted ({sym})</Label><Input type="number" value={tillForm.closingCash} onChange={e => setTillForm({ ...tillForm, closingCash: e.target.value })} className="mt-1" /></div>
+                  <Button onClick={handleCloseTill} className="w-full">Close Till</Button>
+                </>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
       <Dialog open={receiptOpen} onOpenChange={setReceiptOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle className="font-display">Receipt</DialogTitle></DialogHeader>
