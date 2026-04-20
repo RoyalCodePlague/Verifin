@@ -4,6 +4,7 @@ from django.core.mail import send_mail
 from django.utils import timezone
 from datetime import timedelta
 import secrets
+import logging
 from rest_framework import exceptions, permissions, status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -15,6 +16,7 @@ from .permissions import IsOwnerOrManager
 from .serializers import CustomTokenObtainPairSerializer, ProfileSerializer, RegisterSerializer, StaffActivityLogSerializer, StaffSerializer, UserSerializer
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 def verification_token_expired(user):
@@ -33,7 +35,7 @@ def send_verification_email(user):
     user.save(update_fields=["email_verification_token", "email_verification_sent_at"])
 
     verify_url = f"{settings.FRONTEND_URL}/verify-email?token={token}"
-    send_mail(
+    sent_count = send_mail(
         subject="Verify your Verifin email",
         message=(
             f"Welcome to Verifin.\n\n"
@@ -44,6 +46,11 @@ def send_verification_email(user):
         recipient_list=[user.email],
         fail_silently=False,
     )
+    logger.info(
+        "Verification email accepted by backend",
+        extra={"user_id": user.id, "email_sent_count": sent_count},
+    )
+    return sent_count
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
