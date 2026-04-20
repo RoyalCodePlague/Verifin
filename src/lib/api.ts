@@ -122,7 +122,7 @@ export async function registerRequest(body: {
   phone?: string;
   business_name?: string;
 }) {
-  return apiFetch<{ access: string; refresh: string; user: ApiUser }>("/api/v1/accounts/register/", {
+  return apiFetch<{ detail: string; user: ApiUser }>("/api/v1/accounts/register/", {
     method: "POST",
     skipAuth: true,
     body: JSON.stringify(body),
@@ -644,6 +644,18 @@ export type FeatureLimit = {
   remaining?: number | null;
 };
 
+export type FeatureAccess = {
+  key: string;
+  label: string;
+  category: string;
+  minimum_plan: PlanCode;
+  enabled: boolean;
+  current_plan: PlanCode;
+  upgrade_plan: PlanCode | null;
+  limit: number | null;
+  used: number | null;
+};
+
 export type BillingPlan = {
   id: number;
   code: PlanCode;
@@ -676,20 +688,61 @@ export type BillingOverview = {
   plan: BillingPlan;
   limits: FeatureLimit[];
   locked_features: FeatureLimit[];
+  features: FeatureAccess[];
   events: Array<{ id: number; event_type: string; provider: string; metadata: Record<string, unknown>; created_at: string }>;
   cycles: Array<{ id: number; period_start: string; period_end: string; amount: string; currency: string; paid_at: string | null; status: string }>;
   available_actions: string[];
+};
+
+export type PricingCountry = {
+  country_code: string;
+  country_name: string;
+  currency: string;
+  currency_symbol: string;
+};
+
+export type RegionalPlanPrice = {
+  plan: BillingPlan;
+  country_code: string;
+  country_name: string;
+  currency: string;
+  currency_symbol: string;
+  monthly_price: string;
+  yearly_price: string;
+};
+
+export type PricingContext = PricingCountry & {
+  detected_by: string;
+  prices: RegionalPlanPrice[];
+  available_countries: PricingCountry[];
 };
 
 export async function listBillingPlansApi() {
   return fetchAllPages<BillingPlan>("/api/v1/billing/plans/");
 }
 
+export async function getPricingContextApi(countryCode?: string) {
+  const suffix = countryCode ? `?country=${encodeURIComponent(countryCode)}` : "";
+  return apiFetch<PricingContext>(`/api/v1/billing/pricing-context/${suffix}`, { skipAuth: true });
+}
+
 export async function getBillingOverviewApi() {
   return apiFetch<BillingOverview>("/api/v1/billing/subscriptions/current/");
 }
 
-export async function mockCheckoutApi(payload: { plan: PlanCode; billing_period: BillingPeriod; trial_days?: number }) {
+export async function getFeatureAccessApi() {
+  return apiFetch<{ features: FeatureAccess[] }>("/api/v1/billing/subscriptions/features/");
+}
+
+export async function fetchRuleInsightsApi() {
+  return apiFetch<{ insights: Array<{ type: string; severity: string; message: string }>; timestamp: string }>("/api/v1/assistant/insights/");
+}
+
+export async function fetchWhatsAppSummaryApi() {
+  return apiFetch<{ message: string; date: string; channel: string }>("/api/v1/assistant/whatsapp-summary/");
+}
+
+export async function mockCheckoutApi(payload: { plan: PlanCode; billing_period: BillingPeriod; trial_days?: number; country_code?: string }) {
   return apiFetch<{ detail: string; subscription: BillingSubscription; billing: BillingOverview }>("/api/v1/billing/subscriptions/mock-checkout/", {
     method: "POST",
     body: JSON.stringify(payload),

@@ -4,6 +4,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from accounts.activity import log_staff_activity
 from .models import Sale, SaleItem, TillSession
 from .serializers import SaleItemReadSerializer, SaleItemSerializer, SaleSerializer, TillSessionSerializer
 
@@ -20,7 +21,8 @@ class SaleViewSet(viewsets.ModelViewSet):
         till_session = serializer.validated_data.get("till_session")
         if not till_session:
             till_session = TillSession.objects.filter(user=self.request.user, status="open", is_deleted=False).order_by("-opened_at").first()
-        serializer.save(created_by=self.request.user, till_session=till_session)
+        sale = serializer.save(created_by=self.request.user, till_session=till_session)
+        log_staff_activity(self.request.user, "sale_created", f"Created sale {sale.receipt_number} for R{sale.total}", actor=self.request.user, object_type="sale", object_id=sale.id)
 
     @action(detail=False, methods=["get"], url_path="aggregations")
     def aggregations(self, request):

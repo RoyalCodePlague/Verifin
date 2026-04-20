@@ -4,6 +4,7 @@ import {
   LayoutDashboard, Package, ShoppingCart, Receipt, ClipboardCheck,
   BarChart3, Users, UserCog, Settings, Menu, X, LogOut,
   CheckCircle, Moon, Sun, Clock, Truck, CreditCard,
+  Lock,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth-context";
@@ -17,13 +18,14 @@ import {
 } from "@/lib/offlineQueue";
 import { NotificationCenter } from "@/components/NotificationCenter";
 import { toast } from "sonner";
+import { useFeatureAccess, useUpgradePrompt } from "@/lib/features";
 
 const navItems = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/inventory", icon: Package, label: "Inventory" },
   { to: "/sales", icon: ShoppingCart, label: "Sales" },
   { to: "/expenses", icon: Receipt, label: "Expenses" },
-  { to: "/audits", icon: ClipboardCheck, label: "Audits" },
+  { to: "/audits", icon: ClipboardCheck, label: "Audits", feature: "audits" },
   { to: "/reports", icon: BarChart3, label: "Reports" },
   { to: "/customers", icon: Users, label: "Customers" },
   { to: "/suppliers", icon: Truck, label: "Suppliers" },
@@ -38,6 +40,8 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const navigate = useNavigate();
   const { profile, setProfile } = useStore();
   const { logout, refreshUser } = useAuth();
+  const { canUse } = useFeatureAccess();
+  const promptUpgrade = useUpgradePrompt();
   const [time, setTime] = useState(new Date());
   const syncInFlightRef = useRef(false);
 
@@ -137,7 +141,14 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
             <NavLink
               key={item.to}
               to={item.to}
-              onClick={() => setSidebarOpen(false)}
+              onClick={(event) => {
+                if (item.feature && !canUse(item.feature)) {
+                  event.preventDefault();
+                  promptUpgrade(item.feature, item.label);
+                  return;
+                }
+                setSidebarOpen(false);
+              }}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                   isActive
@@ -148,6 +159,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
             >
               <item.icon className="h-4.5 w-4.5" />
               {item.label}
+              {item.feature && !canUse(item.feature) && <Lock className="ml-auto h-3.5 w-3.5 opacity-60" />}
             </NavLink>
           ))}
         </nav>

@@ -6,10 +6,11 @@ import { Switch } from "@/components/ui/switch";
 import { useStore } from "@/lib/store";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
-import { Moon, Sun } from "lucide-react";
+import { Building2, Moon, Sun, Trash2 } from "lucide-react";
 import { patchMe } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useNavigate } from "react-router-dom";
+import { useFeatureAccess, useUpgradePrompt } from "@/lib/features";
 
 const currencyOptions = [
   { code: "ZAR", symbol: "R", label: "South African Rand (R)" },
@@ -24,11 +25,14 @@ const currencyOptions = [
 ];
 
 const SettingsPage = () => {
-  const { profile, setProfile } = useStore();
+  const { profile, setProfile, branches, addBranch, updateBranch, deleteBranch } = useStore();
   const { logout } = useAuth();
   const navigate = useNavigate();
+  const { canUse } = useFeatureAccess();
+  const promptUpgrade = useUpgradePrompt();
   const [name, setName] = useState(profile.name);
   const [currency, setCurrency] = useState(profile.currency);
+  const [branchForm, setBranchForm] = useState({ name: "", code: "", phone: "", address: "" });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -69,6 +73,17 @@ const SettingsPage = () => {
     window.location.reload();
   };
 
+  const handleAddBranch = () => {
+    if (!canUse("multi_branch")) {
+      promptUpgrade("multi_branch", "Multi-branch controls");
+      return;
+    }
+    if (!branchForm.name.trim()) return;
+    addBranch({ ...branchForm, isPrimary: branches.length === 0 });
+    setBranchForm({ name: "", code: "", phone: "", address: "" });
+    toast.success("Branch added.");
+  };
+
   const handleLogout = async () => {
     await logout();
     navigate("/login");
@@ -93,6 +108,42 @@ const SettingsPage = () => {
             </select>
           </div>
           <Button onClick={handleSave} disabled={saving} className="bg-gradient-hero text-primary-foreground">{saving ? "Saving..." : "Save Changes"}</Button>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-soft">
+        <CardHeader><CardTitle className="font-display text-base flex items-center gap-2"><Building2 className="h-4 w-4" /> Branches</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          {!canUse("multi_branch") && (
+            <div className="rounded-lg border border-dashed p-4 text-sm">
+              <p className="font-semibold">Multi-branch is a Business feature.</p>
+              <p className="mt-1 text-muted-foreground">Unlock branch switching, stock segmentation, and branch-specific reporting.</p>
+              <Button variant="outline" size="sm" className="mt-3" onClick={() => promptUpgrade("multi_branch", "Multi-branch controls")}>Upgrade</Button>
+            </div>
+          )}
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div><Label>Branch Name</Label><Input disabled={!canUse("multi_branch")} value={branchForm.name} onChange={e => setBranchForm({ ...branchForm, name: e.target.value })} className="mt-1.5" placeholder="Main Shop" /></div>
+            <div><Label>Code</Label><Input disabled={!canUse("multi_branch")} value={branchForm.code} onChange={e => setBranchForm({ ...branchForm, code: e.target.value })} className="mt-1.5" placeholder="MAIN" /></div>
+            <div><Label>Phone</Label><Input disabled={!canUse("multi_branch")} value={branchForm.phone} onChange={e => setBranchForm({ ...branchForm, phone: e.target.value })} className="mt-1.5" /></div>
+            <div><Label>Address</Label><Input disabled={!canUse("multi_branch")} value={branchForm.address} onChange={e => setBranchForm({ ...branchForm, address: e.target.value })} className="mt-1.5" /></div>
+          </div>
+          <Button onClick={handleAddBranch} disabled={!branchForm.name.trim()}>Add Branch</Button>
+          <div className="space-y-2">
+            {branches.map(branch => (
+              <div key={branch.id} className="rounded-lg border border-border p-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">{branch.name} {branch.isPrimary && <span className="text-xs text-primary">(Primary)</span>}</p>
+                  <p className="text-xs text-muted-foreground">{[branch.code, branch.phone, branch.address].filter(Boolean).join(" - ") || "No details yet"}</p>
+                </div>
+                {canUse("multi_branch") && (
+                  <div className="flex gap-2">
+                    {!branch.isPrimary && <Button size="sm" variant="outline" onClick={() => updateBranch(branch.id, { isPrimary: true })}>Make Primary</Button>}
+                    <Button size="sm" variant="destructive" onClick={() => deleteBranch(branch.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </CardContent>
       </Card>
 

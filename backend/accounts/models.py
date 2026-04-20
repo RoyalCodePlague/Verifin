@@ -49,3 +49,16 @@ class Staff(TimeStampedSoftDeleteModel):
     role = models.CharField(max_length=30, choices=ROLE_CHOICES, default=CASHIER)
     status = models.CharField(max_length=15, choices=STATUS_CHOICES, default=ACTIVE)
     last_active = models.DateTimeField(blank=True, null=True)
+
+
+class StaffActivityLog(TimeStampedSoftDeleteModel):
+    user = models.ForeignKey(User, related_name="staff_activity_logs", on_delete=models.CASCADE)
+    actor = models.ForeignKey(User, related_name="performed_activity_logs", on_delete=models.SET_NULL, blank=True, null=True)
+    action = models.CharField(max_length=80)
+    object_type = models.CharField(max_length=80, blank=True)
+    object_id = models.CharField(max_length=80, blank=True)
+    summary = models.CharField(max_length=255)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]

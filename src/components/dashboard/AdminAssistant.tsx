@@ -7,23 +7,23 @@ import { useStore } from "@/lib/store";
 import { apiFetch } from "@/lib/api";
 import { toast } from "sonner";
 
-function buildSuggestions(productNames: string[], sym: string): string[] {
+function buildSuggestions(productNames: string[], _sym: string): string[] {
   const top = productNames.slice(0, 5);
   const low = productNames.slice(0, 3);
   const base = [
-    `What's my inventory value in ${sym}?`,
-    "What's running low?",
-    "How much did I sell today?",
-    "Top selling product?",
-    "Total expenses this month?",
-    "How many customers?",
+    "today sales",
+    "low stock",
+    "top products",
+    "expenses",
+    "customers",
+    "reorder suggestions",
   ];
   if (top.length === 0) return base;
   const tailored = [
-    top[0] ? `Add 30 ${top[0]}` : "",
-    top[1] ? `Sold 2 ${top[0]} and 1 ${top[1] || top[0]} for ${sym}120` : `Sold 3 ${top[0]} for ${sym}90`,
-    low[0] ? `Set reorder level for ${low[0]}` : "",
-    `Spent ${sym}200 on transport`,
+    top[0] ? `top products` : "",
+    top[1] ? `low stock` : "",
+    low[0] ? `reorder suggestions` : "",
+    `today sales`,
   ].filter(Boolean);
   return [...tailored, ...base].slice(0, 10);
 }

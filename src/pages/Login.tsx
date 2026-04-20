@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/lib/auth-context";
+import { resendVerificationRequest } from "@/lib/api";
 import { toast } from "sonner";
 
 function AnimatedBackground() {
@@ -38,6 +39,8 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [loading, setLoading] = useState(false);
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState("");
+  const [resending, setResending] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { login, register } = useAuth();
@@ -52,11 +55,14 @@ const Login = () => {
     setLoading(true);
     try {
       if (isSignUp) {
-        await register(form.email, form.password, form.name.trim() || undefined);
-        toast.success("Account created!");
+        const message = await register(form.email, form.password, form.name.trim() || undefined);
+        setPendingVerificationEmail(form.email);
+        setIsSignUp(false);
+        toast.success(message || "Account created. Check your email to verify it.");
       } else {
         await login(form.email, form.password);
         toast.success("Welcome back!");
+        navigate("/dashboard");
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
@@ -67,6 +73,23 @@ const Login = () => {
 
   const handleGoogleSignIn = () => {
     toast.message("Google sign-in is not connected yet. Please use email and password.");
+  };
+
+  const handleResendVerification = async () => {
+    const email = pendingVerificationEmail || form.email;
+    if (!email) {
+      toast.error("Enter your email first.");
+      return;
+    }
+    setResending(true);
+    try {
+      const res = await resendVerificationRequest(email);
+      toast.success(res.detail);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not resend verification email.");
+    } finally {
+      setResending(false);
+    }
   };
 
   return (
@@ -124,6 +147,20 @@ const Login = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
+              {pendingVerificationEmail && !isSignUp && (
+                <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm">
+                  <p className="font-medium">Verify your email to sign in.</p>
+                  <p className="mt-1 text-muted-foreground">We sent a verification link to {pendingVerificationEmail}.</p>
+                  <button
+                    type="button"
+                    onClick={handleResendVerification}
+                    disabled={resending}
+                    className="mt-2 text-primary font-medium hover:underline disabled:opacity-60"
+                  >
+                    {resending ? "Sending..." : "Resend verification email"}
+                  </button>
+                </div>
+              )}
               {isSignUp && (
                 <div>
                   <Label>Full Name</Label>

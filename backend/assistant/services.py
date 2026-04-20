@@ -4,7 +4,10 @@ import re
 from datetime import datetime, timedelta, timezone
 from groq import Groq
 from django.conf import settings
+from django.db import models
 from django.db.models import Sum
+from django.db.models.functions import TruncDay
+from django.utils import timezone as django_timezone
 from inventory.models import Product, Category
 
 logger = logging.getLogger(__name__)
@@ -66,12 +69,12 @@ def parse_and_clean_groq_response(raw_content: str) -> dict:
     
     return json.loads(cleaned)
 
-def query_stock(filters: dict = None) -> dict:
+def query_stock(filters: dict = None, user=None) -> dict:
     """Get real inventory data from Product model"""
     try:
         from inventory.models import Product
         
-        products = Product.objects.all()
+        products = Product.objects.filter(user=user, is_deleted=False) if user else Product.objects.filter(is_deleted=False)
         if filters:
             products = products.filter(**filters)
         
@@ -88,12 +91,12 @@ def query_stock(filters: dict = None) -> dict:
         logger.error(f"Error querying stock: {e}")
         return {"error": str(e), "products": [], "total_quantity": 0}
 
-def query_expenses(filters: dict = None) -> dict:
+def query_expenses(filters: dict = None, user=None) -> dict:
     """Get real expense data"""
     try:
         from expenses.models import Expense
         
-        expenses = Expense.objects.all()
+        expenses = Expense.objects.filter(created_by=user, is_deleted=False) if user else Expense.objects.filter(is_deleted=False)
         if filters:
             expenses = expenses.filter(**filters)
         
@@ -110,12 +113,12 @@ def query_expenses(filters: dict = None) -> dict:
         logger.error(f"Error querying expenses: {e}")
         return {"error": str(e), "expenses": [], "total_cost": 0}
 
-def query_sales(filters: dict = None) -> dict:
+def query_sales(filters: dict = None, user=None) -> dict:
     """Get real sales data"""
     try:
         from sales.models import Sale, SaleItem
         
-        sales = Sale.objects.all()
+        sales = Sale.objects.filter(created_by=user, is_deleted=False) if user else Sale.objects.filter(is_deleted=False)
         if filters:
             sales = sales.filter(**filters)
         
@@ -139,16 +142,16 @@ def query_sales(filters: dict = None) -> dict:
         logger.error(f"Error querying sales: {e}")
         return {"error": str(e), "sales": [], "total_revenue": 0}
 
-def query_customers(filters: dict = None) -> dict:
+def query_customers(filters: dict = None, user=None) -> dict:
     """Get real customer data"""
     try:
         from customers.models import Customer
         
-        customers = Customer.objects.all()
+        customers = Customer.objects.filter(user=user, is_deleted=False) if user else Customer.objects.filter(is_deleted=False)
         if filters:
             customers = customers.filter(**filters)
         
-        customers_data = list(customers.values('id', 'name', 'email', 'phone', 'created_at'))
+        customers_data = list(customers.values('id', 'name', 'phone', 'created_at'))
         
         return {
             "customers": customers_data,
@@ -159,14 +162,15 @@ def query_customers(filters: dict = None) -> dict:
         logger.error(f"Error querying customers: {e}")
         return {"error": str(e), "customers": [], "total_customers": 0}
 
-def generate_insights() -> dict:
-    """Generate business insights using AI"""
+def generate_insights(user=None) -> dict:
+    """Generate deterministic business insights from existing data."""
     insights = []
     
     try:
         # Low stock alert
         from inventory.models import Product
-        low_stock = Product.objects.filter(stock__lt=10).count()
+        products = Product.objects.filter(user=user, is_deleted=False) if user else Product.objects.filter(is_deleted=False)
+        low_stock = products.filter(stock__lte=models.F("reorder_level")).count()
         if low_stock > 0:
             insights.append({
                 "type": "low_stock_alert",
@@ -178,15 +182,38 @@ def generate_insights() -> dict:
     
     try:
         # Sales trend
-        from sales.models import Sale
-        
-        week_ago = datetime.now(timezone.utc) - timedelta(days=7)
-        recent_sales = Sale.objects.filter(date__gte=week_ago).aggregate(total=Sum('total'))
-        if recent_sales['total']:
+        from sales.models import Sale, SaleItem
+
+        today = django_timezone.localdate()
+        week_ago = today - timedelta(days=7)
+        sales = Sale.objects.filter(created_by=user, is_deleted=False) if user else Sale.objects.filter(is_deleted=False)
+        today_total = sales.filter(date=today).aggregate(total=Sum("total"))["total"] or 0
+        seven_day_total = sales.filter(date__gte=week_ago, date__lt=today).aggregate(total=Sum("total"))["total"] or 0
+        average = seven_day_total / 7 if seven_day_total else 0
+        if average and today_total < average:
             insights.append({
-                "type": "sales_trend",
+                "type": "sales_lower_than_usual",
+                "severity": "warning",
+                "message": f"Sales are lower than usual today. Today: R{today_total:.2f}, 7-day average: R{average:.2f}."
+            })
+        elif average and today_total > average:
+            insights.append({
+                "type": "sales_above_average",
+                "severity": "success",
+                "message": f"Sales are above the 7-day average today. Today: R{today_total:.2f}, average: R{average:.2f}."
+            })
+
+        fast_movers = (
+            SaleItem.objects.filter(sale__in=sales.filter(date__gte=week_ago))
+            .values("product__name")
+            .annotate(quantity=Sum("quantity"))
+            .order_by("-quantity")[:3]
+        )
+        for item in fast_movers:
+            insights.append({
+                "type": "fast_moving_product",
                 "severity": "info",
-                "message": f"Sales this week: ${recent_sales['total']}"
+                "message": f"{item['product__name']} is moving fast with {item['quantity']} units sold in the last 7 days."
             })
     except Exception as e:
         logger.error(f"Error getting sales trend: {e}")
@@ -195,6 +222,116 @@ def generate_insights() -> dict:
         "insights": insights,
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
+
+
+def generate_reorder_suggestions(user, days=7, cover_days=14):
+    from sales.models import SaleItem
+
+    since = django_timezone.localdate() - timedelta(days=max(days, 1))
+    rows = []
+    products = Product.objects.filter(user=user, is_deleted=False)
+    for product in products:
+        sold = SaleItem.objects.filter(
+            product=product,
+            sale__created_by=user,
+            sale__date__gte=since,
+            is_deleted=False,
+        ).aggregate(total=Sum("quantity"))["total"] or 0
+        avg_daily = sold / max(days, 1)
+        target_stock = max(product.reorder_level, round(avg_daily * cover_days))
+        suggested = max(0, target_stock - product.stock)
+        if suggested > 0 or product.stock <= product.reorder_level:
+            rows.append({
+                "product_id": product.id,
+                "product": product.name,
+                "stock": product.stock,
+                "reorder_level": product.reorder_level,
+                "sold_in_period": sold,
+                "average_daily_sales": round(avg_daily, 2),
+                "cover_days": cover_days,
+                "suggested_reorder_quantity": suggested,
+                "reason": "Below reorder level" if product.stock <= product.reorder_level else "Projected demand cover",
+            })
+    return {"days": days, "cover_days": cover_days, "items": rows}
+
+
+def generate_whatsapp_summary(user):
+    from expenses.models import Expense
+    from sales.models import Sale
+
+    today = django_timezone.localdate()
+    sales = Sale.objects.filter(created_by=user, date=today, is_deleted=False)
+    expenses = Expense.objects.filter(created_by=user, date=today, is_deleted=False)
+    products = Product.objects.filter(user=user, is_deleted=False)
+    sales_total = sales.aggregate(total=Sum("total"))["total"] or 0
+    expenses_total = expenses.aggregate(total=Sum("amount"))["total"] or 0
+    low_stock = products.filter(stock__lte=models.F("reorder_level"))[:5]
+    lines = [
+        "*Verifin Daily Summary*",
+        today.strftime("%A, %d %B %Y"),
+        "",
+        f"*Sales:* R{sales_total:.2f} ({sales.count()} transactions)",
+        f"*Expenses:* R{expenses_total:.2f}",
+        f"*Net:* R{sales_total - expenses_total:.2f}",
+        f"*Products:* {products.count()} active items",
+    ]
+    if low_stock:
+        lines.extend(["", "*Low Stock:*"])
+        lines.extend([f"- {p.name}: {p.stock} left" for p in low_stock])
+    lines.append("\n_Copy and send via WhatsApp._")
+    return {"message": "\n".join(lines), "date": today, "channel": "whatsapp_copy"}
+
+
+def simulate_receipt_scan(upload_name="", merchant="", amount=None, category="General", note=""):
+    parsed_amount = None
+    if amount not in [None, ""]:
+        try:
+            parsed_amount = float(amount)
+        except (TypeError, ValueError):
+            parsed_amount = None
+    return {
+        "status": "manual_review",
+        "source_file": upload_name,
+        "parsed": {
+            "merchant": merchant.strip() or "Unknown merchant",
+            "amount": parsed_amount,
+            "category": category or "General",
+            "note": note,
+        },
+        "message": "Receipt captured for manual review. No external OCR provider was used.",
+    }
+
+
+def command_assistant(command, user=None):
+    text = (command or "").strip().lower()
+    if not text:
+        return {"action": "unknown", "message": "Type a command like today sales, low stock, or top products.", "data": {}}
+    if "today" in text and "sale" in text:
+        data = query_sales({"date": django_timezone.localdate()}, user=user)
+        return {"action": "query_sales", "message": f"Today sales total is R{data.get('total_revenue', 0):.2f}.", "data": data}
+    if "low stock" in text or "running low" in text:
+        data = query_stock({"stock__lte": models.F("reorder_level")}, user=user)
+        return {"action": "query_stock", "message": f"{data.get('total_items', 0)} products need stock attention.", "data": data}
+    if "top product" in text or "top products" in text:
+        from sales.models import SaleItem
+
+        rows = (
+            SaleItem.objects.filter(sale__created_by=user, is_deleted=False)
+            .values("product__name")
+            .annotate(quantity=Sum("quantity"), revenue=Sum("subtotal"))
+            .order_by("-quantity")[:5]
+        )
+        return {"action": "top_products", "message": "Top products by quantity sold.", "data": {"items": list(rows)}}
+    if "expense" in text:
+        data = query_expenses(user=user)
+        return {"action": "query_expenses", "message": f"Total expenses found: R{data.get('total_cost', 0):.2f}.", "data": data}
+    if "customer" in text:
+        data = query_customers(user=user)
+        return {"action": "query_customers", "message": f"You have {data.get('total_customers', 0)} customers.", "data": data}
+    if "reorder" in text:
+        data = generate_reorder_suggestions(user)
+        return {"action": "reorder_suggestions", "message": f"{len(data['items'])} reorder suggestions ready.", "data": data}
+    return {"action": "unknown", "message": "I can answer: today sales, low stock, top products, expenses, customers, or reorder suggestions.", "data": {}}
 
 def create_product(product_name: str, quantity: int = 0, price: float = 0.0, sku: str = None) -> dict:
     """Create a new product in inventory"""

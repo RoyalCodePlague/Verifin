@@ -5,7 +5,7 @@ import { BarChart3, Check, HelpCircle, Lock, ScanBarcode, ShieldCheck, Sparkles,
 import Navbar from "@/components/landing/Navbar";
 import Footer from "@/components/landing/Footer";
 import { useAuth } from "@/lib/auth-context";
-import { listBillingPlansApi, type BillingPeriod, type BillingPlan, type PlanCode } from "@/lib/api";
+import { getPricingContextApi, type BillingPeriod, type BillingPlan, type PlanCode, type PricingContext, type RegionalPlanPrice } from "@/lib/api";
 
 const fallbackPlans: BillingPlan[] = [
   {
@@ -43,6 +43,30 @@ const fallbackPlans: BillingPlan[] = [
   },
 ];
 
+const fallbackPricingContext: PricingContext = {
+  country_code: "ZA",
+  country_name: "South Africa",
+  currency: "ZAR",
+  currency_symbol: "R",
+  detected_by: "fallback",
+  available_countries: [
+    { country_code: "ZA", country_name: "South Africa", currency: "ZAR", currency_symbol: "R" },
+    { country_code: "ZW", country_name: "Zimbabwe", currency: "USD", currency_symbol: "$" },
+    { country_code: "BW", country_name: "Botswana", currency: "BWP", currency_symbol: "P" },
+    { country_code: "KE", country_name: "Kenya", currency: "KES", currency_symbol: "KSh" },
+    { country_code: "NG", country_name: "Nigeria", currency: "NGN", currency_symbol: "NGN" },
+  ],
+  prices: fallbackPlans.map((plan) => ({
+    plan,
+    country_code: "ZA",
+    country_name: "South Africa",
+    currency: "ZAR",
+    currency_symbol: "R",
+    monthly_price: plan.monthly_price,
+    yearly_price: plan.yearly_price,
+  })),
+};
+
 const features: Record<PlanCode, string[]> = {
   starter: ["1 user", "50 products", "100 customers", "Basic sales", "Daily summaries", "2 basic reports"],
   growth: ["3 users", "Unlimited products", "AI admin assistant", "Audits and barcode scanning", "Receipt OCR", "8 reports with charts"],
@@ -78,18 +102,20 @@ const tone: Record<PlanCode, string> = {
   business: "border-sky-300 bg-sky-50",
 };
 
-function priceFor(plan: BillingPlan, period: BillingPeriod) {
-  const amount = Number(period === "yearly" ? plan.yearly_price : plan.monthly_price);
+function priceFor(price: RegionalPlanPrice, period: BillingPeriod) {
+  const amount = Number(period === "yearly" ? price.yearly_price : price.monthly_price);
   if (amount <= 0) return "Free";
-  return `R${amount.toLocaleString("en-ZA")}`;
+  return `${price.currency_symbol}${amount.toLocaleString("en-ZA")}`;
 }
 
 const Pricing = () => {
   const [period, setPeriod] = useState<BillingPeriod>("monthly");
+  const [country, setCountry] = useState("");
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
-  const { data } = useQuery({ queryKey: ["public-billing-plans"], queryFn: listBillingPlansApi });
-  const plans = (data?.length ? data : fallbackPlans).sort((a, b) => a.sort_order - b.sort_order);
+  const { data } = useQuery({ queryKey: ["pricing-context", country], queryFn: () => getPricingContextApi(country || undefined) });
+  const pricing = data ?? fallbackPricingContext;
+  const prices = (pricing.prices.length ? pricing.prices : fallbackPricingContext.prices).sort((a, b) => a.plan.sort_order - b.plan.sort_order);
 
   const startPlan = () => {
     navigate(isAuthenticated ? "/billing" : "/login");
@@ -115,19 +141,36 @@ const Pricing = () => {
                 </button>
               ))}
             </div>
+            <div className="mt-5 flex flex-wrap items-center gap-3 text-sm">
+              <span className="text-muted-foreground">Prices shown for {pricing.country_name} in {pricing.currency}</span>
+              <select
+                value={country || pricing.country_code}
+                onChange={(event) => setCountry(event.target.value)}
+                className="h-10 rounded-md border bg-white px-3 text-sm"
+                aria-label="Change pricing country"
+              >
+                {pricing.available_countries.map((option) => (
+                  <option key={option.country_code} value={option.country_code}>
+                    {option.country_name} ({option.currency})
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </section>
 
         <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
           <div className="grid gap-5 lg:grid-cols-3">
-            {plans.map((plan) => (
+            {prices.map((price) => {
+              const plan = price.plan;
+              return (
               <article key={plan.code} className={`relative rounded-lg border p-6 ${tone[plan.code]}`}>
                 {plan.code === "growth" && <span className="absolute right-4 top-4 rounded-md bg-emerald-600 px-3 py-1 text-xs font-bold text-white">Most Popular</span>}
                 <h2 className="text-2xl font-bold">{plan.name}</h2>
                 <p className="mt-2 min-h-12 text-sm text-muted-foreground">{plan.description}</p>
                 <div className="mt-6 flex items-end gap-1">
-                  <span className="text-4xl font-bold">{priceFor(plan, period)}</span>
-                  {Number(period === "yearly" ? plan.yearly_price : plan.monthly_price) > 0 && <span className="pb-1 text-sm text-muted-foreground">/{period === "yearly" ? "year" : "month"}</span>}
+                  <span className="text-4xl font-bold">{priceFor(price, period)}</span>
+                  {Number(period === "yearly" ? price.yearly_price : price.monthly_price) > 0 && <span className="pb-1 text-sm text-muted-foreground">/{period === "yearly" ? "year" : "month"}</span>}
                 </div>
                 {period === "yearly" && plan.code !== "starter" && <p className="mt-2 text-sm font-semibold text-emerald-700">Two months included</p>}
                 <button type="button" onClick={startPlan} className="mt-6 w-full rounded-md bg-primary px-4 py-3 text-sm font-bold text-primary-foreground hover:bg-primary/90">
@@ -142,7 +185,8 @@ const Pricing = () => {
                   ))}
                 </ul>
               </article>
-            ))}
+              );
+            })}
           </div>
         </section>
 

@@ -4,6 +4,7 @@ import { AlertTriangle, Check, Crown, Lock, RefreshCw, ShieldCheck, Sparkles, Za
 import { toast } from "sonner";
 import {
   getBillingOverviewApi,
+  getPricingContextApi,
   listBillingPlansApi,
   mockCheckoutApi,
   subscriptionActionApi,
@@ -11,6 +12,7 @@ import {
   type BillingPlan,
   type FeatureLimit,
   type PlanCode,
+  type PricingContext,
 } from "@/lib/api";
 
 const planTone: Record<PlanCode, string> = {
@@ -19,10 +21,10 @@ const planTone: Record<PlanCode, string> = {
   business: "border-sky-300 bg-sky-50/70",
 };
 
-const formatMoney = (value: string, period: BillingPeriod) => {
+const formatMoney = (value: string, period: BillingPeriod, symbol = "R") => {
   const amount = Number(value);
   if (amount <= 0) return "Free";
-  return `R${amount.toLocaleString("en-ZA")}/${period === "yearly" ? "year" : "month"}`;
+  return `${symbol}${amount.toLocaleString("en-ZA")}/${period === "yearly" ? "year" : "month"}`;
 };
 
 const formatDate = (value: string | null) => {
@@ -52,12 +54,14 @@ function UsageRow({ limit }: { limit: FeatureLimit }) {
 const CheckoutModal = ({
   plan,
   period,
+  pricing,
   onConfirm,
   onClose,
   pending,
 }: {
   plan: BillingPlan;
   period: BillingPeriod;
+  pricing: PricingContext | undefined;
   onConfirm: () => void;
   onClose: () => void;
   pending: boolean;
@@ -72,7 +76,15 @@ const CheckoutModal = ({
       <div className="mt-5 rounded-md border p-4">
         <div className="flex items-center justify-between">
           <span className="font-medium">{plan.name}</span>
-          <span className="font-bold">{formatMoney(period === "yearly" ? plan.yearly_price : plan.monthly_price, period)}</span>
+          <span className="font-bold">
+            {formatMoney(
+              period === "yearly"
+                ? pricing?.prices.find((price) => price.plan.code === plan.code)?.yearly_price ?? plan.yearly_price
+                : pricing?.prices.find((price) => price.plan.code === plan.code)?.monthly_price ?? plan.monthly_price,
+              period,
+              pricing?.currency_symbol
+            )}
+          </span>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">Provider: mock. Ready to swap for Stripe, Paystack, or another gateway later.</p>
       </div>
@@ -94,10 +106,13 @@ const Billing = () => {
   const queryClient = useQueryClient();
   const plansQuery = useQuery({ queryKey: ["billing-plans"], queryFn: listBillingPlansApi });
   const billingQuery = useQuery({ queryKey: ["billing-overview"], queryFn: getBillingOverviewApi });
+  const pricingQuery = useQuery({ queryKey: ["pricing-context"], queryFn: () => getPricingContextApi() });
 
   const billing = billingQuery.data;
   const currentCode = billing?.plan.code;
   const usageLimits = useMemo(() => billing?.limits.filter((limit) => visibleLimits.includes(limit.key)) ?? [], [billing]);
+  const pricing = pricingQuery.data;
+  const regionalByPlan = useMemo(() => new Map((pricing?.prices ?? []).map((price) => [price.plan.code, price])), [pricing]);
 
   const refreshBilling = async () => {
     await queryClient.invalidateQueries({ queryKey: ["billing-overview"] });
@@ -105,7 +120,7 @@ const Billing = () => {
   };
 
   const checkoutMutation = useMutation({
-    mutationFn: (plan: BillingPlan) => mockCheckoutApi({ plan: plan.code, billing_period: period }),
+    mutationFn: (plan: BillingPlan) => mockCheckoutApi({ plan: plan.code, billing_period: period, country_code: pricing?.country_code }),
     onSuccess: async () => {
       toast.success("Subscription updated", { description: "Mock billing changed your plan for local testing." });
       setCheckoutPlan(null);
@@ -171,7 +186,9 @@ const Billing = () => {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-bold">Change Plan</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Use the mock checkout to test upgrades, downgrades, renewals, and cancellations.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Use the mock checkout to test upgrades, downgrades, renewals, and cancellations. Prices are shown for {pricing?.country_name ?? "your region"}.
+            </p>
           </div>
           <div className="rounded-md border p-1">
             {(["monthly", "yearly"] as BillingPeriod[]).map((next) => (
@@ -184,7 +201,8 @@ const Billing = () => {
 
         <div className="mt-6 grid gap-4 lg:grid-cols-3">
           {(plansQuery.data ?? []).map((plan) => {
-            const price = period === "yearly" ? plan.yearly_price : plan.monthly_price;
+            const regional = regionalByPlan.get(plan.code);
+            const price = regional ? (period === "yearly" ? regional.yearly_price : regional.monthly_price) : (period === "yearly" ? plan.yearly_price : plan.monthly_price);
             const isCurrent = currentCode === plan.code;
             return (
               <article key={plan.code} className={`rounded-lg border p-5 ${planTone[plan.code]}`}>
@@ -193,7 +211,7 @@ const Billing = () => {
                   {plan.code === "growth" && <span className="rounded-md bg-emerald-600 px-2 py-1 text-xs font-bold text-white">Most Popular</span>}
                 </div>
                 <p className="mt-2 min-h-10 text-sm text-muted-foreground">{plan.description}</p>
-                <p className="mt-5 text-3xl font-bold">{formatMoney(price, period)}</p>
+                <p className="mt-5 text-3xl font-bold">{formatMoney(price, period, regional?.currency_symbol ?? pricing?.currency_symbol)}</p>
                 <ul className="mt-5 space-y-2 text-sm">
                   {plan.limits.filter((limit) => limit.enabled).slice(0, 6).map((limit) => (
                     <li key={limit.key} className="flex gap-2">
@@ -257,6 +275,7 @@ const Billing = () => {
           plan={checkoutPlan}
           period={period}
           pending={checkoutMutation.isPending}
+          pricing={pricing}
           onClose={() => setCheckoutPlan(null)}
           onConfirm={() => checkoutMutation.mutate(checkoutPlan)}
         />

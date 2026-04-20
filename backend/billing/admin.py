@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import BillingCycle, FeatureLimit, Payment, Plan, Subscription, SubscriptionEvent, TrialPeriod, UsageTracking
+from .models import BillingCycle, FeatureLimit, Payment, Plan, RegionPrice, Subscription, SubscriptionEvent, TrialPeriod, UsageTracking
 from .services import activate_plan, cancel_subscription, renew_subscription, sync_plan_catalog
 
 
@@ -55,6 +55,13 @@ class SubscriptionAdmin(admin.ModelAdmin):
     search_fields = ["user__email", "user__business_name"]
     readonly_fields = ["provider", "provider_customer_id", "provider_subscription_id"]
     actions = [activate_growth, activate_business, renew_selected, cancel_selected]
+
+
+@admin.register(RegionPrice)
+class RegionPriceAdmin(admin.ModelAdmin):
+    list_display = ["country_code", "country_name", "plan", "currency", "currency_symbol", "monthly_price", "yearly_price", "is_default"]
+    list_filter = ["country_code", "currency", "is_default"]
+    search_fields = ["country_code", "country_name", "plan__name"]
 
 
 @admin.register(BillingCycle)

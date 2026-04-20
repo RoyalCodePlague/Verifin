@@ -16,6 +16,7 @@ import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { BarcodeScanner } from "@/components/BarcodeScanner";
 import { toast } from "sonner";
+import { useFeatureAccess, useUpgradePrompt } from "@/lib/features";
 
 const allCategories = [
   "Groceries", "Beverages", "Hardware", "Personal Care", "Electronics",
@@ -34,6 +35,8 @@ const Inventory = () => {
   const { products, addProduct, updateProduct, deleteProduct, profile, addActivity } = useStore();
   const { refreshUser } = useAuth();
   const navigate = useNavigate();
+  const { canUse } = useFeatureAccess();
+  const promptUpgrade = useUpgradePrompt();
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [addOpen, setAddOpen] = useState(false);
@@ -297,7 +300,20 @@ const Inventory = () => {
           <Input placeholder="Search products, SKU, barcode..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
         </div>
         <div className="flex gap-2">
-          {canUseCameraScan && <Button variant="outline" onClick={() => setScanOpen(true)}><ScanBarcode className="h-4 w-4 mr-2" /> Scan</Button>}
+          {canUseCameraScan && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (!canUse("barcode_scanning")) {
+                  promptUpgrade("barcode_scanning", "Barcode scanning");
+                  return;
+                }
+                setScanOpen(true);
+              }}
+            >
+              <ScanBarcode className="h-4 w-4 mr-2" /> Scan
+            </Button>
+          )}
           <Button onClick={openAdd} className="bg-gradient-hero text-primary-foreground"><Plus className="h-4 w-4 mr-2" /> Add Product</Button>
         </div>
       </div>

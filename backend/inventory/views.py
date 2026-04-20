@@ -7,6 +7,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from accounts.activity import log_staff_activity
 from billing.services import enforce_feature, enforce_limit
 from sales.models import SaleItem
 from .models import Branch, Category, Product, PurchaseOrder, StockMovement, StockTransfer, Supplier
@@ -54,7 +55,17 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         enforce_limit(self.request.user, "products")
-        serializer.save(user=self.request.user)
+        product = serializer.save(user=self.request.user)
+        log_staff_activity(self.request.user, "product_created", f"Created product {product.name}", actor=self.request.user, object_type="product", object_id=product.id)
+
+    def perform_update(self, serializer):
+        product = serializer.save()
+        log_staff_activity(self.request.user, "product_updated", f"Updated product {product.name}", actor=self.request.user, object_type="product", object_id=product.id)
+
+    def perform_destroy(self, instance):
+        name = instance.name
+        instance.delete()
+        log_staff_activity(self.request.user, "product_deleted", f"Deleted product {name}", actor=self.request.user, object_type="product", object_id=instance.id)
 
     @action(detail=False, methods=["get"], url_path="barcode-lookup")
     def barcode_lookup(self, request):

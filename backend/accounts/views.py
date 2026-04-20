@@ -9,10 +9,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
-from billing.services import enforce_limit
-from .models import Profile, Staff
+from billing.services import enforce_feature, enforce_limit
+from .models import Profile, Staff, StaffActivityLog
 from .permissions import IsOwnerOrManager
-from .serializers import CustomTokenObtainPairSerializer, ProfileSerializer, RegisterSerializer, StaffSerializer, UserSerializer
+from .serializers import CustomTokenObtainPairSerializer, ProfileSerializer, RegisterSerializer, StaffActivityLogSerializer, StaffSerializer, UserSerializer
 
 User = get_user_model()
 
@@ -29,8 +29,8 @@ def send_verification_email(user):
     token = user.email_verification_token or secrets.token_urlsafe(32)
     if token != user.email_verification_token:
         user.email_verification_token = token
-        user.email_verification_sent_at = timezone.now()
-        user.save(update_fields=["email_verification_token", "email_verification_sent_at"])
+    user.email_verification_sent_at = timezone.now()
+    user.save(update_fields=["email_verification_token", "email_verification_sent_at"])
 
     verify_url = f"{settings.FRONTEND_URL}/verify-email?token={token}"
     send_mail(
@@ -69,11 +69,10 @@ class RegisterView(APIView):
         serializer = RegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        refresh = RefreshToken.for_user(user)
+        send_verification_email(user)
         return Response({
             "user": UserSerializer(user).data,
-            "refresh": str(refresh),
-            "access": str(refresh.access_token),
+            "detail": "Account created. Check your email to verify your account before signing in.",
         }, status=status.HTTP_201_CREATED)
 
 
@@ -136,7 +135,6 @@ class ProfileViewSet(viewsets.ModelViewSet):
         return Profile.objects.filter(user=self.request.user, is_deleted=False)
 
     def perform_create(self, serializer):
-        enforce_limit(self.request.user, "users")
         serializer.save(user=self.request.user)
 
 
@@ -150,7 +148,17 @@ class StaffViewSet(viewsets.ModelViewSet):
         return Staff.objects.filter(user=self.request.user, is_deleted=False)
 
     def perform_create(self, serializer):
+        enforce_limit(self.request.user, "users")
         serializer.save(user=self.request.user)
+
+
+class StaffActivityLogViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = StaffActivityLogSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        enforce_feature(self.request.user, "staff_activity_logs")
+        return StaffActivityLog.objects.filter(user=self.request.user, is_deleted=False)
 
 
 class MeView(APIView):

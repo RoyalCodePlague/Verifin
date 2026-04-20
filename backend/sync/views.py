@@ -13,6 +13,7 @@ from expenses.serializers import ExpenseSerializer
 from expenses.models import ExpenseCategory
 from inventory.models import Category, Product
 from inventory.serializers import ProductSerializer
+from billing.services import enforce_feature
 
 
 def record_conflict(user, action, reason):
@@ -48,6 +49,10 @@ class SyncConflictViewSet(viewsets.ModelViewSet):
 
 class SyncPushView(APIView):
     permission_classes = [IsAuthenticated]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        enforce_feature(request.user, "offline_sync")
 
     def _inventory_category_id(self, request, payload):
         category_name = payload.get("categoryName") or payload.get("category_name")

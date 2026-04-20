@@ -7,6 +7,7 @@ from expenses.models import Expense
 from inventory.models import Product, StockMovement
 from sales.models import Sale
 from billing.services import enforce_feature
+from . import services
 
 
 class DailySalesView(APIView):
@@ -21,6 +22,7 @@ class WeeklyPerformanceView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        enforce_feature(request.user, "advanced_reports")
         return Response({"message": "Weekly performance endpoint ready."})
 
 
@@ -28,6 +30,7 @@ class StockMovementView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
+        enforce_feature(request.user, "advanced_reports")
         count = StockMovement.objects.filter(created_by=request.user).count()
         return Response({"stock_movements": count})
 
@@ -86,9 +89,49 @@ class MarginReportView(APIView):
 
 class GenericStubView(APIView):
     permission_classes = [IsAuthenticated]
+    required_feature = None
 
     def get(self, request):
+        if self.required_feature:
+            enforce_feature(request.user, self.required_feature)
         return Response({"detail": "Endpoint scaffolded."})
+
+
+class DiscrepancyReportView(GenericStubView):
+    required_feature = "discrepancy_tracking"
+
+
+class CustomerReportView(GenericStubView):
+    required_feature = "advanced_reports"
+
+
+class MonthlyOverviewView(GenericStubView):
+    required_feature = "advanced_reports"
+
+
+class AdvancedAnalyticsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        enforce_feature(request.user, "advanced_analytics")
+        return Response(services.advanced_analytics(request.user))
+
+
+class ForecastView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        enforce_feature(request.user, "forecasting")
+        days = int(request.query_params.get("days", 7))
+        return Response(services.rule_forecast(request.user, days=days))
+
+
+class AutomationAlertsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        enforce_feature(request.user, "automation_rules")
+        return Response(services.automation_alerts(request.user))
 
 
 class ExportView(APIView):

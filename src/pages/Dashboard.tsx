@@ -12,10 +12,20 @@ import { useStore } from "@/lib/store";
 import { buildWeeklyFinanceData, formatMoney } from "@/lib/reporting";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { fetchRuleInsightsApi, fetchWhatsAppSummaryApi } from "@/lib/api";
+import { useFeatureAccess, useUpgradePrompt, LockedBadge } from "@/lib/features";
+import { useQuery } from "@tanstack/react-query";
 
 const Dashboard = () => {
-  const { products, sales, expenses, discrepancies, activities, profile, generateWhatsAppSummary } = useStore();
+  const { products, sales, expenses, discrepancies, customers, activities, profile, generateWhatsAppSummary } = useStore();
   const navigate = useNavigate();
+  const { canUse, limits } = useFeatureAccess();
+  const promptUpgrade = useUpgradePrompt();
+  const ruleInsights = useQuery({
+    queryKey: ["rule-insights"],
+    queryFn: fetchRuleInsightsApi,
+    enabled: canUse("rule_insights"),
+  });
   const sym = profile.currencySymbol || "R";
 
   const todaySales = sales.filter(s => s.date === "Today");
@@ -73,8 +83,8 @@ const Dashboard = () => {
     { label: "Record Sale", icon: ShoppingCart, color: "bg-primary/10 text-primary", to: "/sales" },
     { label: "Add Expense", icon: Receipt, color: "bg-accent/10 text-accent", to: "/expenses" },
     { label: "Restock", icon: Plus, color: "bg-success/10 text-success", to: "/inventory" },
-    { label: "Scan Product", icon: ScanBarcode, color: "bg-primary/10 text-primary", to: "/inventory" },
-    { label: "Run Audit", icon: ClipboardCheck, color: "bg-warning/10 text-warning", to: "/audits" },
+    { label: "Scan Product", icon: ScanBarcode, color: "bg-primary/10 text-primary", to: "/inventory", feature: "barcode_scanning" },
+    { label: "Run Audit", icon: ClipboardCheck, color: "bg-warning/10 text-warning", to: "/audits", feature: "audits" },
     { label: "Help", icon: HelpCircle, color: "bg-muted text-muted-foreground", to: "/help-dashboard" },
   ];
 
@@ -86,10 +96,23 @@ const Dashboard = () => {
     ...(discrepancies.filter(d => d.status !== "resolved").length > 0 ? [{ text: `${discrepancies.filter(d => d.status !== "resolved").length} stock discrepancies still need attention`, type: "warning" }] : []),
   ];
 
+  const onboarding = [
+    { label: "Add your first product", done: products.length > 0, to: "/inventory" },
+    { label: "Make your first sale", done: sales.length > 0, to: "/sales" },
+    { label: "Log your first expense", done: expenses.length > 0, to: "/expenses" },
+    { label: "Add a customer", done: customers.length > 0, to: "/customers" },
+  ];
+
+  const usage = limits.filter((limit) => ["products", "customers", "users"].includes(limit.key));
+
   const handleWhatsAppShare = () => {
-    const summary = generateWhatsAppSummary();
-    const url = `https://wa.me/?text=${encodeURIComponent(summary)}`;
-    window.open(url, "_blank");
+    if (!canUse("whatsapp_reports")) {
+      promptUpgrade("whatsapp_reports", "WhatsApp summaries");
+      return;
+    }
+    fetchWhatsAppSummaryApi()
+      .then((summary) => window.open(`https://wa.me/?text=${encodeURIComponent(summary.message)}`, "_blank"))
+      .catch(() => window.open(`https://wa.me/?text=${encodeURIComponent(generateWhatsAppSummary())}`, "_blank"));
     toast.success("Opening WhatsApp with daily summary!");
   };
 
@@ -132,12 +155,54 @@ const Dashboard = () => {
         ))}
       </div>
 
+      <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
+        <Card className="shadow-soft">
+          <CardHeader className="pb-2"><CardTitle className="text-base font-display">Starter Checklist</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            {onboarding.map((item) => (
+              <button key={item.label} onClick={() => navigate(item.to)} className="flex w-full items-center justify-between rounded-lg border px-3 py-2 text-sm hover:bg-muted">
+                <span>{item.label}</span>
+                <span className={item.done ? "text-success" : "text-muted-foreground"}>{item.done ? "Done" : "Start"}</span>
+              </button>
+            ))}
+          </CardContent>
+        </Card>
+        <Card className="shadow-soft">
+          <CardHeader className="pb-2"><CardTitle className="text-base font-display">Plan Usage</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            {usage.map((limit) => {
+              const used = limit.used ?? 0;
+              const max = limit.limit ?? Math.max(used, 1);
+              const pct = limit.limit ? Math.min(100, (used / max) * 100) : 100;
+              return (
+                <div key={limit.key}>
+                  <div className="mb-1 flex justify-between text-xs">
+                    <span>{limit.label}</span>
+                    <span>{limit.limit == null ? `${used} used, unlimited` : `${used}/${limit.limit}`}</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded bg-muted">
+                    <div className="h-full rounded bg-primary" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      </div>
+
       <Card className="shadow-soft">
         <CardContent className="p-4 lg:p-5">
           <p className="text-sm font-medium text-muted-foreground mb-3">Quick Actions</p>
           <div className="flex gap-3 overflow-x-auto pb-1">
             {quickActions.map((a) => (
-              <button key={a.label} onClick={() => a.to === "/help-dashboard" ? navigate("/help") : navigate(a.to)} className="flex flex-col items-center gap-2 min-w-[80px] p-3 rounded-xl bg-muted/50 hover:bg-muted transition-colors">
+              <button key={a.label} onClick={() => {
+                if (a.feature && !canUse(a.feature)) {
+                  promptUpgrade(a.feature, a.label);
+                  return;
+                }
+                a.to === "/help-dashboard" ? navigate("/help") : navigate(a.to);
+              }} className="relative flex flex-col items-center gap-2 min-w-[80px] p-3 rounded-xl bg-muted/50 hover:bg-muted transition-colors">
+                {a.feature && !canUse(a.feature) && <span className="absolute right-1 top-1"><LockedBadge label="" /></span>}
                 <div className={`h-10 w-10 rounded-xl ${a.color} flex items-center justify-center`}>
                   <a.icon className="h-4.5 w-4.5" />
                 </div>
@@ -177,7 +242,7 @@ const Dashboard = () => {
             </CardTitle>
           </CardHeader>
           <CardContent className="p-4 pt-0 space-y-3">
-            {insights.map((ins, i) => (
+            {(ruleInsights.data?.insights.map((item) => ({ text: item.message, type: item.severity })) ?? insights).map((ins, i) => (
               <div key={i} className={`p-3 rounded-lg text-sm ${
                 ins.type === "warning" ? "bg-warning/10 text-warning"
                   : ins.type === "alert" ? "bg-destructive/10 text-destructive"
@@ -213,6 +278,21 @@ const Dashboard = () => {
             </ComposedChart>
           </ResponsiveContainer>
         </CardContent>
+      </Card>
+
+      <Card className="shadow-soft">
+        {!canUse("command_assistant") && (
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed p-4">
+              <div>
+                <p className="font-semibold">Command assistant</p>
+                <p className="text-sm text-muted-foreground">Growth unlocks deterministic commands like today sales, low stock, and top products.</p>
+              </div>
+              <Button variant="outline" onClick={() => promptUpgrade("command_assistant", "Command assistant")}>Upgrade</Button>
+            </div>
+          </CardContent>
+        )}
+        {canUse("command_assistant") && <CardContent className="p-5"><AdminAssistant /></CardContent>}
       </Card>
 
       <Card className="shadow-soft">

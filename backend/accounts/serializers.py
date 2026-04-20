@@ -1,7 +1,7 @@
 from django.contrib.auth import authenticate, get_user_model
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import Profile, Staff
+from .models import Profile, Staff, StaffActivityLog
 
 User = get_user_model()
 
@@ -27,8 +27,14 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 'detail': 'Email and password are required.'
             })
         
-        # Authenticate using email and password
         existing_user = User.objects.filter(email__iexact=email).first()
+        if existing_user and not existing_user.email_verified:
+            if existing_user.check_password(password):
+                raise serializers.ValidationError({
+                    'detail': 'Please verify your email before signing in. Check your inbox or request a new verification email.'
+                })
+
+        # Authenticate using email and password
         user = authenticate(username=existing_user.email if existing_user else email, password=password)
         
         if user is None:
@@ -39,6 +45,11 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
                 })
             raise serializers.ValidationError({
                 'detail': 'Invalid email or password.'
+            })
+
+        if not user.email_verified:
+            raise serializers.ValidationError({
+                'detail': 'Please verify your email before signing in.'
             })
         
         # Return refresh and access tokens
@@ -72,7 +83,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         user = User(**validated_data)
         user.set_password(password)
         user.is_active = True
-        user.email_verified = True
+        user.email_verified = False
         user.email_verification_token = ""
         user.email_verification_sent_at = None
         user.save()
@@ -111,3 +122,12 @@ class StaffSerializer(serializers.ModelSerializer):
         model = Staff
         fields = "__all__"
         read_only_fields = ["user", "created_at", "updated_at"]
+
+
+class StaffActivityLogSerializer(serializers.ModelSerializer):
+    actor_email = serializers.EmailField(source="actor.email", read_only=True, allow_null=True)
+
+    class Meta:
+        model = StaffActivityLog
+        fields = ["id", "actor", "actor_email", "action", "object_type", "object_id", "summary", "metadata", "created_at"]
+        read_only_fields = fields

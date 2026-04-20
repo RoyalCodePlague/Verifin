@@ -5,8 +5,10 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
-from .models import BillingCycle, FeatureLimit, Payment, Plan, Subscription, SubscriptionEvent, TrialPeriod, UsageTracking
+from .models import BillingCycle, FeatureLimit, Payment, Plan, RegionPrice, Subscription, SubscriptionEvent, TrialPeriod, UsageTracking
+from .features import FEATURE_METADATA
 from .plans import PLAN_DEFINITIONS
+from .regional_pricing import COUNTRY_PRICING, DEFAULT_COUNTRY, normalize_country_code
 
 
 GRACE_PERIOD_DAYS = 7
@@ -31,7 +33,29 @@ def sync_plan_catalog():
                 key=key,
                 defaults={"label": label, "enabled": enabled, "limit": limit, "unit": unit},
             )
+    sync_region_prices()
     return Plan.objects.filter(is_deleted=False).prefetch_related("limits")
+
+
+def sync_region_prices():
+    for country_code, pricing in COUNTRY_PRICING.items():
+        for plan_code in PLAN_DEFINITIONS.keys():
+            plan = Plan.objects.filter(code=plan_code, is_deleted=False).first()
+            if not plan:
+                continue
+            monthly, yearly = pricing[plan_code]
+            RegionPrice.objects.update_or_create(
+                plan=plan,
+                country_code=country_code,
+                defaults={
+                    "country_name": pricing["country_name"],
+                    "currency": pricing["currency"],
+                    "currency_symbol": pricing["symbol"],
+                    "monthly_price": Decimal(str(monthly)),
+                    "yearly_price": Decimal(str(yearly)),
+                    "is_default": country_code == DEFAULT_COUNTRY,
+                },
+            )
 
 
 def period_end(start, billing_period):
@@ -41,6 +65,69 @@ def period_end(start, billing_period):
 
 def amount_for(plan, billing_period):
     return plan.yearly_price if billing_period == Subscription.YEARLY else plan.monthly_price
+
+
+def detect_country_code(request):
+    query_country = normalize_country_code(request.query_params.get("country") if hasattr(request, "query_params") else "")
+    body_country = normalize_country_code(getattr(request, "data", {}).get("country_code", "") if hasattr(request, "data") else "")
+    header_country = normalize_country_code(
+        request.headers.get("X-Vercel-IP-Country")
+        or request.headers.get("CF-IPCountry")
+        or request.headers.get("X-Country-Code")
+        or request.META.get("HTTP_X_VERCEL_IP_COUNTRY")
+        or request.META.get("HTTP_CF_IPCOUNTRY")
+    )
+    country = query_country or body_country or header_country
+    return country if country in COUNTRY_PRICING else DEFAULT_COUNTRY
+
+
+def region_price_for(plan, country_code):
+    sync_plan_catalog()
+    country = normalize_country_code(country_code) or DEFAULT_COUNTRY
+    price = RegionPrice.objects.filter(plan=plan, country_code=country, is_deleted=False).first()
+    if price:
+        return price
+    return RegionPrice.objects.get(plan=plan, country_code=DEFAULT_COUNTRY, is_deleted=False)
+
+
+def regional_amount_for(plan, billing_period, country_code):
+    price = region_price_for(plan, country_code)
+    return price.yearly_price if billing_period == Subscription.YEARLY else price.monthly_price
+
+
+def pricing_context(request):
+    country_code = detect_country_code(request)
+    sync_plan_catalog()
+    prices = []
+    for plan in Plan.objects.filter(is_public=True, is_deleted=False).order_by("sort_order").prefetch_related("limits"):
+        price = region_price_for(plan, country_code)
+        prices.append({
+            "plan": plan,
+            "country_code": price.country_code,
+            "country_name": price.country_name,
+            "currency": price.currency,
+            "currency_symbol": price.currency_symbol,
+            "monthly_price": price.monthly_price,
+            "yearly_price": price.yearly_price,
+        })
+    region = COUNTRY_PRICING.get(country_code, COUNTRY_PRICING[DEFAULT_COUNTRY])
+    return {
+        "country_code": country_code,
+        "country_name": region["country_name"],
+        "currency": region["currency"],
+        "currency_symbol": region["symbol"],
+        "detected_by": "query_or_header",
+        "prices": prices,
+        "available_countries": [
+            {
+                "country_code": code,
+                "country_name": data["country_name"],
+                "currency": data["currency"],
+                "currency_symbol": data["symbol"],
+            }
+            for code, data in sorted(COUNTRY_PRICING.items())
+        ],
+    }
 
 
 def record_event(subscription, event_type, metadata=None, actor=None, provider=Subscription.PROVIDER_MOCK, provider_event_id=""):
@@ -112,7 +199,7 @@ def refresh_subscription_state(subscription):
 
 
 @transaction.atomic
-def activate_plan(user, plan_code, billing_period=Subscription.MONTHLY, trial_days=0, actor=None):
+def activate_plan(user, plan_code, billing_period=Subscription.MONTHLY, trial_days=0, actor=None, country_code=None):
     sync_plan_catalog()
     if billing_period not in [Subscription.MONTHLY, Subscription.YEARLY]:
         raise ValidationError({"billing_period": "Use monthly or yearly."})
@@ -122,10 +209,13 @@ def activate_plan(user, plan_code, billing_period=Subscription.MONTHLY, trial_da
     is_free = plan.code == Plan.STARTER
     is_trial = bool(trial_days and not is_free)
     end_at = None if is_free else period_end(now, billing_period)
+    region_price = region_price_for(plan, country_code or DEFAULT_COUNTRY)
 
     subscription.plan = plan
     subscription.billing_period = billing_period
     subscription.status = Subscription.TRIALING if is_trial else Subscription.ACTIVE
+    subscription.billing_country_code = region_price.country_code
+    subscription.billing_currency = region_price.currency
     subscription.current_period_start = now
     subscription.current_period_end = end_at
     subscription.trial_ends_at = now + timedelta(days=int(trial_days)) if is_trial else None
@@ -141,21 +231,21 @@ def activate_plan(user, plan_code, billing_period=Subscription.MONTHLY, trial_da
     else:
         event_type = "plan_activated"
 
-    amount = amount_for(plan, billing_period)
+    amount = region_price.yearly_price if billing_period == Subscription.YEARLY else region_price.monthly_price
     if amount > 0 and not is_trial:
         cycle = BillingCycle.objects.create(
             subscription=subscription,
             period_start=now,
             period_end=end_at,
             amount=amount,
-            currency=plan.currency,
+            currency=region_price.currency,
             paid_at=now,
             status="paid",
         )
-        Payment.objects.create(subscription=subscription, amount=amount, currency=plan.currency, status="paid")
-        record_event(subscription, "mock_payment_succeeded", {"cycle_id": cycle.id, "amount": str(amount)}, actor=actor or user)
+        Payment.objects.create(subscription=subscription, amount=amount, currency=region_price.currency, status="paid")
+        record_event(subscription, "mock_payment_succeeded", {"cycle_id": cycle.id, "amount": str(amount), "currency": region_price.currency, "country_code": region_price.country_code}, actor=actor or user)
 
-    record_event(subscription, event_type, {"plan": plan.code, "billing_period": billing_period}, actor=actor or user)
+    record_event(subscription, event_type, {"plan": plan.code, "billing_period": billing_period, "country_code": region_price.country_code, "currency": region_price.currency}, actor=actor or user)
     refresh_usage_snapshot(user)
     return subscription
 
@@ -172,7 +262,7 @@ def renew_subscription(user, actor=None):
     now = timezone.now()
     start = max(now, subscription.current_period_end or now)
     end_at = period_end(start, subscription.billing_period)
-    amount = amount_for(subscription.plan, subscription.billing_period)
+    amount = regional_amount_for(subscription.plan, subscription.billing_period, subscription.billing_country_code)
     subscription.status = Subscription.ACTIVE
     subscription.current_period_start = start
     subscription.current_period_end = end_at
@@ -186,11 +276,11 @@ def renew_subscription(user, actor=None):
         period_start=start,
         period_end=end_at,
         amount=amount,
-        currency=subscription.plan.currency,
+        currency=subscription.billing_currency,
         paid_at=now,
         status="paid",
     )
-    Payment.objects.create(subscription=subscription, amount=amount, currency=subscription.plan.currency, status="paid")
+    Payment.objects.create(subscription=subscription, amount=amount, currency=subscription.billing_currency, status="paid")
     record_event(subscription, "subscription_renewed", {"cycle_id": cycle.id}, actor=actor or user)
     return subscription
 
@@ -374,7 +464,28 @@ def subscription_payload(user):
         "plan": subscription.plan,
         "limits": limits,
         "locked_features": locked,
+        "features": feature_access_payload(user),
         "events": subscription.events.filter(is_deleted=False)[:10],
         "cycles": subscription.cycles.filter(is_deleted=False)[:6],
         "available_actions": ["mock_checkout", "renew", "upgrade", "downgrade", "cancel", "resume"],
     }
+
+
+def feature_access_payload(user):
+    subscription = get_or_create_subscription(user)
+    access = []
+    for key, meta in FEATURE_METADATA.items():
+        feature = _feature(subscription, key)
+        enabled = has_feature(user, key) if feature else meta["plan"] == "starter"
+        access.append({
+            "key": key,
+            "label": meta["label"],
+            "category": meta["category"],
+            "minimum_plan": meta["plan"],
+            "enabled": enabled,
+            "current_plan": subscription.plan.code,
+            "upgrade_plan": None if enabled else _upgrade_plan_for(key, subscription.plan),
+            "limit": feature.limit if feature else None,
+            "used": current_usage(user, key) if key in ["users", "products", "customers", "reports"] else None,
+        })
+    return access

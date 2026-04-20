@@ -47,6 +47,24 @@ class FeatureLimit(TimeStampedSoftDeleteModel):
         return f"{self.plan}: {self.label} {self.limit if self.limit is not None else 'unlimited'}"
 
 
+class RegionPrice(TimeStampedSoftDeleteModel):
+    plan = models.ForeignKey(Plan, on_delete=models.CASCADE, related_name="region_prices")
+    country_code = models.CharField(max_length=2)
+    country_name = models.CharField(max_length=80)
+    currency = models.CharField(max_length=10)
+    currency_symbol = models.CharField(max_length=10)
+    monthly_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    yearly_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    is_default = models.BooleanField(default=False)
+
+    class Meta:
+        unique_together = ("plan", "country_code")
+        ordering = ["country_name", "plan__sort_order"]
+
+    def __str__(self):
+        return f"{self.country_code} {self.plan.name} {self.currency} {self.monthly_price}"
+
+
 class Subscription(TimeStampedSoftDeleteModel):
     ACTIVE = "active"
     TRIALING = "trialing"
@@ -72,6 +90,8 @@ class Subscription(TimeStampedSoftDeleteModel):
     provider = models.CharField(max_length=30, default=PROVIDER_MOCK)
     provider_customer_id = models.CharField(max_length=255, blank=True)
     provider_subscription_id = models.CharField(max_length=255, blank=True)
+    billing_country_code = models.CharField(max_length=2, default="ZA")
+    billing_currency = models.CharField(max_length=10, default="ZAR")
     current_period_start = models.DateTimeField(default=timezone.now)
     current_period_end = models.DateTimeField(blank=True, null=True)
     trial_ends_at = models.DateTimeField(blank=True, null=True)

@@ -5,11 +5,14 @@ import { useStore } from "@/lib/store";
 import { toast } from "sonner";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { buildWeeklyFinanceData, csvCell, formatMoney } from "@/lib/reporting";
+import { LockedBadge, useFeatureAccess, useUpgradePrompt } from "@/lib/features";
 
 const COLORS = ["hsl(152 55% 28%)", "hsl(38 92% 50%)", "hsl(0 72% 51%)", "hsl(200 70% 50%)", "hsl(280 60% 50%)"];
 
 const Reports = () => {
   const { sales, expenses, products, discrepancies, customers, profile } = useStore();
+  const { canUse } = useFeatureAccess();
+  const promptUpgrade = useUpgradePrompt();
   const sym = profile.currencySymbol || "R";
   const todaySales = sales.filter((s) => s.date === "Today");
   const todaySalesTotal = todaySales.reduce((sum, s) => sum + s.total, 0);
@@ -35,18 +38,27 @@ const Reports = () => {
 
   const reports = [
     { title: "Daily Sales Summary", desc: `${todaySales.length} transactions - ${formatMoney(todaySalesTotal, sym)} total`, icon: FileText },
-    { title: "Weekly Performance", desc: `Sales: ${formatMoney(weeklySalesTotal, sym)} - Expenses: ${formatMoney(weeklyExpensesTotal, sym)} - Net: ${formatMoney(weeklySalesTotal - weeklyExpensesTotal, sym)}`, icon: BarChart3 },
-    { title: "Stock Movement Report", desc: `${products.length} products tracked - ${products.filter(p => p.status !== "ok").length} need attention`, icon: Package },
-    { title: "Discrepancy Report", desc: `${discrepancies.filter(d => d.status !== "resolved").length} open issues`, icon: AlertTriangle },
-    { title: "Customer Report", desc: `${customers.length} customers - ${formatMoney(customers.reduce((s, c) => s + c.totalSpent, 0), sym)} total revenue`, icon: Users },
+    { title: "Weekly Performance", desc: `Sales: ${formatMoney(weeklySalesTotal, sym)} - Expenses: ${formatMoney(weeklyExpensesTotal, sym)} - Net: ${formatMoney(weeklySalesTotal - weeklyExpensesTotal, sym)}`, icon: BarChart3, feature: "advanced_reports" },
+    { title: "Stock Movement Report", desc: `${products.length} products tracked - ${products.filter(p => p.status !== "ok").length} need attention`, icon: Package, feature: "advanced_reports" },
+    { title: "Discrepancy Report", desc: `${discrepancies.filter(d => d.status !== "resolved").length} open issues`, icon: AlertTriangle, feature: "discrepancy_tracking" },
+    { title: "Customer Report", desc: `${customers.length} customers - ${formatMoney(customers.reduce((s, c) => s + c.totalSpent, 0), sym)} total revenue`, icon: Users, feature: "advanced_reports" },
     { title: "Expense Analysis", desc: `${expenses.length} expenses across ${Object.keys(expenseByCat).length} categories`, icon: Receipt },
-    { title: "Profit & Loss", desc: `Revenue: ${formatMoney(totalSales, sym)} - COGS: ${formatMoney(totalCostOfGoods, sym)} - Gross profit: ${formatMoney(grossProfit, sym)}`, icon: TrendingUp },
-    { title: "Monthly Overview", desc: "Full month breakdown of sales, expenses, and stock", icon: Calendar },
+    { title: "Profit & Loss", desc: `Revenue: ${formatMoney(totalSales, sym)} - COGS: ${formatMoney(totalCostOfGoods, sym)} - Gross profit: ${formatMoney(grossProfit, sym)}`, icon: TrendingUp, feature: "advanced_analytics" },
+    { title: "Monthly Overview", desc: "Full month breakdown of sales, expenses, and stock", icon: Calendar, feature: "advanced_reports" },
   ];
 
   const row = (values: unknown[]) => values.map(csvCell).join(",");
 
   const exportToExcel = (title: string) => {
+    const report = reports.find((item) => item.title === title);
+    if (report?.feature && !canUse(report.feature)) {
+      promptUpgrade(report.feature, report.title);
+      return;
+    }
+    if (!canUse("excel_exports") && !title.includes("Sales") && !title.includes("Expense")) {
+      promptUpgrade("excel_exports", "Advanced exports");
+      return;
+    }
     let csvRows: string[] = [];
     const date = new Date().toISOString().slice(0, 10);
 
@@ -183,7 +195,10 @@ const Reports = () => {
             <CardContent className="p-5 flex items-start gap-4">
               <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0"><r.icon className="h-5 w-5 text-primary" /></div>
               <div className="flex-1">
-                <h3 className="font-display font-semibold text-sm">{r.title}</h3>
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="font-display font-semibold text-sm">{r.title}</h3>
+                  {r.feature && !canUse(r.feature) && <LockedBadge />}
+                </div>
                 <p className="text-xs text-muted-foreground mt-0.5">{r.desc}</p>
                 <Button variant="outline" size="sm" className="mt-3" onClick={() => exportToExcel(r.title)}>
                   <Download className="h-3.5 w-3.5 mr-1.5" /> Export CSV

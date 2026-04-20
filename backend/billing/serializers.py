@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import BillingCycle, FeatureLimit, Payment, Plan, Subscription, SubscriptionEvent, TrialPeriod, UsageTracking
+from .models import BillingCycle, FeatureLimit, Payment, Plan, RegionPrice, Subscription, SubscriptionEvent, TrialPeriod, UsageTracking
 
 
 class FeatureLimitSerializer(serializers.ModelSerializer):
@@ -17,6 +17,34 @@ class PlanSerializer(serializers.ModelSerializer):
         fields = ["id", "code", "name", "description", "monthly_price", "yearly_price", "currency", "sort_order", "limits"]
 
 
+class RegionPriceSerializer(serializers.ModelSerializer):
+    plan = PlanSerializer(read_only=True)
+
+    class Meta:
+        model = RegionPrice
+        fields = ["id", "plan", "country_code", "country_name", "currency", "currency_symbol", "monthly_price", "yearly_price", "is_default"]
+
+
+class PricingContextPriceSerializer(serializers.Serializer):
+    plan = PlanSerializer()
+    country_code = serializers.CharField()
+    country_name = serializers.CharField()
+    currency = serializers.CharField()
+    currency_symbol = serializers.CharField()
+    monthly_price = serializers.DecimalField(max_digits=12, decimal_places=2)
+    yearly_price = serializers.DecimalField(max_digits=12, decimal_places=2)
+
+
+class PricingContextSerializer(serializers.Serializer):
+    country_code = serializers.CharField()
+    country_name = serializers.CharField()
+    currency = serializers.CharField()
+    currency_symbol = serializers.CharField()
+    detected_by = serializers.CharField()
+    prices = PricingContextPriceSerializer(many=True)
+    available_countries = serializers.ListField()
+
+
 class SubscriptionSerializer(serializers.ModelSerializer):
     plan = PlanSerializer(read_only=True)
 
@@ -28,6 +56,8 @@ class SubscriptionSerializer(serializers.ModelSerializer):
             "status",
             "billing_period",
             "provider",
+            "billing_country_code",
+            "billing_currency",
             "current_period_start",
             "current_period_end",
             "trial_ends_at",
@@ -75,6 +105,7 @@ class BillingOverviewSerializer(serializers.Serializer):
     plan = PlanSerializer()
     limits = serializers.ListField()
     locked_features = serializers.ListField()
+    features = serializers.ListField()
     events = SubscriptionEventSerializer(many=True)
     cycles = BillingCycleSerializer(many=True)
     available_actions = serializers.ListField(child=serializers.CharField())

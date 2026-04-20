@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 
-from .models import Profile, Staff, User
+from .models import Profile, Staff, StaffActivityLog, User
 
 
 class ProfileInline(admin.StackedInline):
@@ -42,4 +42,11 @@ class ProfileAdmin(admin.ModelAdmin):
 class StaffAdmin(admin.ModelAdmin):
     list_display = ("name", "user", "role", "status", "last_active")
     list_filter = ("role", "status")
+
+
+@admin.register(StaffActivityLog)
+class StaffActivityLogAdmin(admin.ModelAdmin):
+    list_display = ("user", "actor", "action", "object_type", "summary", "created_at")
+    list_filter = ("action", "object_type")
+    search_fields = ("user__email", "actor__email", "summary")
     search_fields = ("name", "user__email")

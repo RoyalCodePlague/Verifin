@@ -3,6 +3,8 @@ COMMON_LIMITS = {
     "daily_summaries": ("Daily summaries", True, None, ""),
     "pwa_access": ("PWA/mobile access", True, None, ""),
     "basic_expenses": ("Basic expense logging", True, None, ""),
+    "onboarding_checklist": ("Onboarding checklist", True, None, ""),
+    "usage_indicators": ("Usage indicators", True, None, ""),
     "ai_assistant": ("AI/Admin Assistance System", False, 0, ""),
     "audits": ("Inventory audits", False, 0, ""),
     "barcode_scanning": ("Barcode scanning", False, 0, ""),
@@ -10,6 +12,12 @@ COMMON_LIMITS = {
     "whatsapp_reports": ("WhatsApp reports", False, 0, ""),
     "qr_loyalty": ("QR loyalty", False, 0, ""),
     "alerts": ("Low stock and discrepancy alerts", False, 0, ""),
+    "discrepancy_tracking": ("Discrepancy tracking", False, 0, ""),
+    "advanced_reports": ("Advanced reports with charts", False, 0, ""),
+    "rule_insights": ("Rule-based insights", False, 0, ""),
+    "reorder_suggestions": ("Automatic reorder suggestions", False, 0, ""),
+    "command_assistant": ("Command assistant", False, 0, ""),
+    "receipt_scan_simulator": ("Receipt scan simulator", False, 0, ""),
     "forecasting": ("Forecasting", False, 0, ""),
     "advanced_analytics": ("Advanced analytics", False, 0, ""),
     "custom_reports": ("Custom reports", False, 0, ""),
@@ -19,6 +27,9 @@ COMMON_LIMITS = {
     "bulk_import_export": ("Bulk import/export", False, 0, ""),
     "excel_exports": ("Excel exports", False, 0, ""),
     "api_access": ("API access", False, 0, ""),
+    "staff_activity_logs": ("Staff activity logs", False, 0, ""),
+    "multi_branch": ("Multi-branch controls", False, 0, ""),
+    "automation_rules": ("Automation rules", False, 0, ""),
 }
 
 STARTER_LIMITS = {
@@ -28,6 +39,12 @@ STARTER_LIMITS = {
     "customers": ("Customers", True, 100, "customers"),
     "reports": ("Basic reports", True, 2, "reports"),
 }
+
+# Testing mode: Starter gets access to every feature while subscription flows are being tested.
+# To restore package-specific access later, remove this loop and keep STARTER_LIMITS as the
+# limited free plan above.
+for _key, (_label, _enabled, _limit, _unit) in list(STARTER_LIMITS.items()):
+    STARTER_LIMITS[_key] = (_label, True, None, _unit)
 
 GROWTH_LIMITS = {
     **COMMON_LIMITS,
@@ -42,6 +59,12 @@ GROWTH_LIMITS = {
     "whatsapp_reports": ("WhatsApp daily reports", True, None, ""),
     "qr_loyalty": ("QR loyalty", True, None, ""),
     "alerts": ("Low stock and discrepancy alerts", True, None, ""),
+    "discrepancy_tracking": ("Discrepancy tracking", True, None, ""),
+    "advanced_reports": ("Advanced reports with charts", True, None, ""),
+    "rule_insights": ("Rule-based insights", True, None, ""),
+    "reorder_suggestions": ("Automatic reorder suggestions", True, None, ""),
+    "command_assistant": ("Command assistant", True, None, ""),
+    "receipt_scan_simulator": ("Receipt scan simulator", True, None, ""),
 }
 
 BUSINESS_LIMITS = {
@@ -57,6 +80,9 @@ BUSINESS_LIMITS = {
     "bulk_import_export": ("Bulk import/export", True, None, ""),
     "excel_exports": ("Excel exports", True, None, ""),
     "api_access": ("API access", True, None, ""),
+    "staff_activity_logs": ("Staff activity logs", True, None, ""),
+    "multi_branch": ("Multi-branch controls", True, None, ""),
+    "automation_rules": ("Automation rules", True, None, ""),
 }
 
 PLAN_DEFINITIONS = {

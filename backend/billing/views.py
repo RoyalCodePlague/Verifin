@@ -3,8 +3,8 @@ from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from .models import Payment, Plan, Subscription, SubscriptionEvent
-from .serializers import BillingOverviewSerializer, PaymentSerializer, PlanSerializer, SubscriptionEventSerializer, SubscriptionSerializer
+from .models import Payment, Plan, RegionPrice, Subscription, SubscriptionEvent
+from .serializers import BillingOverviewSerializer, PaymentSerializer, PlanSerializer, PricingContextSerializer, RegionPriceSerializer, SubscriptionEventSerializer, SubscriptionSerializer
 from .services import (
     activate_plan,
     cancel_subscription,
@@ -14,6 +14,8 @@ from .services import (
     record_event,
     renew_subscription,
     resume_subscription,
+    feature_access_payload,
+    pricing_context,
     subscription_payload,
     sync_plan_catalog,
 )
@@ -25,6 +27,22 @@ class PlanViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         return sync_plan_catalog().filter(is_public=True).order_by("sort_order").prefetch_related("limits")
+
+
+class RegionPriceViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = RegionPriceSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        sync_plan_catalog()
+        return RegionPrice.objects.filter(is_deleted=False).select_related("plan").order_by("country_name", "plan__sort_order")
+
+
+class PricingContextViewSet(viewsets.ViewSet):
+    permission_classes = [AllowAny]
+
+    def list(self, request):
+        return Response(PricingContextSerializer(pricing_context(request)).data)
 
 
 class SubscriptionViewSet(viewsets.ReadOnlyModelViewSet):
@@ -44,6 +62,10 @@ class SubscriptionViewSet(viewsets.ReadOnlyModelViewSet):
     def current(self, request):
         return Response(BillingOverviewSerializer(subscription_payload(request.user)).data)
 
+    @action(detail=False, methods=["get"], url_path="features")
+    def features(self, request):
+        return Response({"features": feature_access_payload(request.user)})
+
     @action(detail=False, methods=["post"], url_path="mock-checkout")
     def mock_checkout(self, request):
         subscription = activate_plan(
@@ -52,6 +74,7 @@ class SubscriptionViewSet(viewsets.ReadOnlyModelViewSet):
             request.data.get("billing_period", "monthly"),
             trial_days=int(request.data.get("trial_days", 0) or 0),
             actor=request.user,
+            country_code=request.data.get("country_code"),
         )
         return Response(
             {
