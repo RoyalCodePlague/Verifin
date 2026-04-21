@@ -18,6 +18,7 @@ import {
 } from "@/lib/api";
 import { useStore } from "@/lib/store";
 import { toast } from "sonner";
+import { symbolForCurrency } from "@/lib/currency";
 
 type Suggestion = Awaited<ReturnType<typeof fetchPurchaseSuggestions>>["items"][number];
 
@@ -31,8 +32,9 @@ const Suppliers = () => {
   const [supplierOpen, setSupplierOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
   const [supplierForm, setSupplierForm] = useState(emptySupplier);
-  const [orderForm, setOrderForm] = useState({ supplier: "", product: "", quantity: "1", unitCost: "", expectedDate: "" });
+  const [orderForm, setOrderForm] = useState({ supplier: "", product: "", quantity: "1", unitCost: "", currency: profile.currency, fxRate: "", expectedDate: "" });
   const sym = profile.currencySymbol || "R";
+  const enabledCurrencies = profile.enabledCurrencies?.length ? profile.enabledCurrencies : [profile.currency];
 
   const loadData = async () => {
     const [nextSuppliers, nextOrders, nextSuggestions] = await Promise.all([
@@ -73,6 +75,8 @@ const Suppliers = () => {
       const created = await createPurchaseOrderApi({
         supplier: Number(orderForm.supplier),
         branch: null,
+        currency: orderForm.currency,
+        fx_rate_to_base: orderForm.currency === profile.currency ? undefined : (Number(orderForm.fxRate) || profile.exchangeRates?.[orderForm.currency] || undefined),
         expected_date: orderForm.expectedDate || null,
         status: "ordered",
         items: [{
@@ -106,6 +110,8 @@ const Suppliers = () => {
       product: String(item.product.id),
       quantity: String(item.suggested_quantity || 1),
       unitCost: item.product.cost_price || "0",
+      currency: profile.currency,
+      fxRate: "",
       expectedDate: "",
     });
     setOrderOpen(true);
@@ -158,7 +164,10 @@ const Suppliers = () => {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-medium">{order.order_number} - {order.supplier_name}</p>
-                    <p className="text-xs text-muted-foreground">{order.items.length} item(s) - {sym}{Number(order.total_cost).toLocaleString()}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {order.items.length} item(s) - {symbolForCurrency(order.currency || profile.currency)}{Number(order.total_cost).toLocaleString()}
+                      {(order.currency || profile.currency) !== profile.currency ? ` (Base ${sym}${Number(order.total_cost_base || 0).toLocaleString()})` : ""}
+                    </p>
                   </div>
                   <Badge>{order.status}</Badge>
                 </div>
@@ -197,11 +206,26 @@ const Suppliers = () => {
             <div><Label>Branch</Label><select value={orderForm.branch} onChange={e => setOrderForm({ ...orderForm, branch: e.target.value })} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm"><option value="">No branch</option>{branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
             */}
             <div><Label>Product</Label><select value={orderForm.product} onChange={e => { const product = products.find(p => p.id === e.target.value); setOrderForm({ ...orderForm, product: e.target.value, unitCost: String(product?.costPrice || "") }); }} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm"><option value="">Select product</option>{products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label>Currency</Label>
+                <select value={orderForm.currency} onChange={e => setOrderForm({ ...orderForm, currency: e.target.value, fxRate: "" })} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
+                  {enabledCurrencies.map(code => <option key={code} value={code}>{code}</option>)}
+                </select>
+              </div>
+              <div>
+                <Label>Rate to {profile.currency}</Label>
+                <Input type="number" value={orderForm.currency === profile.currency ? "1" : (orderForm.fxRate || String(profile.exchangeRates?.[orderForm.currency] ?? ""))} onChange={e => setOrderForm({ ...orderForm, fxRate: e.target.value })} className="mt-1" disabled={orderForm.currency === profile.currency} />
+              </div>
+            </div>
             <div className="grid grid-cols-3 gap-2">
               <div><Label>Quantity</Label><Input type="number" value={orderForm.quantity} onChange={e => setOrderForm({ ...orderForm, quantity: e.target.value })} className="mt-1" /></div>
-              <div><Label>Unit Cost</Label><Input type="number" value={orderForm.unitCost} onChange={e => setOrderForm({ ...orderForm, unitCost: e.target.value })} className="mt-1" /></div>
+              <div><Label>Unit Cost ({symbolForCurrency(orderForm.currency)})</Label><Input type="number" value={orderForm.unitCost} onChange={e => setOrderForm({ ...orderForm, unitCost: e.target.value })} className="mt-1" /></div>
               <div><Label>Expected</Label><Input type="date" value={orderForm.expectedDate} onChange={e => setOrderForm({ ...orderForm, expectedDate: e.target.value })} className="mt-1" /></div>
             </div>
+            <p className="text-xs text-muted-foreground">
+              Base estimate: {sym}{((Number(orderForm.quantity) || 0) * (Number(orderForm.unitCost) || 0) * (orderForm.currency === profile.currency ? 1 : (Number(orderForm.fxRate) || profile.exchangeRates?.[orderForm.currency] || 0))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
             <Button onClick={createOrder} disabled={!orderForm.supplier || !orderForm.product} className="w-full">Create Order</Button>
           </div>
         </DialogContent>

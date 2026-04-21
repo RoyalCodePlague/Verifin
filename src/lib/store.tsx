@@ -12,6 +12,8 @@ export interface Product {
   stock: number;
   reorder: number;
   costPrice: number;
+  costCurrency?: string;
+  costFxRateToBase?: number;
   price: number;
   status: "ok" | "low" | "out";
   barcode?: string;
@@ -34,6 +36,8 @@ export interface Sale {
   time: string;
   date: string;
   method: "Cash" | "EFT" | "Card";
+  paymentCurrency?: string;
+  paymentAllocations?: Array<{ currency: string; amount: number; amountBase?: number }>;
   branchId?: string;
   customerId?: string;
   saleItems?: SaleItem[];
@@ -43,6 +47,9 @@ export interface Expense {
   id: string;
   desc: string;
   amount: number;
+  currency?: string;
+  amountBase?: number;
+  paymentAllocations?: Array<{ currency: string; amount: number; amountBase?: number }>;
   date: string;
   category: string;
 }
@@ -104,6 +111,8 @@ export interface BusinessProfile {
   name: string;
   currency: string;
   currencySymbol: string;
+  enabledCurrencies: string[];
+  exchangeRates: Record<string, number>;
   categories: string[];
   whatsappDaily: boolean;
   lowStockAlerts: boolean;
@@ -132,11 +141,14 @@ interface StoreState {
   activities: ActivityItem[];
   setProfile: (p: BusinessProfile) => void;
   addProduct: (p: Omit<Product, "id" | "status">) => string;
+  upsertProduct: (product: Product) => void;
   updateProduct: (id: string, p: Partial<Product>) => void;
   deleteProduct: (id: string) => void;
   addSale: (s: Omit<Sale, "id">) => void;
+  upsertSale: (sale: Sale) => void;
   deleteSale: (id: string) => void;
   addExpense: (e: Omit<Expense, "id">) => void;
+  upsertExpense: (expense: Expense) => void;
   deleteExpense: (id: string) => void;
   addCustomer: (c: Omit<Customer, "id">) => void;
   updateCustomer: (id: string, c: Partial<Customer>) => void;
@@ -174,6 +186,8 @@ const defaultProfile: BusinessProfile = {
   name: "",
   currency: "ZAR",
   currencySymbol: "R",
+  enabledCurrencies: ["ZAR"],
+  exchangeRates: {},
   categories: ["Groceries", "Beverages", "Hardware", "Personal Care"],
   whatsappDaily: true,
   lowStockAlerts: true,
@@ -242,6 +256,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return id;
   }, []);
 
+  const upsertProduct = useCallback((product: Product) => {
+    setProducts(prev => {
+      const next = {
+        ...product,
+        status: computeStatus(product.stock, product.reorder),
+        addedDate: product.addedDate || today(),
+        lastRestocked: product.lastRestocked || today(),
+      };
+      const existingIndex = prev.findIndex((item) => item.id === next.id);
+      if (existingIndex === -1) {
+        return [next, ...prev];
+      }
+      const updated = [...prev];
+      updated[existingIndex] = next;
+      return updated;
+    });
+  }, []);
+
   const updateProduct = useCallback((id: string, updates: Partial<Product>) => {
     setProducts(prev => prev.map(p => {
       if (p.id !== id) return p;
@@ -296,11 +328,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     addActivity({ text: `Sold ${s.items} — ${s.total.toLocaleString()}`, time: "Just now", type: "sale" });
   }, []);
 
+  const upsertSale = useCallback((sale: Sale) => {
+    setSales(prev => {
+      const existingIndex = prev.findIndex((item) => item.id === sale.id);
+      if (existingIndex === -1) {
+        return [sale, ...prev];
+      }
+      const updated = [...prev];
+      updated[existingIndex] = sale;
+      return updated;
+    });
+  }, []);
+
   const deleteSale = useCallback((id: string) => setSales(prev => prev.filter(s => s.id !== id)), []);
 
   const addExpense = useCallback((e: Omit<Expense, "id">) => {
     setExpenses(prev => [{ ...e, id: uid() }, ...prev]);
     addActivity({ text: `Expense: ${e.desc} — ${e.amount.toLocaleString()}`, time: "Just now", type: "expense" });
+  }, []);
+
+  const upsertExpense = useCallback((expense: Expense) => {
+    setExpenses(prev => {
+      const existingIndex = prev.findIndex((item) => item.id === expense.id);
+      if (existingIndex === -1) {
+        return [expense, ...prev];
+      }
+      const updated = [...prev];
+      updated[existingIndex] = expense;
+      return updated;
+    });
   }, []);
 
   const deleteExpense = useCallback((id: string) => setExpenses(prev => prev.filter(e => e.id !== id)), []);
@@ -423,8 +479,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   return (
     <StoreContext.Provider value={{
       profile, products, sales, expenses, audits, discrepancies, customers, staff, branches, activities,
-      setProfile, addProduct, updateProduct, deleteProduct,
-      addSale, deleteSale, addExpense, deleteExpense,
+      setProfile, addProduct, upsertProduct, updateProduct, deleteProduct,
+      addSale, upsertSale, deleteSale, addExpense, upsertExpense, deleteExpense,
       addCustomer, updateCustomer, deleteCustomer, addStaff, updateStaff, deleteStaff,
       addBranch, updateBranch, deleteBranch, addActivity, resolveDiscrepancy, addAudit, updateAudit, addDiscrepancy, generateWhatsAppSummary,
       hydrateFromServer, resetForLogout,

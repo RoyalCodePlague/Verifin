@@ -6,49 +6,60 @@ import { Switch } from "@/components/ui/switch";
 import { useStore } from "@/lib/store";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
-import { Building2, Moon, Sun, Trash2 } from "lucide-react";
+import { Moon, Sun } from "lucide-react";
 import { patchMe } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useNavigate } from "react-router-dom";
-import { useFeatureAccess, useUpgradePrompt } from "@/lib/features";
-
-const currencyOptions = [
-  { code: "ZAR", symbol: "R", label: "South African Rand (R)" },
-  { code: "USD", symbol: "$", label: "US Dollar ($)" },
-  { code: "ZWL", symbol: "ZWL", label: "Zimbabwean Dollar (ZWL)" },
-  { code: "KES", symbol: "KSh", label: "Kenyan Shilling (KSh)" },
-  { code: "NGN", symbol: "₦", label: "Nigerian Naira (₦)" },
-  { code: "GHS", symbol: "GH₵", label: "Ghanaian Cedi (GH₵)" },
-  { code: "BWP", symbol: "P", label: "Botswana Pula (P)" },
-  { code: "EUR", symbol: "€", label: "Euro (€)" },
-  { code: "GBP", symbol: "£", label: "British Pound (£)" },
-];
+import { currencyOptions, symbolForCurrency } from "@/lib/currency";
 
 const SettingsPage = () => {
-  const { profile, setProfile, branches, addBranch, updateBranch, deleteBranch } = useStore();
+  const { profile, setProfile } = useStore();
   const { logout } = useAuth();
   const navigate = useNavigate();
-  const { canUse } = useFeatureAccess();
-  const promptUpgrade = useUpgradePrompt();
   const [name, setName] = useState(profile.name);
   const [currency, setCurrency] = useState(profile.currency);
-  const [branchForm, setBranchForm] = useState({ name: "", code: "", phone: "", address: "" });
+  const [secondaryCurrency, setSecondaryCurrency] = useState("");
+  const [secondaryRate, setSecondaryRate] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setName(profile.name);
     setCurrency(profile.currency);
-  }, [profile.name, profile.currency]);
+    const existingSecondary = (profile.enabledCurrencies || []).find((code) => code !== profile.currency) || "";
+    setSecondaryCurrency(existingSecondary);
+    setSecondaryRate(existingSecondary ? String(profile.exchangeRates?.[existingSecondary] ?? "") : "");
+  }, [profile.name, profile.currency, profile.enabledCurrencies, profile.exchangeRates]);
 
   const handleSave = async () => {
-    const selected = currencyOptions.find(c => c.code === currency);
-    const nextProfile = { ...profile, name, currency, currencySymbol: selected?.symbol || currency };
+    const baseCurrency = currency.trim().toUpperCase();
+    const nextSecondary = secondaryCurrency && secondaryCurrency !== baseCurrency ? secondaryCurrency : "";
+    const enabledCurrencies = nextSecondary ? [baseCurrency, nextSecondary] : [baseCurrency];
+    const exchangeRates = nextSecondary && secondaryRate
+      ? { [nextSecondary]: parseFloat(secondaryRate) || 0 }
+      : {};
+
+    if (nextSecondary && (!exchangeRates[nextSecondary] || exchangeRates[nextSecondary] <= 0)) {
+      toast.error(`Enter a valid rate for ${nextSecondary}.`);
+      return;
+    }
+
+    const nextProfile = {
+      ...profile,
+      name,
+      currency: baseCurrency,
+      currencySymbol: symbolForCurrency(baseCurrency),
+      enabledCurrencies,
+      exchangeRates,
+    };
+
     setSaving(true);
     try {
       await patchMe({
         business_name: name,
-        currency,
+        currency: baseCurrency,
         currency_symbol: nextProfile.currencySymbol,
+        enabled_currencies: enabledCurrencies,
+        exchange_rates: exchangeRates,
       });
       setProfile(nextProfile);
       toast.success("Settings saved!");
@@ -73,17 +84,6 @@ const SettingsPage = () => {
     window.location.reload();
   };
 
-  const handleAddBranch = () => {
-    if (!canUse("multi_branch")) {
-      promptUpgrade("multi_branch", "Multi-branch controls");
-      return;
-    }
-    if (!branchForm.name.trim()) return;
-    addBranch({ ...branchForm, isPrimary: branches.length === 0 });
-    setBranchForm({ name: "", code: "", phone: "", address: "" });
-    toast.success("Branch added.");
-  };
-
   const handleLogout = async () => {
     await logout();
     navigate("/login");
@@ -96,10 +96,17 @@ const SettingsPage = () => {
         <CardContent className="space-y-4">
           <div><Label>Business Name</Label><Input value={name} onChange={e => setName(e.target.value)} className="mt-1.5" /></div>
           <div>
-            <Label>Currency</Label>
+            <Label>Base Currency</Label>
             <select
               value={currency}
-              onChange={e => setCurrency(e.target.value)}
+              onChange={e => {
+                const nextCurrency = e.target.value;
+                setCurrency(nextCurrency);
+                if (secondaryCurrency === nextCurrency) {
+                  setSecondaryCurrency("");
+                  setSecondaryRate("");
+                }
+              }}
               className="mt-1.5 w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
             >
               {currencyOptions.map(c => (
@@ -107,48 +114,48 @@ const SettingsPage = () => {
               ))}
             </select>
           </div>
+          <div>
+            <Label>Second Currency</Label>
+            <select
+              value={secondaryCurrency}
+              onChange={e => {
+                const nextSecondary = e.target.value;
+                setSecondaryCurrency(nextSecondary);
+                setSecondaryRate(nextSecondary ? String(profile.exchangeRates?.[nextSecondary] ?? "") : "");
+              }}
+              className="mt-1.5 w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="">None</option>
+              {currencyOptions
+                .filter((option) => option.code !== currency)
+                .map((option) => (
+                  <option key={option.code} value={option.code}>{option.label}</option>
+                ))}
+            </select>
+          </div>
+          {secondaryCurrency ? (
+            <div>
+              <Label>1 {secondaryCurrency} equals how many {currency}?</Label>
+              <Input
+                type="number"
+                min="0"
+                step="0.000001"
+                value={secondaryRate}
+                onChange={e => setSecondaryRate(e.target.value)}
+                className="mt-1.5"
+                placeholder={`Rate from ${secondaryCurrency} to ${currency}`}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Expenses in {secondaryCurrency} will be converted into {currency} using this rate.
+              </p>
+            </div>
+          ) : null}
           <Button onClick={handleSave} disabled={saving} className="bg-gradient-hero text-primary-foreground">{saving ? "Saving..." : "Save Changes"}</Button>
         </CardContent>
       </Card>
 
-      <Card className="shadow-soft">
-        <CardHeader><CardTitle className="font-display text-base flex items-center gap-2"><Building2 className="h-4 w-4" /> Branches</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          {!canUse("multi_branch") && (
-            <div className="rounded-lg border border-dashed p-4 text-sm">
-              <p className="font-semibold">Multi-branch is a Business feature.</p>
-              <p className="mt-1 text-muted-foreground">Unlock branch switching, stock segmentation, and branch-specific reporting.</p>
-              <Button variant="outline" size="sm" className="mt-3" onClick={() => promptUpgrade("multi_branch", "Multi-branch controls")}>Upgrade</Button>
-            </div>
-          )}
-          <div className="grid sm:grid-cols-2 gap-3">
-            <div><Label>Branch Name</Label><Input disabled={!canUse("multi_branch")} value={branchForm.name} onChange={e => setBranchForm({ ...branchForm, name: e.target.value })} className="mt-1.5" placeholder="Main Shop" /></div>
-            <div><Label>Code</Label><Input disabled={!canUse("multi_branch")} value={branchForm.code} onChange={e => setBranchForm({ ...branchForm, code: e.target.value })} className="mt-1.5" placeholder="MAIN" /></div>
-            <div><Label>Phone</Label><Input disabled={!canUse("multi_branch")} value={branchForm.phone} onChange={e => setBranchForm({ ...branchForm, phone: e.target.value })} className="mt-1.5" /></div>
-            <div><Label>Address</Label><Input disabled={!canUse("multi_branch")} value={branchForm.address} onChange={e => setBranchForm({ ...branchForm, address: e.target.value })} className="mt-1.5" /></div>
-          </div>
-          <Button onClick={handleAddBranch} disabled={!branchForm.name.trim()}>Add Branch</Button>
-          <div className="space-y-2">
-            {branches.map(branch => (
-              <div key={branch.id} className="rounded-lg border border-border p-3 flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium">{branch.name} {branch.isPrimary && <span className="text-xs text-primary">(Primary)</span>}</p>
-                  <p className="text-xs text-muted-foreground">{[branch.code, branch.phone, branch.address].filter(Boolean).join(" - ") || "No details yet"}</p>
-                </div>
-                {canUse("multi_branch") && (
-                  <div className="flex gap-2">
-                    {!branch.isPrimary && <Button size="sm" variant="outline" onClick={() => updateBranch(branch.id, { isPrimary: true })}>Make Primary</Button>}
-                    <Button size="sm" variant="destructive" onClick={() => deleteBranch(branch.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
       {/*
-      Multiple branches are disabled for now. Keep this block for later reactivation.
+      Multi-branch is disabled for now. Keep this settings block for later reactivation.
       <Card className="shadow-soft">
         <CardHeader><CardTitle className="font-display text-base flex items-center gap-2"><Building2 className="h-4 w-4" /> Branches</CardTitle></CardHeader>
         <CardContent className="space-y-4">

@@ -57,6 +57,8 @@ export type ApiUser = {
   business_name: string;
   currency: string;
   currency_symbol: string;
+  enabled_currencies: string[];
+  exchange_rates: Record<string, number>;
   dark_mode: boolean;
   onboarding_complete: boolean;
 };
@@ -211,6 +213,8 @@ export type ApiProduct = {
   stock: number;
   reorder_level: number;
   cost_price: string;
+  cost_currency?: string;
+  cost_fx_rate_to_base?: string;
   price: string;
   status: "ok" | "low" | "out";
   created_at?: string;
@@ -235,6 +239,8 @@ export function mapProductResponse(p: ApiProduct): Product {
     stock: p.stock,
     reorder: p.reorder_level,
     costPrice: parseFloat(p.cost_price || "0"),
+    costCurrency: p.cost_currency || undefined,
+    costFxRateToBase: p.cost_fx_rate_to_base ? parseFloat(p.cost_fx_rate_to_base) : undefined,
     price: parseFloat(p.price),
     status: p.status,
     barcode: p.barcode || undefined,
@@ -414,7 +420,9 @@ export type ApiPurchaseOrderItem = {
   quantity_ordered: number;
   quantity_received?: number;
   unit_cost: string;
+  unit_cost_base?: string;
   line_total?: string;
+  line_total_base?: string;
 };
 
 export type ApiPurchaseOrder = {
@@ -425,9 +433,12 @@ export type ApiPurchaseOrder = {
   branch_name?: string | null;
   order_number: string;
   status: "draft" | "ordered" | "partially_received" | "received" | "cancelled";
+  currency?: string;
+  fx_rate_to_base?: string;
   expected_date?: string | null;
   notes: string;
   total_cost: string;
+  total_cost_base?: string;
   items: ApiPurchaseOrderItem[];
   created_at?: string;
 };
@@ -439,6 +450,8 @@ export async function listPurchaseOrdersApi(): Promise<ApiPurchaseOrder[]> {
 export async function createPurchaseOrderApi(payload: {
   supplier: number;
   branch?: number | null;
+  currency?: string;
+  fx_rate_to_base?: number;
   expected_date?: string | null;
   notes?: string;
   status?: ApiPurchaseOrder["status"];
@@ -446,7 +459,13 @@ export async function createPurchaseOrderApi(payload: {
 }) {
   return apiFetch<ApiPurchaseOrder>("/api/v1/inventory/purchase-orders/", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      ...payload,
+      items: payload.items.map((item) => ({
+        ...item,
+        unit_cost: Number(item.unit_cost).toFixed(2),
+      })),
+    }),
   });
 }
 
@@ -469,6 +488,8 @@ type ApiSale = {
   total_cost?: string;
   gross_profit?: string;
   payment_method: string;
+  payment_currency?: string;
+  payment_allocations?: Array<{ currency: string; amount: string; fx_rate_to_base?: string; amount_base?: string }>;
   branch?: number | null;
   date: string;
   time: string;
@@ -477,6 +498,8 @@ type ApiSale = {
 
 export async function createSaleApi(payload: {
   payment_method: string;
+  payment_currency?: string;
+  payment_allocations?: Array<{ currency: string; amount: number; fx_rate_to_base?: number }>;
   branch?: number | null;
   till_session?: number | null;
   customer: number | null;
@@ -541,6 +564,8 @@ export async function fetchReceiptApi(id: string) {
     date: string;
     time: string;
     payment_method: string;
+    payment_currency?: string;
+    payment_allocations?: Array<{ currency: string; amount: string; fx_rate_to_base?: string; amount_base?: string }>;
     items: Array<{ id: number; product: number; product_name?: string; quantity: number; unit_price: string; subtotal: string }>;
     subtotal: string;
     total: string;
@@ -549,6 +574,18 @@ export async function fetchReceiptApi(id: string) {
 }
 
 type ApiExpenseCategory = { id: number; name: string };
+export type ApiExpense = {
+  id: number;
+  description: string;
+  amount: string;
+  currency?: string;
+  fx_rate_to_base?: string;
+  amount_base?: string;
+  payment_allocations?: Array<{ currency: string; amount: string; fx_rate_to_base?: string; amount_base?: string }>;
+  date: string;
+  category?: number | null;
+  category_name?: string | null;
+};
 
 export async function listExpenseCategories(): Promise<ApiExpenseCategory[]> {
   return fetchAllPages<ApiExpenseCategory>("/api/v1/expenses/categories/");
@@ -566,13 +603,28 @@ export async function ensureExpenseCategoryId(name: string): Promise<number | nu
   return created.id;
 }
 
-export async function createExpenseApi(payload: { description: string; amount: number; categoryName: string; date: string }) {
+export async function createExpenseApi(payload: {
+  description: string;
+  amount: number;
+  currency?: string;
+  fx_rate_to_base?: number;
+  payment_allocations?: Array<{ currency: string; amount: number; fx_rate_to_base?: number }>;
+  categoryName: string;
+  date: string;
+}) {
   const categoryId = await ensureExpenseCategoryId(payload.categoryName);
-  return apiFetch("/api/v1/expenses/", {
+  return apiFetch<ApiExpense>("/api/v1/expenses/", {
     method: "POST",
     body: JSON.stringify({
       description: payload.description,
       amount: payload.amount.toFixed(2),
+      currency: payload.currency,
+      fx_rate_to_base: payload.fx_rate_to_base,
+      payment_allocations: payload.payment_allocations?.map((row) => ({
+        currency: row.currency,
+        amount: row.amount.toFixed(2),
+        fx_rate_to_base: row.fx_rate_to_base,
+      })),
       category: categoryId,
       date: payload.date,
     }),

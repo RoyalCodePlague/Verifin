@@ -7,7 +7,6 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart } from "recharts";
-import { AdminAssistant } from "@/components/dashboard/AdminAssistant";
 import { useStore } from "@/lib/store";
 import { buildWeeklyFinanceData, formatMoney } from "@/lib/reporting";
 import { useNavigate } from "react-router-dom";
@@ -19,7 +18,7 @@ import { useQuery } from "@tanstack/react-query";
 const Dashboard = () => {
   const { products, sales, expenses, discrepancies, activities, profile, generateWhatsAppSummary } = useStore();
   const navigate = useNavigate();
-  const { canUse, limits } = useFeatureAccess();
+  const { canUse } = useFeatureAccess();
   const promptUpgrade = useUpgradePrompt();
   const ruleInsights = useQuery({
     queryKey: ["rule-insights"],
@@ -96,8 +95,6 @@ const Dashboard = () => {
     ...(discrepancies.filter(d => d.status !== "resolved").length > 0 ? [{ text: `${discrepancies.filter(d => d.status !== "resolved").length} stock discrepancies still need attention`, type: "warning" }] : []),
   ];
 
-  const usage = limits.filter((limit) => ["products", "customers", "users"].includes(limit.key));
-
   const handleWhatsAppShare = () => {
     if (!canUse("whatsapp_reports")) {
       promptUpgrade("whatsapp_reports", "WhatsApp summaries");
@@ -146,30 +143,6 @@ const Dashboard = () => {
             </Card>
           </motion.div>
         ))}
-      </div>
-
-      <div className="grid gap-4">
-        <Card className="shadow-soft">
-          <CardHeader className="pb-2"><CardTitle className="text-base font-display">Plan Usage</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            {usage.map((limit) => {
-              const used = limit.used ?? 0;
-              const max = limit.limit ?? Math.max(used, 1);
-              const pct = limit.limit ? Math.min(100, (used / max) * 100) : 100;
-              return (
-                <div key={limit.key}>
-                  <div className="mb-1 flex justify-between text-xs">
-                    <span>{limit.label}</span>
-                    <span>{limit.limit == null ? `${used} used, unlimited` : `${used}/${limit.limit}`}</span>
-                  </div>
-                  <div className="h-2 overflow-hidden rounded bg-muted">
-                    <div className="h-full rounded bg-primary" style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
-              );
-            })}
-          </CardContent>
-        </Card>
       </div>
 
       <Card className="shadow-soft">
@@ -260,21 +233,6 @@ const Dashboard = () => {
             </ComposedChart>
           </ResponsiveContainer>
         </CardContent>
-      </Card>
-
-      <Card className="shadow-soft">
-        {!canUse("command_assistant") && (
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed p-4">
-              <div>
-                <p className="font-semibold">Command assistant</p>
-                <p className="text-sm text-muted-foreground">Growth unlocks deterministic commands like today sales, low stock, and top products.</p>
-              </div>
-              <Button variant="outline" onClick={() => promptUpgrade("command_assistant", "Command assistant")}>Upgrade</Button>
-            </div>
-          </CardContent>
-        )}
-        {canUse("command_assistant") && <CardContent className="p-5"><AdminAssistant /></CardContent>}
       </Card>
 
       <Card className="shadow-soft">

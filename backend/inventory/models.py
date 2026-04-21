@@ -59,6 +59,8 @@ class Product(TimeStampedSoftDeleteModel):
     stock = models.IntegerField(default=0)
     reorder_level = models.IntegerField(default=0)
     cost_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    cost_currency = models.CharField(max_length=10, default="ZAR")
+    cost_fx_rate_to_base = models.DecimalField(max_digits=18, decimal_places=6, default=1)
     price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="ok")
 
@@ -106,9 +108,12 @@ class PurchaseOrder(TimeStampedSoftDeleteModel):
     branch = models.ForeignKey(Branch, on_delete=models.SET_NULL, blank=True, null=True, related_name="purchase_orders")
     order_number = models.CharField(max_length=40)
     status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="draft")
+    currency = models.CharField(max_length=10, default="ZAR")
+    fx_rate_to_base = models.DecimalField(max_digits=18, decimal_places=6, default=1)
     expected_date = models.DateField(blank=True, null=True)
     notes = models.TextField(blank=True)
     total_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    total_cost_base = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
     class Meta:
         unique_together = ("user", "order_number")
@@ -126,4 +131,6 @@ class PurchaseOrderItem(TimeStampedSoftDeleteModel):
     quantity_ordered = models.PositiveIntegerField(default=1)
     quantity_received = models.PositiveIntegerField(default=0)
     unit_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    unit_cost_base = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     line_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    line_total_base = models.DecimalField(max_digits=12, decimal_places=2, default=0)

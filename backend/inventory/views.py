@@ -97,6 +97,7 @@ class ProductViewSet(viewsets.ModelViewSet):
             "inventory_value": total_value,
             "inventory_cost": total_cost,
             "potential_profit": total_value - total_cost,
+            "currency": request.user.currency,
         })
 
     @action(detail=False, methods=["get"], url_path="low-stock")
@@ -277,7 +278,9 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
                 continue
             product = item.product
             product.stock += qty
-            product.cost_price = item.unit_cost
+            product.cost_price = item.unit_cost_base or item.unit_cost
+            product.cost_currency = order.currency
+            product.cost_fx_rate_to_base = order.fx_rate_to_base
             product.save()
             item.quantity_received += qty
             item.save()
@@ -312,5 +315,6 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
                 "average_daily_sales": round(average_daily_sales, 2),
                 "suggested_quantity": max(suggested_quantity, product.reorder_level - product.stock if product.stock <= product.reorder_level else 0),
                 "estimated_cost": max(suggested_quantity, 0) * product.cost_price,
+                "estimated_cost_currency": request.user.currency,
             })
         return Response({"horizon_days": horizon, "items": suggestions})

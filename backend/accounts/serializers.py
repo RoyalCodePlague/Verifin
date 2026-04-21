@@ -82,6 +82,32 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
+    def validate(self, attrs):
+        currency = attrs.get("currency", getattr(self.instance, "currency", "ZAR"))
+        enabled = attrs.get("enabled_currencies", getattr(self.instance, "enabled_currencies", [currency])) or [currency]
+        normalized_enabled = []
+        for code in enabled:
+            code_str = str(code).strip().upper()
+            if code_str and code_str not in normalized_enabled:
+                normalized_enabled.append(code_str)
+        if currency not in normalized_enabled:
+            normalized_enabled.insert(0, currency)
+        attrs["currency"] = currency
+        attrs["enabled_currencies"] = normalized_enabled[:2]
+
+        rates = attrs.get("exchange_rates", getattr(self.instance, "exchange_rates", {}) or {}) or {}
+        normalized_rates = {}
+        for key, value in rates.items():
+            code = str(key).strip().upper()
+            if not code or code == currency:
+                continue
+            try:
+                normalized_rates[code] = float(value)
+            except (TypeError, ValueError):
+                raise serializers.ValidationError({"exchange_rates": f"Invalid exchange rate for {code}."})
+        attrs["exchange_rates"] = normalized_rates
+        return attrs
+
     class Meta:
         model = User
         fields = [
@@ -92,6 +118,8 @@ class UserSerializer(serializers.ModelSerializer):
             "business_name",
             "currency",
             "currency_symbol",
+            "enabled_currencies",
+            "exchange_rates",
             "dark_mode",
             "onboarding_complete",
             "email_verified",

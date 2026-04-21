@@ -12,6 +12,8 @@ class Sale(TimeStampedSoftDeleteModel):
     total_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     gross_profit = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     payment_method = models.CharField(max_length=20, choices=PAYMENT_CHOICES, default="Cash")
+    payment_currency = models.CharField(max_length=10, default="ZAR")
+    payment_allocations = models.JSONField(default=list, blank=True)
     branch = models.ForeignKey(Branch, on_delete=models.SET_NULL, blank=True, null=True, related_name="sales")
     till_session = models.ForeignKey("TillSession", on_delete=models.SET_NULL, blank=True, null=True, related_name="sales")
     receipt_number = models.CharField(max_length=40, blank=True)

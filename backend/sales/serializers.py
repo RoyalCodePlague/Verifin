@@ -4,6 +4,7 @@ from django.utils import timezone
 from rest_framework import serializers
 from customers.models import Customer, LoyaltyTransaction
 from inventory.models import Product
+from core.currency import normalize_allocations
 from .models import Sale, SaleItem, TillSession
 
 
@@ -24,6 +25,8 @@ class SaleItemReadSerializer(serializers.ModelSerializer):
 class SaleSerializer(serializers.ModelSerializer):
     sale_items = SaleItemSerializer(many=True, write_only=True, required=False)
     line_items = SaleItemReadSerializer(source="sale_items", many=True, read_only=True)
+    payment_currency = serializers.CharField(required=False)
+    payment_allocations = serializers.JSONField(required=False)
 
     class Meta:
         model = Sale
@@ -34,6 +37,8 @@ class SaleSerializer(serializers.ModelSerializer):
             "total_cost",
             "gross_profit",
             "payment_method",
+            "payment_currency",
+            "payment_allocations",
             "branch",
             "till_session",
             "receipt_number",
@@ -54,6 +59,8 @@ class SaleSerializer(serializers.ModelSerializer):
         user = getattr(request, "user", None)
         branch = attrs.get("branch")
         items = attrs.get("sale_items", [])
+        payment_currency = (attrs.get("payment_currency") or getattr(self.instance, "payment_currency", getattr(user, "currency", "ZAR"))).strip().upper()
+        attrs["payment_currency"] = payment_currency
         if user and user.is_authenticated:
             if branch and branch.user_id != user.id:
                 raise serializers.ValidationError({"branch": "Branch does not belong to this account."})
@@ -71,6 +78,8 @@ class SaleSerializer(serializers.ModelSerializer):
     @transaction.atomic
     def create(self, validated_data):
         items = validated_data.pop("sale_items", [])
+        validated_data.pop("payment_currency", "")
+        submitted_allocations = validated_data.pop("payment_allocations", [])
         sale = Sale.objects.create(**validated_data)
         total = 0
         total_cost = 0
@@ -108,6 +117,21 @@ class SaleSerializer(serializers.ModelSerializer):
         sale.total_cost = total_cost
         sale.gross_profit = total - total_cost
         sale.items = ", ".join(item_labels) if item_labels else ""
+        allocations, allocations_total = normalize_allocations(
+            sale.created_by,
+            submitted_allocations,
+            total,
+            getattr(sale.created_by, "currency", "ZAR"),
+            Decimal("1"),
+            field_name="payment_allocations",
+        )
+        total_amount = Decimal(str(total)).quantize(Decimal("0.01"))
+        if allocations_total != total_amount:
+            raise serializers.ValidationError({
+                "payment_allocations": "Split payments must add up to the converted sale total."
+            })
+        sale.payment_allocations = allocations
+        sale.payment_currency = allocations[0]["currency"] if len(allocations) == 1 else "MIXED"
         sale.save()
         
         customer = sale.customer

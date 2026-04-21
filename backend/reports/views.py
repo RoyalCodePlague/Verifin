@@ -39,7 +39,7 @@ class ExpenseAnalysisView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        total = Expense.objects.filter(created_by=request.user).aggregate(total=Sum("amount"))["total"] or 0
+        total = Expense.objects.filter(created_by=request.user).aggregate(total=Sum("amount_base"))["total"] or 0
         return Response({"total_expenses": total})
 
 
@@ -52,7 +52,7 @@ class ProfitLossView(APIView):
         sales_total = sales.aggregate(total=Sum("total"))["total"] or 0
         cost_total = sales.aggregate(total=Sum("total_cost"))["total"] or 0
         gross_profit = sales.aggregate(total=Sum("gross_profit"))["total"] or 0
-        expense_total = Expense.objects.filter(created_by=request.user).aggregate(total=Sum("amount"))["total"] or 0
+        expense_total = Expense.objects.filter(created_by=request.user).aggregate(total=Sum("amount_base"))["total"] or 0
         margin = (gross_profit / sales_total * 100) if sales_total else 0
         return Response({
             "sales": sales_total,

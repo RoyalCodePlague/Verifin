@@ -3,12 +3,18 @@ from django.db import models
 from core.models import TimeStampedSoftDeleteModel
 
 
+def default_enabled_currencies():
+    return ["ZAR"]
+
+
 class User(AbstractUser, TimeStampedSoftDeleteModel):
     email = models.EmailField(unique=True)
     phone = models.CharField(max_length=30, blank=True)
     business_name = models.CharField(max_length=255, blank=True)
     currency = models.CharField(max_length=10, default="ZAR")
     currency_symbol = models.CharField(max_length=10, default="R")
+    enabled_currencies = models.JSONField(default=default_enabled_currencies, blank=True)
+    exchange_rates = models.JSONField(default=dict, blank=True, help_text="Currency -> rate to base currency.")
     dark_mode = models.BooleanField(default=False)
     onboarding_complete = models.BooleanField(default=False)
     email_verified = models.BooleanField(default=True)

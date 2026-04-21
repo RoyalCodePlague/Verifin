@@ -8,9 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { useStore } from "@/lib/store";
-import { createProductApi, deleteProductApi, fetchInventoryForecast, listSuppliersApi, updateProductApi, type ApiForecastItem, type ApiSupplier } from "@/lib/api";
+import { createProductApi, deleteProductApi, fetchInventoryForecast, mapProductResponse, updateProductApi, type ApiForecastItem } from "@/lib/api";
 import { addToOfflineQueue, canQueueOfflineAction } from "@/lib/offlineQueue";
-import { useAuth } from "@/lib/auth-context";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -24,16 +23,8 @@ const allCategories = [
   "Bakery", "Frozen Foods", "Health & Beauty", "Tools", "Other"
 ];
 
-const pricePreview = (price: string, cost: string) => {
-  const salePrice = parseFloat(price) || 0;
-  const costPrice = parseFloat(cost) || 0;
-  if (!salePrice) return "0.0";
-  return (((salePrice - costPrice) / salePrice) * 100).toFixed(1);
-};
-
 const Inventory = () => {
-  const { products, addProduct, updateProduct, deleteProduct, profile, addActivity } = useStore();
-  const { refreshUser } = useAuth();
+  const { products, addProduct, upsertProduct, updateProduct, deleteProduct, profile, addActivity } = useStore();
   const navigate = useNavigate();
   const { canUse } = useFeatureAccess();
   const promptUpgrade = useUpgradePrompt();
@@ -46,7 +37,6 @@ const Inventory = () => {
   const [scanOpen, setScanOpen] = useState(false);
   const [form, setForm] = useState({ name: "", category: "", branchId: "", supplierId: "", stock: "", reorder: "", costPrice: "", price: "", barcode: "" });
   const [forecast, setForecast] = useState<ApiForecastItem[]>([]);
-  const [suppliers, setSuppliers] = useState<ApiSupplier[]>([]);
   const [saving, setSaving] = useState(false);
   const [canUseCameraScan, setCanUseCameraScan] = useState(false);
   const sym = profile.currencySymbol || "R";
@@ -69,7 +59,6 @@ const Inventory = () => {
         .then((data) => setForecast(data.items.slice(0, 5)))
         .catch(() => setForecast([]));
     }
-    listSuppliersApi().then(setSuppliers).catch(() => setSuppliers([]));
   }, [canUseForecasting, products.length]);
 
   const mergedCategories = Array.from(new Set([...profile.categories, ...allCategories]));
@@ -112,8 +101,6 @@ const Inventory = () => {
           category: form.category,
           branchId: undefined,
           branchName: "",
-          supplierId: form.supplierId || undefined,
-          supplierName: suppliers.find(s => String(s.id) === form.supplierId)?.name || "",
           stock,
           reorder,
           costPrice,
@@ -146,8 +133,6 @@ const Inventory = () => {
           category: form.category,
           branchId: undefined,
           branchName: "",
-          supplierId: form.supplierId || undefined,
-          supplierName: suppliers.find(s => String(s.id) === form.supplierId)?.name || "",
           stock,
           reorder,
           costPrice,
@@ -188,7 +173,7 @@ const Inventory = () => {
 
     try {
       if (editProduct) {
-        await updateProductApi(editProduct, {
+        const saved = await updateProductApi(editProduct, {
           name: form.name,
           categoryName: form.category,
           preferred_supplier: form.supplierId || undefined,
@@ -198,12 +183,12 @@ const Inventory = () => {
           price,
           barcode: form.barcode,
         });
+        upsertProduct(mapProductResponse(saved));
         setEditProduct(null);
         toast.success("Product updated!");
-        await refreshUser();
       } else {
         const sku = generateSku(form.name, form.category);
-        await createProductApi({
+        const created = await createProductApi({
           name: form.name,
           sku,
           categoryName: form.category,
@@ -214,10 +199,10 @@ const Inventory = () => {
           price,
           barcode: form.barcode,
         });
+        upsertProduct(mapProductResponse(created));
         setAddOpen(false);
         addActivity({ text: `Added product: ${form.name}`, time: "Just now", type: "restock" });
         toast.success("Product added!");
-        await refreshUser();
       }
     } catch (e) {
       if (canQueueOfflineAction()) {
@@ -267,6 +252,8 @@ const Inventory = () => {
           </select>
         </div>
         */}
+        {/*
+        Supplier assignment is hidden for now. Keep this field for later reactivation.
         <div>
           <Label>Preferred Supplier</Label>
           <select value={form.supplierId} onChange={e => setForm({ ...form, supplierId: e.target.value })} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
@@ -274,15 +261,19 @@ const Inventory = () => {
             {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </div>
+        */}
         <div className="grid grid-cols-3 gap-2">
           <div><Label>Stock</Label><Input type="number" value={form.stock} onChange={e => setForm({ ...form, stock: e.target.value })} className="mt-1" /></div>
           <div><Label>Reorder At</Label><Input type="number" value={form.reorder} onChange={e => setForm({ ...form, reorder: e.target.value })} className="mt-1" /></div>
           <div><Label>Cost ({sym})</Label><Input type="number" value={form.costPrice} onChange={e => setForm({ ...form, costPrice: e.target.value })} className="mt-1" /></div>
         </div>
+        {/*
+        Selling price is hidden for now. Keep this field for later reactivation.
         <div>
           <Label>Price ({sym})</Label><Input type="number" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} className="mt-1" />
           <p className="text-xs text-muted-foreground mt-1">Margin: {pricePreview(form.price, form.costPrice)}%</p>
         </div>
+        */}
         <div>
           <Label>Barcode <span className="text-muted-foreground font-normal">(optional)</span></Label>
           <Input value={form.barcode} onChange={e => setForm({ ...form, barcode: e.target.value })} className="mt-1" placeholder="Scan or enter manually" />
@@ -362,7 +353,7 @@ const Inventory = () => {
                   <th className="text-left p-3 font-medium text-muted-foreground hidden lg:table-cell">Supplier</th>
                   <th className="text-center p-3 font-medium text-muted-foreground">Stock</th>
                   <th className="text-right p-3 font-medium text-muted-foreground hidden lg:table-cell">Cost</th>
-                  <th className="text-right p-3 font-medium text-muted-foreground">Price</th>
+                  {/* Selling price is hidden in the inventory table for now. */}
                   <th className="text-center p-3 font-medium text-muted-foreground hidden md:table-cell">Added</th>
                   <th className="text-center p-3 font-medium text-muted-foreground hidden lg:table-cell">Restocked</th>
                   <th className="text-center p-3 font-medium text-muted-foreground">Status</th>
@@ -382,7 +373,7 @@ const Inventory = () => {
                     <td className="p-3 text-muted-foreground hidden lg:table-cell">{p.supplierName || "Unassigned"}</td>
                     <td className="p-3 text-center">{p.stock}</td>
                     <td className="p-3 text-right hidden lg:table-cell">{sym}{(p.costPrice || 0).toFixed(2)}</td>
-                    <td className="p-3 text-right">{sym}{p.price.toFixed(2)}</td>
+                    {/* Selling price is hidden in the inventory table for now. */}
                     <td className="p-3 text-center hidden md:table-cell">
                       <span className="text-xs text-muted-foreground">{p.addedDate || "N/A"}</span>
                     </td>
@@ -443,7 +434,6 @@ const Inventory = () => {
             }
             deleteProduct(deleteId);
             toast.success(canQueueOfflineAction() ? "Product removal saved locally. It will sync when you are back online." : "Product removed");
-            if (!canQueueOfflineAction()) await refreshUser();
           } catch (e) {
             if (canQueueOfflineAction() && /^\d+$/.test(deleteId)) {
               addToOfflineQueue({ type: "product_delete", payload: { id: parseInt(deleteId, 10) } });

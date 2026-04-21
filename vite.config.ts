@@ -25,4 +25,17 @@ export default defineConfig(({ mode }) => ({
     },
     dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules")) {
+            if (id.includes("recharts")) return "charts";
+            if (id.includes("framer-motion")) return "motion";
+            if (id.includes("@tanstack/react-query")) return "query";
+          }
+        },
+      },
+    },
+  },
 }));

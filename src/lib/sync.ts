@@ -52,6 +52,8 @@ type ApiProduct = {
   stock: number;
   reorder_level: number;
   cost_price: string;
+  cost_currency?: string;
+  cost_fx_rate_to_base?: string;
   price: string;
   status: "ok" | "low" | "out";
   created_at?: string;
@@ -65,6 +67,8 @@ type ApiSale = {
   total_cost?: string;
   gross_profit?: string;
   payment_method: "Cash" | "EFT" | "Card";
+  payment_currency?: string;
+  payment_allocations?: Array<{ currency: string; amount: string; amount_base?: string }>;
   branch?: number | null;
   date: string;
   time: string;
@@ -75,6 +79,9 @@ type ApiExpense = {
   id: number;
   description: string;
   amount: string;
+  currency?: string;
+  amount_base?: string;
+  payment_allocations?: Array<{ currency: string; amount: string; amount_base?: string }>;
   date: string;
   category_name?: string | null;
 };
@@ -134,6 +141,8 @@ export async function loadServerData(user: {
   business_name: string;
   currency: string;
   currency_symbol: string;
+  enabled_currencies?: string[];
+  exchange_rates?: Record<string, number>;
   dark_mode: boolean;
   onboarding_complete: boolean;
 }): Promise<{
@@ -193,6 +202,8 @@ export async function loadServerData(user: {
     stock: p.stock,
     reorder: p.reorder_level,
     costPrice: parseFloat(p.cost_price || "0"),
+    costCurrency: p.cost_currency || user.currency || "ZAR",
+    costFxRateToBase: p.cost_fx_rate_to_base ? parseFloat(p.cost_fx_rate_to_base) : 1,
     price: parseFloat(p.price),
     status: p.status,
     barcode: p.barcode || undefined,
@@ -209,6 +220,12 @@ export async function loadServerData(user: {
     time: saleTime(s.time, s.created_at),
     date: saleDisplayDate(s.date, s.created_at),
     method: s.payment_method,
+    paymentCurrency: s.payment_currency || user.currency || "ZAR",
+    paymentAllocations: (s.payment_allocations || []).map((row) => ({
+      currency: row.currency,
+      amount: parseFloat(row.amount),
+      amountBase: parseFloat(row.amount_base || "0"),
+    })),
     branchId: s.branch ? String(s.branch) : undefined,
   }));
 
@@ -217,6 +234,13 @@ export async function loadServerData(user: {
     id: String(e.id),
     desc: e.description,
     amount: parseFloat(e.amount),
+    currency: e.currency || user.currency || "ZAR",
+    amountBase: parseFloat(e.amount_base || e.amount || "0"),
+    paymentAllocations: (e.payment_allocations || []).map((row) => ({
+      currency: row.currency,
+      amount: parseFloat(row.amount),
+      amountBase: parseFloat(row.amount_base || "0"),
+    })),
     date: e.date === todayStr ? "Today" : e.date,
     category: e.category_name || "Other",
   }));
@@ -269,6 +293,8 @@ export async function loadServerData(user: {
     name: user.business_name || "",
     currency: user.currency || "ZAR",
     currencySymbol: user.currency_symbol || "R",
+    enabledCurrencies: user.enabled_currencies?.length ? user.enabled_currencies : [user.currency || "ZAR"],
+    exchangeRates: user.exchange_rates || {},
     categories: categoryNames.length ? categoryNames : ["Groceries", "Beverages", "Hardware", "Personal Care"],
     whatsappDaily: true,
     lowStockAlerts: true,

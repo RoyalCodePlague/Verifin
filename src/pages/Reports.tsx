@@ -4,8 +4,9 @@ import { Download, FileText, BarChart3, Package, AlertTriangle, Users, Receipt, 
 import { useStore } from "@/lib/store";
 import { toast } from "sonner";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { buildWeeklyFinanceData, csvCell, formatMoney } from "@/lib/reporting";
+import { buildWeeklyFinanceData, csvCell, expenseBaseAmount, formatMoney, salePaymentBreakdown } from "@/lib/reporting";
 import { LockedBadge, useFeatureAccess, useUpgradePrompt } from "@/lib/features";
+import { symbolForCurrency } from "@/lib/currency";
 
 const COLORS = ["hsl(152 55% 28%)", "hsl(38 92% 50%)", "hsl(0 72% 51%)", "hsl(200 70% 50%)", "hsl(280 60% 50%)"];
 
@@ -16,7 +17,7 @@ const Reports = () => {
   const sym = profile.currencySymbol || "R";
   const todaySales = sales.filter((s) => s.date === "Today");
   const todaySalesTotal = todaySales.reduce((sum, s) => sum + s.total, 0);
-  const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+  const totalExpenses = expenses.reduce((sum, e) => sum + expenseBaseAmount(e), 0);
   const totalSales = sales.reduce((sum, s) => sum + s.total, 0);
   const totalCostOfGoods = sales.reduce((sum, s) => sum + (s.totalCost || 0), 0);
   const grossProfit = sales.reduce((sum, s) => sum + (s.grossProfit ?? s.total), 0);
@@ -25,6 +26,7 @@ const Reports = () => {
   const weeklyData = buildWeeklyFinanceData(sales, expenses);
   const weeklySalesTotal = weeklyData.reduce((sum, d) => sum + d.sales, 0);
   const weeklyExpensesTotal = weeklyData.reduce((sum, d) => sum + d.expenses, 0);
+  const paymentBreakdown = salePaymentBreakdown(sales);
 
   const categoryData = profile.categories.map(cat => {
     const catProducts = products.filter(p => p.category === cat);
@@ -32,7 +34,7 @@ const Reports = () => {
   }).filter(c => c.value > 0);
 
   const expenseByCat = expenses.reduce((acc, e) => {
-    acc[e.category] = (acc[e.category] || 0) + e.amount;
+    acc[e.category] = (acc[e.category] || 0) + expenseBaseAmount(e);
     return acc;
   }, {} as Record<string, number>);
 
@@ -103,8 +105,8 @@ const Reports = () => {
       ];
     } else if (title.includes("Expense")) {
       csvRows = [
-        "Currency,Description,Amount,Date,Category",
-        ...expenses.map(e => row([profile.currency, e.desc, formatMoney(e.amount, sym), e.date, e.category])),
+        "Base Currency,Entry Currency,Description,Original Amount,Base Amount,Date,Category",
+        ...expenses.map(e => row([profile.currency, e.currency || profile.currency, e.desc, formatMoney(e.amount, symbolForCurrency(e.currency || profile.currency)), formatMoney(expenseBaseAmount(e), sym), e.date, e.category])),
       ];
     } else {
       csvRows = [
@@ -185,6 +187,29 @@ const Reports = () => {
                 <Tooltip formatter={(value) => formatMoney(Number(value), sym)} />
               </PieChart>
             </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-soft lg:col-span-2">
+          <CardHeader className="pb-2"><CardTitle className="text-base font-display">Sales by Payment Currency</CardTitle></CardHeader>
+          <CardContent className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {paymentBreakdown.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No sales recorded yet.</p>
+            ) : (
+              paymentBreakdown.map((entry) => (
+                <div key={entry.currency} className="rounded-lg border border-border p-4">
+                  <p className="text-xs text-muted-foreground">{entry.currency}</p>
+                  <p className="text-lg font-display font-bold mt-1">
+                    {symbolForCurrency(entry.currency)}{entry.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                  {entry.currency !== profile.currency ? (
+                    <p className="text-xs text-muted-foreground mt-1">Base: {formatMoney(entry.amountBase, sym)}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground mt-1">Base currency</p>
+                  )}
+                </div>
+              ))
+            )}
           </CardContent>
         </Card>
       </div>

@@ -21,7 +21,7 @@ def advanced_analytics(user):
     cost = month_sales.aggregate(total=Sum("total_cost"))["total"] or 0
     profit = month_sales.aggregate(total=Sum("gross_profit"))["total"] or 0
     previous_revenue = previous_sales.aggregate(total=Sum("total"))["total"] or 0
-    expenses_total = expenses.filter(date__gte=month_start).aggregate(total=Sum("amount"))["total"] or 0
+    expenses_total = expenses.filter(date__gte=month_start).aggregate(total=Sum("amount_base"))["total"] or 0
     margin = (profit / revenue * 100) if revenue else 0
     growth = ((revenue - previous_revenue) / previous_revenue * 100) if previous_revenue else None
     return {

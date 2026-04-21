@@ -50,7 +50,7 @@ export function buildWeeklyFinanceData(sales: Sale[], expenses: Expense[], refer
   expenses.forEach((expense) => {
     const date = parseBusinessDate(expense.date);
     if (!date || !isSameWeek(date, reference)) return;
-    totals[weekDayName(date)].expenses += expense.amount;
+    totals[weekDayName(date)].expenses += expense.amountBase ?? expense.amount;
   });
 
   return WEEK_DAYS.map((day) => ({
@@ -58,6 +58,33 @@ export function buildWeeklyFinanceData(sales: Sale[], expenses: Expense[], refer
     sales: totals[day].sales,
     expenses: totals[day].expenses,
   }));
+}
+
+export function expenseBaseAmount(expense: Expense) {
+  return expense.amountBase ?? expense.amount;
+}
+
+export function salePaymentBreakdown(sales: Sale[]) {
+  const totals: Record<string, { amount: number; amountBase: number }> = {};
+
+  sales.forEach((sale) => {
+    const rows = sale.paymentAllocations?.length
+      ? sale.paymentAllocations
+      : [{ currency: sale.paymentCurrency || "ZAR", amount: sale.total, amountBase: sale.total }];
+
+    rows.forEach((row) => {
+      const key = row.currency;
+      if (!totals[key]) {
+        totals[key] = { amount: 0, amountBase: 0 };
+      }
+      totals[key].amount += row.amount;
+      totals[key].amountBase += row.amountBase ?? row.amount;
+    });
+  });
+
+  return Object.entries(totals)
+    .map(([currency, value]) => ({ currency, ...value }))
+    .sort((a, b) => b.amountBase - a.amountBase);
 }
 
 export function formatMoney(value: number, symbol: string) {

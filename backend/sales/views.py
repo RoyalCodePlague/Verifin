@@ -22,7 +22,14 @@ class SaleViewSet(viewsets.ModelViewSet):
         if not till_session:
             till_session = TillSession.objects.filter(user=self.request.user, status="open", is_deleted=False).order_by("-opened_at").first()
         sale = serializer.save(created_by=self.request.user, till_session=till_session)
-        log_staff_activity(self.request.user, "sale_created", f"Created sale {sale.receipt_number} for R{sale.total}", actor=self.request.user, object_type="sale", object_id=sale.id)
+        log_staff_activity(
+            self.request.user,
+            "sale_created",
+            f"Created sale {sale.receipt_number} for {self.request.user.currency_symbol}{sale.total}",
+            actor=self.request.user,
+            object_type="sale",
+            object_id=sale.id,
+        )
 
     @action(detail=False, methods=["get"], url_path="aggregations")
     def aggregations(self, request):
@@ -64,6 +71,8 @@ class SaleViewSet(viewsets.ModelViewSet):
             "date": sale.date,
             "time": sale.time,
             "payment_method": sale.payment_method,
+            "payment_currency": sale.payment_currency,
+            "payment_allocations": sale.payment_allocations,
             "items": SaleItemReadSerializer(sale.sale_items.all(), many=True).data,
             "subtotal": sale.total,
             "total": sale.total,

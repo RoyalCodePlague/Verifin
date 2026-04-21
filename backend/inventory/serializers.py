@@ -1,5 +1,6 @@
 from decimal import Decimal
 from rest_framework import serializers
+from core.currency import get_rate_to_base
 from .models import Branch, Category, Product, PurchaseOrder, PurchaseOrderItem, StockMovement, StockTransfer, Supplier
 
 
@@ -108,11 +109,13 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
     items = PurchaseOrderItemSerializer(many=True)
     supplier_name = serializers.CharField(source="supplier.name", read_only=True)
     branch_name = serializers.CharField(source="branch.name", read_only=True, allow_null=True)
+    currency = serializers.CharField(required=False)
+    fx_rate_to_base = serializers.DecimalField(max_digits=18, decimal_places=6, required=False)
 
     class Meta:
         model = PurchaseOrder
         fields = "__all__"
-        read_only_fields = ["user", "order_number", "total_cost", "created_at", "updated_at"]
+        read_only_fields = ["user", "order_number", "total_cost", "total_cost_base", "created_at", "updated_at"]
 
     def validate(self, attrs):
         request = self.context.get("request")
@@ -124,17 +127,31 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"supplier": "Supplier does not belong to this account."})
             if branch and branch.user_id != user.id:
                 raise serializers.ValidationError({"branch": "Branch does not belong to this account."})
+            currency = (attrs.get("currency") or getattr(self.instance, "currency", user.currency) or user.currency).strip().upper()
+            attrs["currency"] = currency
+            attrs["fx_rate_to_base"] = get_rate_to_base(user, currency, attrs.get("fx_rate_to_base", getattr(self.instance, "fx_rate_to_base", None)))
         return attrs
 
     def create(self, validated_data):
         items = validated_data.pop("items", [])
         order = PurchaseOrder.objects.create(**validated_data)
         total = Decimal("0")
+        total_base = Decimal("0")
         for item in items:
             line_total = item["unit_cost"] * item["quantity_ordered"]
-            PurchaseOrderItem.objects.create(purchase_order=order, line_total=line_total, **item)
+            line_total_base = (line_total * order.fx_rate_to_base).quantize(Decimal("0.01"))
+            unit_cost_base = (item["unit_cost"] * order.fx_rate_to_base).quantize(Decimal("0.01"))
+            PurchaseOrderItem.objects.create(
+                purchase_order=order,
+                line_total=line_total,
+                line_total_base=line_total_base,
+                unit_cost_base=unit_cost_base,
+                **item,
+            )
             total += line_total
+            total_base += line_total_base
         order.total_cost = total
+        order.total_cost_base = total_base
         order.save()
         return order
 
@@ -146,10 +163,21 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
         if items is not None:
             instance.items.all().delete()
             total = Decimal("0")
+            total_base = Decimal("0")
             for item in items:
                 line_total = item["unit_cost"] * item["quantity_ordered"]
-                PurchaseOrderItem.objects.create(purchase_order=instance, line_total=line_total, **item)
+                line_total_base = (line_total * instance.fx_rate_to_base).quantize(Decimal("0.01"))
+                unit_cost_base = (item["unit_cost"] * instance.fx_rate_to_base).quantize(Decimal("0.01"))
+                PurchaseOrderItem.objects.create(
+                    purchase_order=instance,
+                    line_total=line_total,
+                    line_total_base=line_total_base,
+                    unit_cost_base=unit_cost_base,
+                    **item,
+                )
                 total += line_total
+                total_base += line_total_base
             instance.total_cost = total
+            instance.total_cost_base = total_base
             instance.save()
         return instance

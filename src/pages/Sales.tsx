@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { closeTillApi, createSaleApi, deleteSaleApi, fetchReceiptApi, getCurrentTillApi, openTillApi, type ApiTillSession } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { addToOfflineQueue, canQueueOfflineAction } from "@/lib/offlineQueue";
@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { toast } from "sonner";
+import { symbolForCurrency } from "@/lib/currency";
 
 interface SaleLineItem {
   productId: string;
@@ -22,6 +23,10 @@ interface SaleLineItem {
 }
 
 const SHOW_TILL_CONTROLS = false;
+
+function roundMoney(value: number) {
+  return Math.round(value * 100) / 100;
+}
 
 const Sales = () => {
   const { sales, deleteSale, profile, products, addSale } = useStore();
@@ -39,21 +44,56 @@ const Sales = () => {
   const [lineItems, setLineItems] = useState<SaleLineItem[]>([]);
   const [selectedProduct, setSelectedProduct] = useState("");
   const [qty, setQty] = useState("1");
-  const sym = profile.currencySymbol || "R";
+  const [paymentCurrency, setPaymentCurrency] = useState(profile.currency);
+  const [paymentRate, setPaymentRate] = useState("");
+  const [splitAmount, setSplitAmount] = useState("");
+  const [splitRate, setSplitRate] = useState("");
+  const baseCurrency = profile.currency || "ZAR";
+  const sym = profile.currencySymbol || symbolForCurrency(baseCurrency);
+  const enabledCurrencies = profile.enabledCurrencies?.length ? profile.enabledCurrencies : [baseCurrency];
+  const secondaryCurrency = enabledCurrencies.find((code) => code !== baseCurrency) || "";
 
   useEffect(() => {
     if (!SHOW_TILL_CONTROLS) return;
     getCurrentTillApi().then(setTill).catch(() => setTill(null));
   }, []);
 
+  useEffect(() => {
+    setPaymentCurrency(profile.currency);
+  }, [profile.currency]);
+
   const filtered = sales.filter(s => s.items.toLowerCase().includes(search.toLowerCase()));
   const todayTotal = sales.filter(s => s.date === "Today").reduce((sum, s) => sum + s.total, 0);
   const todayCount = sales.filter(s => s.date === "Today").length;
+  const saleTotal = lineItems.reduce((sum, l) => sum + l.quantity * l.unitPrice, 0);
+  const alternateCurrency = paymentCurrency === baseCurrency ? secondaryCurrency : baseCurrency;
+  const paymentFxRate = paymentCurrency === baseCurrency
+    ? 1
+    : parseFloat(paymentRate) || profile.exchangeRates?.[paymentCurrency] || 0;
+  const alternateFxRate = alternateCurrency
+    ? alternateCurrency === baseCurrency
+      ? 1
+      : parseFloat(splitRate) || profile.exchangeRates?.[alternateCurrency] || 0
+    : 0;
+  const splitAmountValue = parseFloat(splitAmount) || 0;
+  const splitBasePreview = roundMoney(splitAmountValue * alternateFxRate);
+  const remainderBasePreview = Math.max(0, roundMoney(saleTotal - splitBasePreview));
+  const primaryAmountPreview = paymentCurrency === baseCurrency
+    ? remainderBasePreview
+    : roundMoney(remainderBasePreview / (paymentFxRate || 1));
+
+  const resetPaymentForm = () => {
+    setMethod("Cash");
+    setPaymentCurrency(baseCurrency);
+    setPaymentRate("");
+    setSplitAmount("");
+    setSplitRate("");
+  };
 
   const addLineItem = () => {
     const product = products.find(p => p.id === selectedProduct);
     if (!product) return;
-    const quantity = parseInt(qty) || 1;
+    const quantity = parseInt(qty, 10) || 1;
     if (quantity > product.stock) {
       toast.error(`Only ${product.stock} ${product.name} in stock`);
       return;
@@ -76,7 +116,24 @@ const Sales = () => {
 
   const removeLineItem = (idx: number) => setLineItems(lineItems.filter((_, i) => i !== idx));
 
-  const saleTotal = lineItems.reduce((sum, l) => sum + l.quantity * l.unitPrice, 0);
+  const paymentAllocations = useMemo(() => {
+    const rows: Array<{ currency: string; amount: number; fx_rate_to_base?: number }> = [];
+    if (alternateCurrency && splitAmountValue > 0) {
+      rows.push({
+        currency: alternateCurrency,
+        amount: splitAmountValue,
+        fx_rate_to_base: alternateCurrency === baseCurrency ? undefined : alternateFxRate,
+      });
+    }
+    if (saleTotal > 0) {
+      rows.push({
+        currency: paymentCurrency,
+        amount: primaryAmountPreview,
+        fx_rate_to_base: paymentCurrency === baseCurrency ? undefined : paymentFxRate,
+      });
+    }
+    return rows.filter((row) => row.amount > 0);
+  }, [alternateCurrency, splitAmountValue, alternateFxRate, baseCurrency, saleTotal, paymentCurrency, primaryAmountPreview, paymentFxRate]);
 
   const createOfflineSale = () => {
     addSale({
@@ -85,16 +142,39 @@ const Sales = () => {
       time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       date: "Today",
       method,
+      paymentCurrency,
+      paymentAllocations: paymentAllocations.map((row) => ({
+        currency: row.currency,
+        amount: row.amount,
+        amountBase: roundMoney(row.amount * (row.fx_rate_to_base || 1)),
+      })),
       saleItems: lineItems,
     });
   };
 
   const handleAdd = async () => {
     if (lineItems.length === 0) return;
+
+    if (paymentCurrency !== baseCurrency && paymentFxRate <= 0) {
+      toast.error(`Enter a valid rate for ${paymentCurrency}.`);
+      return;
+    }
+    if (splitAmountValue > 0 && alternateCurrency && alternateFxRate <= 0) {
+      toast.error(`Enter a valid rate for ${alternateCurrency}.`);
+      return;
+    }
+    if (splitBasePreview > saleTotal) {
+      toast.error("Split payment is bigger than the sale total.");
+      return;
+    }
+
     setSaving(true);
 
     const apiPayload = {
       payment_method: method,
+      payment_currency: paymentCurrency,
+      payment_allocations: paymentAllocations,
+      // Multi-branch is disabled for now. Keep sending null until branch routing is restored.
       branch: null,
       till_session: till?.id || null,
       customer: null,
@@ -107,6 +187,12 @@ const Sales = () => {
     };
     const offlinePayload = {
       payment_method: method,
+      payment_currency: paymentCurrency,
+      payment_allocations: paymentAllocations.map((row) => ({
+        currency: row.currency,
+        amount: row.amount.toFixed(2),
+        fx_rate_to_base: row.fx_rate_to_base,
+      })),
       customer: null,
       sale_items: lineItems.map((l) => {
         const productId = parseInt(l.productId, 10);
@@ -132,7 +218,7 @@ const Sales = () => {
       addToOfflineQueue({ type: "sale", payload: offlinePayload });
       toast.success("Sale saved locally while offline. It will sync automatically when you are back online.");
       setLineItems([]);
-      setMethod("Cash");
+      resetPaymentForm();
       setAddOpen(false);
       setSaving(false);
       return;
@@ -140,9 +226,9 @@ const Sales = () => {
 
     try {
       await createSaleApi(apiPayload);
-      toast.success("Sale recorded & inventory updated!");
+      toast.success("Sale recorded");
       setLineItems([]);
-      setMethod("Cash");
+      resetPaymentForm();
       setAddOpen(false);
       await refreshUser();
     } catch (e) {
@@ -188,13 +274,23 @@ const Sales = () => {
   const showReceipt = async (id: string) => {
     try {
       const receipt = await fetchReceiptApi(id);
+      const allocationLines = (receipt.payment_allocations || []).map((row) => {
+        const amount = Number(row.amount || 0);
+        const baseAmount = Number(row.amount_base || 0);
+        const rowSymbol = symbolForCurrency(row.currency);
+        return `${row.currency}: ${rowSymbol}${amount.toLocaleString()}${row.currency !== baseCurrency ? ` (${sym}${baseAmount.toLocaleString()} base)` : ""}`;
+      });
       const lines = [
         receipt.business_name || "Verifin Receipt",
-        receipt.branch ? `Branch: ${receipt.branch}` : "",
+        // Multi-branch is disabled for now. Keep this line commented for later reactivation.
+        // receipt.branch ? `Branch: ${receipt.branch}` : "",
         `Receipt: ${receipt.receipt_number}`,
         receipt.invoice_number ? `Invoice: ${receipt.invoice_number}` : "",
         `${receipt.date} ${receipt.time}`,
         `Payment: ${receipt.payment_method}`,
+        receipt.payment_currency ? `Currency: ${receipt.payment_currency}` : "",
+        allocationLines.length ? "" : "",
+        ...allocationLines,
         "",
         ...receipt.items.map((item) => `${item.quantity} ${item.product_name || "Item"} - ${sym}${Number(item.subtotal || 0).toLocaleString()}`),
         "",
@@ -259,7 +355,15 @@ const Sales = () => {
                 <motion.div key={s.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }} className="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors group">
                   <div>
                     <p className="font-medium text-sm">{s.items}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{s.time} · {s.date} · {s.method}</p>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span>{s.time} · {s.date} · {s.method}</span>
+                      {s.paymentCurrency ? <span className="rounded border border-border px-2 py-0.5">{s.paymentCurrency}</span> : null}
+                    </div>
+                    {s.paymentAllocations?.length && s.paymentAllocations.length > 1 ? (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Split: {s.paymentAllocations.map((row) => `${symbolForCurrency(row.currency)}${row.amount.toLocaleString()} ${row.currency}`).join(" + ")}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="flex items-center gap-2">
                     <p className="font-display font-bold">{sym}{s.total.toLocaleString()}</p>
@@ -277,7 +381,6 @@ const Sales = () => {
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle className="font-display">Record Sale</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            {/* Add line items */}
             <div className="flex gap-2 items-end">
               <div className="flex-1">
                 <Label>Product</Label>
@@ -297,7 +400,6 @@ const Sales = () => {
               </Button>
             </div>
 
-            {/* Line items list */}
             {lineItems.length > 0 && (
               <div className="border border-border rounded-lg divide-y divide-border">
                 {lineItems.map((item, idx) => (
@@ -327,8 +429,75 @@ const Sales = () => {
                 <option value="Card">Card</option>
               </select>
             </div>
+
+            <div>
+              <Label>Payment Currency</Label>
+              <select
+                value={paymentCurrency}
+                onChange={e => {
+                  setPaymentCurrency(e.target.value);
+                  setPaymentRate("");
+                  setSplitAmount("");
+                  setSplitRate("");
+                }}
+                className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+              >
+                {enabledCurrencies.map((code) => (
+                  <option key={code} value={code}>{code}</option>
+                ))}
+              </select>
+            </div>
+
+            {paymentCurrency !== baseCurrency ? (
+              <div>
+                <Label>Rate to {baseCurrency}</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.000001"
+                  placeholder={`1 ${paymentCurrency} = ? ${baseCurrency}`}
+                  value={paymentRate || String(profile.exchangeRates?.[paymentCurrency] ?? "")}
+                  onChange={e => setPaymentRate(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+            ) : null}
+
+            {alternateCurrency ? (
+              <div className="rounded-md border border-border p-3 space-y-3">
+                <div>
+                  <p className="text-sm font-medium">Split Payment</p>
+                  <p className="text-xs text-muted-foreground">Optional. Record part of this sale in {alternateCurrency}.</p>
+                </div>
+                <div>
+                  <Label>Amount in {alternateCurrency}</Label>
+                  <Input type="number" placeholder="0.00" value={splitAmount} onChange={e => setSplitAmount(e.target.value)} className="mt-1" />
+                </div>
+                {alternateCurrency !== baseCurrency ? (
+                  <div>
+                    <Label>Rate for {alternateCurrency}</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.000001"
+                      placeholder={`1 ${alternateCurrency} = ? ${baseCurrency}`}
+                      value={splitRate || String(profile.exchangeRates?.[alternateCurrency] ?? "")}
+                      onChange={e => setSplitRate(e.target.value)}
+                      className="mt-1"
+                    />
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="rounded-md bg-muted/50 px-3 py-2 text-sm space-y-1">
+              <p>Sale total in {baseCurrency}: {sym}{saleTotal.toLocaleString()}</p>
+              {splitAmountValue > 0 && alternateCurrency ? <p>Split in {alternateCurrency}: {symbolForCurrency(alternateCurrency)}{splitAmountValue.toLocaleString()} ({sym}{splitBasePreview.toLocaleString()} base)</p> : null}
+              {saleTotal > 0 ? <p>Remaining in {paymentCurrency}: {symbolForCurrency(paymentCurrency)}{primaryAmountPreview.toLocaleString()}</p> : null}
+            </div>
+
             <Button onClick={handleAdd} disabled={lineItems.length === 0 || saving} className="w-full bg-gradient-hero text-primary-foreground">
-              {saving ? "Saving…" : `Record Sale — ${sym}${saleTotal.toLocaleString()}`}
+              {saving ? "Saving..." : `Record Sale - ${sym}${saleTotal.toLocaleString()}`}
             </Button>
           </div>
         </DialogContent>
