@@ -45,7 +45,6 @@ const Sales = () => {
   const [lineItems, setLineItems] = useState<SaleLineItem[]>([]);
   const [selectedProduct, setSelectedProduct] = useState("");
   const [qty, setQty] = useState("1");
-  const [salePrice, setSalePrice] = useState("");
   const [paymentCurrency, setPaymentCurrency] = useState(profile.currency);
   const [paymentRate, setPaymentRate] = useState("");
   const baseCurrency = profile.currency || "ZAR";
@@ -88,20 +87,19 @@ const Sales = () => {
     setMethod("Cash");
     setPaymentCurrency(baseCurrency);
     setPaymentRate("");
-    setSalePrice("");
   };
 
   const addLineItem = () => {
     const product = products.find(p => p.id === selectedProduct);
     if (!product) return;
     const quantity = parseInt(qty, 10) || 1;
-    const unitPrice = parseFloat(salePrice || String(product.price || 0)) || 0;
+    const unitPrice = parseFloat(String(product.costPrice || 0)) || 0;
     if (quantity > product.stock) {
       toast.error(`Only ${product.stock} ${product.name} in stock`);
       return;
     }
     if (unitPrice <= 0) {
-      toast.error("Enter a selling price greater than zero.");
+      toast.error("Set a product cost greater than zero before recording the sale.");
       return;
     }
     const existing = lineItems.findIndex(l => l.productId === product.id);
@@ -119,7 +117,6 @@ const Sales = () => {
     }
     setSelectedProduct("");
     setQty("1");
-    setSalePrice("");
   };
 
   const removeLineItem = (idx: number) => setLineItems(lineItems.filter((_, i) => i !== idx));
@@ -163,7 +160,7 @@ const Sales = () => {
   const handleAdd = async () => {
     if (lineItems.length === 0) return;
     if (saleTotal <= 0) {
-      toast.error("Add at least one item with a selling price greater than zero.");
+      toast.error("Add at least one item with a product cost greater than zero.");
       return;
     }
 
@@ -416,18 +413,6 @@ const Sales = () => {
               <div className="w-20">
                 <Label>Qty</Label>
                 <Input type="number" min="1" value={qty} onChange={e => setQty(e.target.value)} className="mt-1" />
-              </div>
-              <div className="w-28">
-                <Label>Price</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={salePrice}
-                  onChange={e => setSalePrice(e.target.value)}
-                  placeholder={selectedProduct ? String(products.find((p) => p.id === selectedProduct)?.price || "") : "0.00"}
-                  className="mt-1"
-                />
               </div>
               <Button type="button" variant="outline" onClick={addLineItem} disabled={!selectedProduct} className="mb-0">
                 Add
