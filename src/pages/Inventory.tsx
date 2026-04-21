@@ -16,6 +16,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { BarcodeScanner } from "@/components/BarcodeScanner";
 import { toast } from "sonner";
 import { useFeatureAccess, useUpgradePrompt } from "@/lib/features";
+import { symbolForCurrency } from "@/lib/currency";
 
 const allCategories = [
   "Groceries", "Beverages", "Hardware", "Personal Care", "Electronics",
@@ -40,6 +41,13 @@ const Inventory = () => {
   const [saving, setSaving] = useState(false);
   const [canUseCameraScan, setCanUseCameraScan] = useState(false);
   const sym = profile.currencySymbol || "R";
+
+  const costMetaText = (currency?: string, rate?: number) => {
+    const sourceCurrency = currency || profile.currency;
+    if (sourceCurrency === profile.currency) return "Base cost";
+    const sourceSymbol = symbolForCurrency(sourceCurrency);
+    return `${sourceCurrency} source · ${sourceSymbol}1 = ${sym}${(rate || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}`;
+  };
 
   useEffect(() => {
     const updateCameraSupport = () => {
@@ -68,6 +76,7 @@ const Inventory = () => {
     (p) => (category === "All" || p.category === category) && 
     (p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase()) || (p.barcode || "").includes(search))
   );
+  const selectedEditProduct = editProduct ? products.find((item) => item.id === editProduct) : undefined;
 
   const openAdd = () => {
     setForm({ name: "", category: mergedCategories[0] || "", branchId: "", supplierId: "", stock: "", reorder: "5", costPrice: "", price: "", barcode: "" });
@@ -265,7 +274,17 @@ const Inventory = () => {
         <div className="grid grid-cols-3 gap-2">
           <div><Label>Stock</Label><Input type="number" value={form.stock} onChange={e => setForm({ ...form, stock: e.target.value })} className="mt-1" /></div>
           <div><Label>Reorder At</Label><Input type="number" value={form.reorder} onChange={e => setForm({ ...form, reorder: e.target.value })} className="mt-1" /></div>
-          <div><Label>Cost ({sym})</Label><Input type="number" value={form.costPrice} onChange={e => setForm({ ...form, costPrice: e.target.value })} className="mt-1" /></div>
+          <div>
+            <Label>Cost ({sym})</Label>
+            <Input type="number" value={form.costPrice} onChange={e => setForm({ ...form, costPrice: e.target.value })} className="mt-1" />
+            {editProduct ? (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {costMetaText(selectedEditProduct?.costCurrency, selectedEditProduct?.costFxRateToBase)}
+              </p>
+            ) : (
+              <p className="mt-1 text-[11px] text-muted-foreground">Base cost</p>
+            )}
+          </div>
         </div>
         {/*
         Selling price is hidden for now. Keep this field for later reactivation.
@@ -372,7 +391,16 @@ const Inventory = () => {
                     {/* Multiple branches disabled: branch value hidden for now. */}
                     <td className="p-3 text-muted-foreground hidden lg:table-cell">{p.supplierName || "Unassigned"}</td>
                     <td className="p-3 text-center">{p.stock}</td>
-                    <td className="p-3 text-right hidden lg:table-cell">{sym}{(p.costPrice || 0).toFixed(2)}</td>
+                    <td className="p-3 text-right hidden lg:table-cell">
+                      <div>
+                        <p>{sym}{(p.costPrice || 0).toFixed(2)}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {p.costCurrency && p.costCurrency !== profile.currency
+                            ? `${symbolForCurrency(p.costCurrency)} ${p.costCurrency}`
+                            : "Base"}
+                        </p>
+                      </div>
+                    </td>
                     {/* Selling price is hidden in the inventory table for now. */}
                     <td className="p-3 text-center hidden md:table-cell">
                       <span className="text-xs text-muted-foreground">{p.addedDate || "N/A"}</span>
