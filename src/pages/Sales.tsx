@@ -23,6 +23,7 @@ interface SaleLineItem {
 }
 
 const SHOW_TILL_CONTROLS = false;
+const SHOW_SPLIT_PAYMENT = false;
 
 function roundMoney(value: number) {
   return Math.round(value * 100) / 100;
@@ -46,8 +47,6 @@ const Sales = () => {
   const [qty, setQty] = useState("1");
   const [paymentCurrency, setPaymentCurrency] = useState(profile.currency);
   const [paymentRate, setPaymentRate] = useState("");
-  const [splitAmount, setSplitAmount] = useState("");
-  const [splitRate, setSplitRate] = useState("");
   const baseCurrency = profile.currency || "ZAR";
   const sym = profile.currencySymbol || symbolForCurrency(baseCurrency);
   const enabledCurrencies = profile.enabledCurrencies?.length ? profile.enabledCurrencies : [baseCurrency];
@@ -66,16 +65,18 @@ const Sales = () => {
   const todayTotal = sales.filter(s => s.date === "Today").reduce((sum, s) => sum + s.total, 0);
   const todayCount = sales.filter(s => s.date === "Today").length;
   const saleTotal = lineItems.reduce((sum, l) => sum + l.quantity * l.unitPrice, 0);
-  const alternateCurrency = paymentCurrency === baseCurrency ? secondaryCurrency : baseCurrency;
+  const alternateCurrency = SHOW_SPLIT_PAYMENT
+    ? paymentCurrency === baseCurrency ? secondaryCurrency : baseCurrency
+    : "";
   const paymentFxRate = paymentCurrency === baseCurrency
     ? 1
     : parseFloat(paymentRate) || profile.exchangeRates?.[paymentCurrency] || 0;
   const alternateFxRate = alternateCurrency
     ? alternateCurrency === baseCurrency
       ? 1
-      : parseFloat(splitRate) || profile.exchangeRates?.[alternateCurrency] || 0
+      : profile.exchangeRates?.[alternateCurrency] || 0
     : 0;
-  const splitAmountValue = parseFloat(splitAmount) || 0;
+  const splitAmountValue = 0;
   const splitBasePreview = roundMoney(splitAmountValue * alternateFxRate);
   const remainderBasePreview = Math.max(0, roundMoney(saleTotal - splitBasePreview));
   const primaryAmountPreview = paymentCurrency === baseCurrency
@@ -86,8 +87,6 @@ const Sales = () => {
     setMethod("Cash");
     setPaymentCurrency(baseCurrency);
     setPaymentRate("");
-    setSplitAmount("");
-    setSplitRate("");
   };
 
   const addLineItem = () => {
@@ -118,7 +117,7 @@ const Sales = () => {
 
   const paymentAllocations = useMemo(() => {
     const rows: Array<{ currency: string; amount: number; fx_rate_to_base?: number }> = [];
-    if (alternateCurrency && splitAmountValue > 0) {
+    if (SHOW_SPLIT_PAYMENT && alternateCurrency && splitAmountValue > 0) {
       rows.push({
         currency: alternateCurrency,
         amount: splitAmountValue,
@@ -159,7 +158,7 @@ const Sales = () => {
       toast.error(`Enter a valid rate for ${paymentCurrency}.`);
       return;
     }
-    if (splitAmountValue > 0 && alternateCurrency && alternateFxRate <= 0) {
+    if (SHOW_SPLIT_PAYMENT && splitAmountValue > 0 && alternateCurrency && alternateFxRate <= 0) {
       toast.error(`Enter a valid rate for ${alternateCurrency}.`);
       return;
     }
@@ -442,8 +441,6 @@ const Sales = () => {
                 onChange={e => {
                   setPaymentCurrency(e.target.value);
                   setPaymentRate("");
-                  setSplitAmount("");
-                  setSplitRate("");
                 }}
                 className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
               >
@@ -468,7 +465,7 @@ const Sales = () => {
               </div>
             ) : null}
 
-            {alternateCurrency ? (
+            {SHOW_SPLIT_PAYMENT && alternateCurrency ? (
               <div className="rounded-md border border-border p-3 space-y-3">
                 <div>
                   <p className="text-sm font-medium">Split Payment</p>
@@ -476,7 +473,7 @@ const Sales = () => {
                 </div>
                 <div>
                   <Label>Amount in {alternateCurrency}</Label>
-                  <Input type="number" placeholder="0.00" value={splitAmount} onChange={e => setSplitAmount(e.target.value)} className="mt-1" />
+                  <Input type="number" placeholder="0.00" value="" readOnly className="mt-1" />
                 </div>
                 {alternateCurrency !== baseCurrency ? (
                   <div>
@@ -486,8 +483,8 @@ const Sales = () => {
                       min="0"
                       step="0.000001"
                       placeholder={`1 ${alternateCurrency} = ? ${baseCurrency}`}
-                      value={splitRate || String(profile.exchangeRates?.[alternateCurrency] ?? "")}
-                      onChange={e => setSplitRate(e.target.value)}
+                      value={String(profile.exchangeRates?.[alternateCurrency] ?? "")}
+                      readOnly
                       className="mt-1"
                     />
                   </div>
