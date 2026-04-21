@@ -3,6 +3,8 @@ import { Bell, AlertTriangle, TrendingUp, Package, ClipboardCheck } from "lucide
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/lib/store";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { fetchNotificationLogsApi, type NotificationLog } from "@/lib/api";
+import { parseBusinessDate } from "@/lib/reporting";
 
 const NOTIFICATION_READ_IDS = "sp_notification_read_ids";
 
@@ -30,9 +32,31 @@ function persistReadIds(ids: string[]) {
 export function NotificationCenter() {
   const { products, sales, profile, activities } = useStore();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [history, setHistory] = useState<AppNotification[]>([]);
   const [readIds, setReadIds] = useState<string[]>(() => loadReadIds());
   const [open, setOpen] = useState(false);
   const sym = profile.currencySymbol || "R";
+
+  useEffect(() => {
+    fetchNotificationLogsApi()
+      .then((logs) => {
+        const mapped = logs.map((log: NotificationLog) => ({
+          id: `server-${log.id}`,
+          title: log.type.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()),
+          message: log.message,
+          type: /stock/i.test(log.type) ? "low_stock" : /audit|discrepancy/i.test(log.type) ? "audit" : /sale|summary/i.test(log.type) ? "sales_summary" : "info" as AppNotification["type"],
+          time: new Date(log.sent_at).toLocaleString(),
+          read: readIds.includes(`server-${log.id}`),
+        }));
+        setHistory(mapped);
+      })
+      .catch(() => setHistory([]));
+  }, [readIds]);
+
+  const isTodaySale = (dateValue: string) => {
+    const parsed = parseBusinessDate(dateValue);
+    return !!parsed && parsed.toDateString() === new Date().toDateString();
+  };
 
   useEffect(() => {
     const notifs: AppNotification[] = [];
@@ -51,7 +75,7 @@ export function NotificationCenter() {
       });
     }
 
-    const todaySales = sales.filter(s => s.date === "Today");
+    const todaySales = sales.filter((sale) => isTodaySale(sale.date));
     const todayTotal = todaySales.reduce((sum, s) => sum + s.total, 0);
     if (todaySales.length > 0) {
       notifs.push({
@@ -79,9 +103,11 @@ export function NotificationCenter() {
           });
         });
     }
-
-    setNotifications(notifs);
-  }, [products, sales, activities, profile.lowStockAlerts, profile.discrepancyAlerts, sym, readIds]);
+    const merged = [...history, ...notifs].filter(
+      (notification, index, array) => array.findIndex((item) => item.id === notification.id) === index
+    );
+    setNotifications(merged);
+  }, [products, sales, activities, profile.lowStockAlerts, profile.discrepancyAlerts, sym, readIds, history]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 

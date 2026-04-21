@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart } from "recharts";
 import { useStore } from "@/lib/store";
-import { buildWeeklyFinanceData, expenseBaseAmount, formatMoney } from "@/lib/reporting";
+import { buildWeeklyFinanceData, expenseBaseAmount, formatMoney, parseBusinessDate } from "@/lib/reporting";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { fetchRuleInsightsApi, fetchWhatsAppSummaryApi } from "@/lib/api";
@@ -30,6 +30,14 @@ const Dashboard = () => {
   const secondaryCurrency = profile.enabledCurrencies?.find((code) => code !== profile.currency) || "";
   const secondaryRate = secondaryCurrency ? profile.exchangeRates?.[secondaryCurrency] || 0 : 0;
 
+  const isSameCalendarDay = (value: string, reference: Date) => {
+    const parsed = parseBusinessDate(value);
+    return !!parsed && parsed.toDateString() === reference.toDateString();
+  };
+
+  const previousDay = new Date();
+  previousDay.setDate(previousDay.getDate() - 1);
+
   const formatSecondaryMoney = (amountBase: number) => {
     if (!secondaryCurrency || !secondaryRate) return null;
     const converted = amountBase / secondaryRate;
@@ -39,22 +47,38 @@ const Dashboard = () => {
     })}`;
   };
 
-  const todaySales = sales.filter(s => s.date === "Today");
+  const todaySales = sales.filter((sale) => isSameCalendarDay(sale.date, new Date()));
   const todayTotal = todaySales.reduce((sum, s) => sum + s.total, 0);
   
-  // Calculate percentage change in sales
-  const yesterdayTotal = sales.filter(s => s.date !== "Today").slice(0, 10).reduce((sum, s) => sum + s.total, 0);
-  const salesChange = yesterdayTotal > 0 ? Math.round(((todayTotal - yesterdayTotal) / yesterdayTotal) * 100) : 0;
+  const yesterdayTotal = sales
+    .filter((sale) => isSameCalendarDay(sale.date, previousDay))
+    .reduce((sum, s) => sum + s.total, 0);
+  const salesChange = yesterdayTotal > 0 ? Math.round(((todayTotal - yesterdayTotal) / yesterdayTotal) * 100) : null;
   
-  const inventoryValue = products.reduce((sum, p) => sum + p.stock * p.price, 0);
+  const inventoryValue = products.reduce((sum, p) => sum + p.stock * p.costPrice, 0);
   const lowStockCount = products.filter(p => p.status === "low" || p.status === "out").length;
-  const todayExpenses = expenses.filter(e => e.date === "Today").reduce((sum, e) => sum + expenseBaseAmount(e), 0);
+  const todayExpenses = expenses.filter((expense) => isSameCalendarDay(expense.date, new Date())).reduce((sum, e) => sum + expenseBaseAmount(e), 0);
 
   const displayName = profile.name || "there";
 
   // Calculate percentage change in expenses
-  const yesterdayExpenses = expenses.filter(e => e.date !== "Today").slice(0, 10).reduce((sum, e) => sum + expenseBaseAmount(e), 0);
-  const expensesChange = yesterdayExpenses > 0 ? Math.round(((todayExpenses - yesterdayExpenses) / yesterdayExpenses) * 100) : 0;
+  const yesterdayExpenses = expenses
+    .filter((expense) => isSameCalendarDay(expense.date, previousDay))
+    .reduce((sum, e) => sum + expenseBaseAmount(e), 0);
+  const expensesChange = yesterdayExpenses > 0 ? Math.round(((todayExpenses - yesterdayExpenses) / yesterdayExpenses) * 100) : null;
+
+  const changeLabel = (value: number | null, currentTotal: number, previousTotal: number) => {
+    if (value == null) {
+      if (currentTotal > 0 && previousTotal <= 0) return "New";
+      return "0%";
+    }
+    return `${value > 0 ? "+" : ""}${value}%`;
+  };
+
+  const changeTrendUp = (value: number | null, currentTotal: number, previousTotal: number) => {
+    if (value == null) return currentTotal >= previousTotal;
+    return value >= 0;
+  };
 
   const salesData = useMemo(() => {
     return buildWeeklyFinanceData(sales, []).map(({ day, sales }) => ({ day, sales }));
@@ -65,11 +89,11 @@ const Dashboard = () => {
   const salesVsExpensesData = useMemo(() => buildWeeklyFinanceData(sales, expenses), [sales, expenses]);
 
   const metrics = [
-    { label: "Today's Sales", value: formatMoney(todayTotal, sym), secondaryValue: formatSecondaryMoney(todayTotal), change: `${salesChange > 0 ? '+' : ''}${salesChange}%`, up: salesChange >= 0, icon: ShoppingCart },
+    { label: "Today's Sales", value: formatMoney(todayTotal, sym), secondaryValue: formatSecondaryMoney(todayTotal), change: changeLabel(salesChange, todayTotal, yesterdayTotal), up: changeTrendUp(salesChange, todayTotal, yesterdayTotal), icon: ShoppingCart },
     { label: "This Week", value: formatMoney(weeklySalesTotal, sym), secondaryValue: formatSecondaryMoney(weeklySalesTotal), change: `${weeklySalesTotal >= todayTotal ? 'Up' : 'Down'}`, up: weeklySalesTotal >= todayTotal, icon: TrendingUp },
     { label: "Inventory Value", value: formatMoney(inventoryValue, sym), secondaryValue: formatSecondaryMoney(inventoryValue), change: `${lowStockCount} low`, up: lowStockCount === 0, icon: Package },
     { label: "Low Stock Items", value: String(lowStockCount), secondaryValue: null, change: `${lowStockCount}`, up: false, icon: AlertTriangle },
-    { label: "Today's Expenses", value: formatMoney(todayExpenses, sym), secondaryValue: formatSecondaryMoney(todayExpenses), change: `${expensesChange > 0 ? '+' : ''}${expensesChange}%`, up: expensesChange <= 0, icon: Receipt },
+    { label: "Today's Expenses", value: formatMoney(todayExpenses, sym), secondaryValue: formatSecondaryMoney(todayExpenses), change: changeLabel(expensesChange, todayExpenses, yesterdayExpenses), up: expensesChange == null ? todayExpenses <= yesterdayExpenses : expensesChange <= 0, icon: Receipt },
   ];
 
   const topProduct = useMemo(() => {
@@ -102,7 +126,7 @@ const Dashboard = () => {
   const insights = [
     ...(lowStockCount > 0 ? [{ text: `You are running low on ${lowStockCount} key items`, type: "alert" }] : []),
     ...(topProduct ? [{ text: `Top selling product this week: ${topProduct}`, type: "insight" }] : []),
-    { text: salesChange >= 0 ? `Sales are ${salesChange}% above the previous period` : `Sales are ${Math.abs(salesChange)}% below the previous period`, type: salesChange >= 0 ? "insight" : "warning" },
+    { text: salesChange == null ? (todayTotal > 0 ? "Sales started coming in today." : "No sales recorded for today yet.") : salesChange >= 0 ? `Sales are ${salesChange}% above yesterday` : `Sales are ${Math.abs(salesChange)}% below yesterday`, type: salesChange == null ? "insight" : salesChange >= 0 ? "insight" : "warning" },
     ...(expenseAlert ? [{ text: expenseAlert, type: "alert" }] : []),
     ...(discrepancies.filter(d => d.status !== "resolved").length > 0 ? [{ text: `${discrepancies.filter(d => d.status !== "resolved").length} stock discrepancies still need attention`, type: "warning" }] : []),
   ];

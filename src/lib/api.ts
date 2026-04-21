@@ -829,6 +829,18 @@ export async function fetchWhatsAppSummaryApi() {
   return apiFetch<{ message: string; date: string; channel: string }>("/api/v1/assistant/whatsapp-summary/");
 }
 
+export type NotificationLog = {
+  id: number;
+  type: string;
+  message: string;
+  sent_at: string;
+  channel: string;
+};
+
+export async function fetchNotificationLogsApi() {
+  return fetchAllPages<NotificationLog>("/api/v1/notifications/");
+}
+
 export async function mockCheckoutApi(payload: { plan: PlanCode; billing_period: BillingPeriod; trial_days?: number; country_code?: string }) {
   return apiFetch<{ detail: string; subscription: BillingSubscription; billing: BillingOverview }>("/api/v1/billing/subscriptions/mock-checkout/", {
     method: "POST",

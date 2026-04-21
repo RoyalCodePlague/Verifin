@@ -10,7 +10,7 @@ import { Moon, Sun } from "lucide-react";
 import { patchMe } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useNavigate } from "react-router-dom";
-import { currencyOptions, symbolForCurrency } from "@/lib/currency";
+import { currencyOptions, getDetectedCountryCode, getRegionalCurrencyDefaults, symbolForCurrency } from "@/lib/currency";
 
 const SettingsPage = () => {
   const { profile, setProfile } = useStore();
@@ -21,6 +21,8 @@ const SettingsPage = () => {
   const [secondaryCurrency, setSecondaryCurrency] = useState("");
   const [secondaryRate, setSecondaryRate] = useState("");
   const [saving, setSaving] = useState(false);
+  const detectedCountry = getDetectedCountryCode();
+  const detectedDefaults = getRegionalCurrencyDefaults(detectedCountry);
 
   useEffect(() => {
     setName(profile.name);
@@ -71,6 +73,17 @@ const SettingsPage = () => {
     }
   };
 
+  const applyRegionDefaults = () => {
+    setCurrency(detectedDefaults.baseCurrency);
+    if (detectedDefaults.secondaryCurrency && detectedDefaults.secondaryCurrency !== detectedDefaults.baseCurrency) {
+      setSecondaryCurrency(detectedDefaults.secondaryCurrency);
+      setSecondaryRate(String(profile.exchangeRates?.[detectedDefaults.secondaryCurrency] ?? ""));
+    } else {
+      setSecondaryCurrency("");
+      setSecondaryRate("");
+    }
+  };
+
   const handleToggle = (key: "whatsappDaily" | "lowStockAlerts" | "discrepancyAlerts") => {
     setProfile({ ...profile, [key]: !profile[key] });
   };
@@ -113,6 +126,14 @@ const SettingsPage = () => {
                 <option key={c.code} value={c.code}>{c.label}</option>
               ))}
             </select>
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <p className="text-xs text-muted-foreground">
+                Region detected: {detectedCountry}. Base currency suggestion: {detectedDefaults.baseCurrency}.
+              </p>
+              <Button type="button" variant="outline" size="sm" onClick={applyRegionDefaults}>
+                Use Region Default
+              </Button>
+            </div>
           </div>
           <div>
             <Label>Second Currency</Label>

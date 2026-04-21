@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useStore } from "@/lib/store";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { getRegionalCurrencyDefaults } from "@/lib/currency";
 
 const currencies = [
   { code: "ZAR", symbol: "R", label: "South African Rand (R)" },
@@ -44,7 +45,7 @@ const Onboarding = () => {
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [bizName, setBizName] = useState("");
-  const [currency, setCurrency] = useState("ZAR");
+  const [currency, setCurrency] = useState(() => getRegionalCurrencyDefaults().baseCurrency);
   const [categories, setCategories] = useState<string[]>(["Groceries", "Beverages", "Hardware", "Personal Care"]);
   const [newCategory, setNewCategory] = useState("");
   const [quickProducts, setQuickProducts] = useState<QuickProduct[]>([

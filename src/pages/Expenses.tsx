@@ -33,29 +33,17 @@ const Expenses = () => {
     category: "Transport",
     currency: profile.currency,
     fxRate: "",
-    splitAmount: "",
-    splitRate: "",
   });
 
   const baseCurrency = profile.currency || "ZAR";
   const baseSymbol = profile.currencySymbol || symbolForCurrency(baseCurrency);
   const enabledCurrencies = profile.enabledCurrencies?.length ? profile.enabledCurrencies : [baseCurrency];
-  const secondaryCurrency = enabledCurrencies.find((code) => code !== baseCurrency) || "";
   const selectedCurrency = form.currency || baseCurrency;
-  const alternateCurrency = selectedCurrency === baseCurrency ? secondaryCurrency : baseCurrency;
   const selectedRate = selectedCurrency === baseCurrency
     ? 1
     : parseFloat(form.fxRate) || profile.exchangeRates?.[selectedCurrency] || 0;
-  const alternateRate = alternateCurrency
-    ? alternateCurrency === baseCurrency
-      ? 1
-      : parseFloat(form.splitRate) || profile.exchangeRates?.[alternateCurrency] || 0
-    : 0;
   const enteredAmount = parseFloat(form.amount) || 0;
-  const splitAmount = parseFloat(form.splitAmount) || 0;
   const amountBasePreview = roundMoney(enteredAmount * selectedRate);
-  const splitBasePreview = alternateCurrency ? roundMoney(splitAmount * alternateRate) : 0;
-  const remainderBasePreview = Math.max(0, roundMoney(amountBasePreview - splitBasePreview));
 
   const filtered = expenses.filter(e => e.desc.toLowerCase().includes(search.toLowerCase()));
   const monthTotal = useMemo(() => expenses.reduce((sum, e) => sum + (e.amountBase ?? e.amount), 0), [expenses]);
@@ -71,8 +59,6 @@ const Expenses = () => {
       category: "Transport",
       currency: baseCurrency,
       fxRate: "",
-      splitAmount: "",
-      splitRate: "",
     });
   };
 
@@ -92,40 +78,6 @@ const Expenses = () => {
       return;
     }
 
-    let paymentAllocations: Array<{ currency: string; amount: number; fx_rate_to_base?: number }> | undefined;
-
-    if (alternateCurrency && splitAmount > 0) {
-      if (alternateRate <= 0) {
-        toast.error(`Enter a valid rate for ${alternateCurrency}.`);
-        return;
-      }
-      const splitBase = roundMoney(splitAmount * alternateRate);
-      if (splitBase > amountBase) {
-        toast.error("Split payment is bigger than the expense total.");
-        return;
-      }
-
-      const rows: Array<{ currency: string; amount: number; fx_rate_to_base?: number }> = [
-        {
-          currency: alternateCurrency,
-          amount: splitAmount,
-          fx_rate_to_base: alternateCurrency === baseCurrency ? undefined : alternateRate,
-        },
-      ];
-
-      const remainderBase = roundMoney(amountBase - splitBase);
-      if (remainderBase > 0) {
-        const remainderAmount = roundMoney(remainderBase / fxRate);
-        rows.push({
-          currency,
-          amount: remainderAmount,
-          fx_rate_to_base: currency === baseCurrency ? undefined : fxRate,
-        });
-      }
-
-      paymentAllocations = rows;
-    }
-
     setSaving(true);
 
     const payload = {
@@ -133,7 +85,6 @@ const Expenses = () => {
       amount,
       currency,
       fx_rate_to_base: currency === baseCurrency ? undefined : fxRate,
-      payment_allocations: paymentAllocations,
       categoryName: form.category,
       date: new Date().toISOString().slice(0, 10),
     };
@@ -144,11 +95,6 @@ const Expenses = () => {
         amount,
         currency,
         amountBase,
-        paymentAllocations: paymentAllocations?.map((row) => ({
-          currency: row.currency,
-          amount: row.amount,
-          amountBase: roundMoney(row.amount * (row.fx_rate_to_base || 1)),
-        })),
         category: form.category,
         date: "Today",
       });
@@ -267,7 +213,7 @@ const Expenses = () => {
               <Label>Currency</Label>
               <select
                 value={form.currency}
-                onChange={e => setForm({ ...form, currency: e.target.value, fxRate: "", splitAmount: "", splitRate: "" })}
+                onChange={e => setForm({ ...form, currency: e.target.value, fxRate: "" })}
                 className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
               >
                 {enabledCurrencies.map((code) => (
@@ -296,38 +242,11 @@ const Expenses = () => {
                 {expenseCategories.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
-
-            {alternateCurrency ? (
-              <div className="rounded-md border border-border p-3 space-y-3">
-                <div>
-                  <p className="text-sm font-medium">Split Payment</p>
-                  <p className="text-xs text-muted-foreground">Optional. Record part of this expense in {alternateCurrency}.</p>
-                </div>
-                <div>
-                  <Label>Amount in {alternateCurrency}</Label>
-                  <Input type="number" placeholder="0.00" value={form.splitAmount} onChange={e => setForm({ ...form, splitAmount: e.target.value })} className="mt-1" />
-                </div>
-                {alternateCurrency !== baseCurrency ? (
-                  <div>
-                    <Label>Rate for {alternateCurrency}</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      step="0.000001"
-                      placeholder={`1 ${alternateCurrency} = ? ${baseCurrency}`}
-                      value={form.splitRate || String(profile.exchangeRates?.[alternateCurrency] ?? "")}
-                      onChange={e => setForm({ ...form, splitRate: e.target.value })}
-                      className="mt-1"
-                    />
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-
             <div className="rounded-md bg-muted/50 px-3 py-2 text-sm space-y-1">
               <p>Total in {baseCurrency}: {baseSymbol}{amountBasePreview.toLocaleString()}</p>
-              {splitAmount > 0 && alternateCurrency ? <p>Split in {alternateCurrency}: {symbolForCurrency(alternateCurrency)}{splitAmount.toLocaleString()} ({baseSymbol}{splitBasePreview.toLocaleString()} base)</p> : null}
-              {splitAmount > 0 ? <p>Remaining in {selectedCurrency}: {symbolForCurrency(selectedCurrency)}{roundMoney(remainderBasePreview / (selectedRate || 1)).toLocaleString()}</p> : null}
+              {selectedCurrency !== baseCurrency ? (
+                <p>{symbolForCurrency(selectedCurrency)}{enteredAmount.toLocaleString()} converts into {baseSymbol}{amountBasePreview.toLocaleString()}</p>
+              ) : null}
             </div>
 
             <Button onClick={handleAdd} disabled={!form.desc.trim() || !form.amount || saving} className="w-full bg-gradient-accent text-accent-foreground">{saving ? "Saving..." : "Add Expense"}</Button>

@@ -41,6 +41,8 @@ const Inventory = () => {
   const [saving, setSaving] = useState(false);
   const [canUseCameraScan, setCanUseCameraScan] = useState(false);
   const sym = profile.currencySymbol || "R";
+  const secondaryCurrency = profile.enabledCurrencies?.find((code) => code !== profile.currency) || "";
+  const secondaryRate = secondaryCurrency ? profile.exchangeRates?.[secondaryCurrency] || 0 : 0;
 
   const inventoryCostMetaText = (currency?: string, rate?: number) => {
     const sourceCurrency = currency || profile.currency;
@@ -49,6 +51,15 @@ const Inventory = () => {
     return `${sourceCurrency} source | ${sourceSymbol}1 = ${sym}${(rate || 0).toLocaleString(undefined, {
       minimumFractionDigits: 2,
       maximumFractionDigits: 6,
+    })}`;
+  };
+
+  const formatSecondaryCost = (baseAmount: number) => {
+    if (!secondaryCurrency || !secondaryRate) return null;
+    const converted = baseAmount / secondaryRate;
+    return `${symbolForCurrency(secondaryCurrency)}${converted.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
     })}`;
   };
 
@@ -407,11 +418,15 @@ const Inventory = () => {
                     <td className="p-3 text-right hidden lg:table-cell">
                       <div>
                         <p>{sym}{(p.costPrice || 0).toFixed(2)}</p>
-                        <p className="text-[10px] text-muted-foreground">
-                          {p.costCurrency && p.costCurrency !== profile.currency
-                            ? `${symbolForCurrency(p.costCurrency)} ${p.costCurrency}`
-                            : "Base"}
-                        </p>
+                        {secondaryCurrency && secondaryRate ? (
+                          <p className="text-[10px] text-muted-foreground">{formatSecondaryCost(p.costPrice || 0)}</p>
+                        ) : (
+                          <p className="text-[10px] text-muted-foreground">
+                            {p.costCurrency && p.costCurrency !== profile.currency
+                              ? `${symbolForCurrency(p.costCurrency)} ${p.costCurrency}`
+                              : "Base"}
+                          </p>
+                        )}
                       </div>
                     </td>
                     {/* Selling price is hidden in the inventory table for now. */}
