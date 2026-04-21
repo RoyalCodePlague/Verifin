@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { useStore } from "@/lib/store";
 import { createProductApi, deleteProductApi, fetchInventoryForecast, mapProductResponse, updateProductApi, type ApiForecastItem } from "@/lib/api";
 import { addToOfflineQueue, canQueueOfflineAction } from "@/lib/offlineQueue";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { BarcodeScanner } from "@/components/BarcodeScanner";
@@ -41,6 +41,16 @@ const Inventory = () => {
   const [saving, setSaving] = useState(false);
   const [canUseCameraScan, setCanUseCameraScan] = useState(false);
   const sym = profile.currencySymbol || "R";
+
+  const inventoryCostMetaText = (currency?: string, rate?: number) => {
+    const sourceCurrency = currency || profile.currency;
+    if (sourceCurrency === profile.currency) return "Base cost";
+    const sourceSymbol = symbolForCurrency(sourceCurrency);
+    return `${sourceCurrency} source | ${sourceSymbol}1 = ${sym}${(rate || 0).toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 6,
+    })}`;
+  };
 
   const costMetaText = (currency?: string, rate?: number) => {
     const sourceCurrency = currency || profile.currency;
@@ -242,7 +252,12 @@ const Inventory = () => {
 
   const formDialog = (
     <DialogContent>
-      <DialogHeader><DialogTitle className="font-display">{editProduct ? "Edit Product" : "Add Product"}</DialogTitle></DialogHeader>
+      <DialogHeader>
+        <DialogTitle className="font-display">{editProduct ? "Edit Product" : "Add Product"}</DialogTitle>
+        <DialogDescription>
+          Save stock levels, reorder points, and base cost for this product.
+        </DialogDescription>
+      </DialogHeader>
       <div className="space-y-3">
         <div><Label>Product Name</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="mt-1" placeholder="e.g. White Bread Loaf" /></div>
         <div>
@@ -279,7 +294,7 @@ const Inventory = () => {
             <Input type="number" value={form.costPrice} onChange={e => setForm({ ...form, costPrice: e.target.value })} className="mt-1" />
             {editProduct ? (
               <p className="mt-1 text-[11px] text-muted-foreground">
-                {costMetaText(selectedEditProduct?.costCurrency, selectedEditProduct?.costFxRateToBase)}
+                {inventoryCostMetaText(selectedEditProduct?.costCurrency, selectedEditProduct?.costFxRateToBase)}
               </p>
             ) : (
               <p className="mt-1 text-[11px] text-muted-foreground">Base cost</p>
@@ -368,8 +383,7 @@ const Inventory = () => {
                   <th className="text-left p-3 font-medium text-muted-foreground">Product</th>
                   <th className="text-left p-3 font-medium text-muted-foreground hidden sm:table-cell">SKU</th>
                   <th className="text-left p-3 font-medium text-muted-foreground hidden md:table-cell">Category</th>
-                  {/* Multiple branches disabled: branch column hidden for now. */}
-                  <th className="text-left p-3 font-medium text-muted-foreground hidden lg:table-cell">Supplier</th>
+                  {/* Supplier visibility is disabled in the inventory table for now. */}
                   <th className="text-center p-3 font-medium text-muted-foreground">Stock</th>
                   <th className="text-right p-3 font-medium text-muted-foreground hidden lg:table-cell">Cost</th>
                   {/* Selling price is hidden in the inventory table for now. */}
@@ -388,8 +402,7 @@ const Inventory = () => {
                     </td>
                     <td className="p-3 text-muted-foreground hidden sm:table-cell">{p.sku}</td>
                     <td className="p-3 text-muted-foreground hidden md:table-cell">{p.category}</td>
-                    {/* Multiple branches disabled: branch value hidden for now. */}
-                    <td className="p-3 text-muted-foreground hidden lg:table-cell">{p.supplierName || "Unassigned"}</td>
+                    {/* Supplier visibility is disabled in the inventory table for now. */}
                     <td className="p-3 text-center">{p.stock}</td>
                     <td className="p-3 text-right hidden lg:table-cell">
                       <div>

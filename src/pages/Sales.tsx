@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useStore } from "@/lib/store";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { toast } from "sonner";
@@ -379,7 +379,12 @@ const Sales = () => {
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle className="font-display">Record Sale</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle className="font-display">Record Sale</DialogTitle>
+            <DialogDescription>
+              Add products, choose payment currency, and save the sale total in your base currency.
+            </DialogDescription>
+          </DialogHeader>
           <div className="space-y-4">
             <div className="flex gap-2 items-end">
               <div className="flex-1">
@@ -505,7 +510,12 @@ const Sales = () => {
       {SHOW_TILL_CONTROLS && (
         <Dialog open={tillOpen} onOpenChange={setTillOpen}>
           <DialogContent>
-            <DialogHeader><DialogTitle className="font-display">{till ? "Close Till" : "Open Till"}</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle className="font-display">{till ? "Close Till" : "Open Till"}</DialogTitle>
+              <DialogDescription>
+                {till ? "Capture the counted cash to close this till session." : "Start a till session for this cashier."}
+              </DialogDescription>
+            </DialogHeader>
             <div className="space-y-3">
               {!till ? (
                 <>
@@ -530,7 +540,12 @@ const Sales = () => {
       )}
       <Dialog open={receiptOpen} onOpenChange={setReceiptOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle className="font-display">Receipt</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle className="font-display">Receipt</DialogTitle>
+            <DialogDescription>
+              Review the generated receipt text and copy it if you need to share it.
+            </DialogDescription>
+          </DialogHeader>
           <pre className="rounded-lg bg-muted p-4 text-sm whitespace-pre-wrap">{receiptText}</pre>
           <Button variant="outline" onClick={() => navigator.clipboard.writeText(receiptText)}>Copy Receipt</Button>
         </DialogContent>

@@ -66,6 +66,19 @@ def make_json_safe(value):
         return [make_json_safe(item) for item in value]
     return value
 
+
+def get_user_currency(user):
+    return getattr(user, "currency", "ZAR") or "ZAR"
+
+
+def get_user_currency_symbol(user):
+    return getattr(user, "currency_symbol", "R") or "R"
+
+
+def format_user_money(amount, user):
+    symbol = get_user_currency_symbol(user)
+    return f"{symbol}{float(amount or 0):.2f}"
+
 def parse_and_clean_groq_response(raw_content: str) -> dict:
     """
     Parse and clean Groq response, handling markdown code blocks.
@@ -114,8 +127,8 @@ def query_expenses(filters: dict = None, user=None) -> dict:
         if filters:
             expenses = expenses.filter(**filters)
         
-        expenses_data = list(expenses.values('id', 'category', 'amount', 'date'))
-        total = sum(e['amount'] for e in expenses_data)
+        expenses_data = list(expenses.values('id', 'category', 'amount', 'amount_base', 'currency', 'date'))
+        total = sum((e.get('amount_base') or e.get('amount') or 0) for e in expenses_data)
         
         return {
             "expenses": expenses_data,
@@ -179,6 +192,7 @@ def query_customers(filters: dict = None, user=None) -> dict:
 def generate_insights(user=None) -> dict:
     """Generate deterministic business insights from existing data."""
     insights = []
+    currency_symbol = get_user_currency_symbol(user)
     
     try:
         # Low stock alert
@@ -208,13 +222,13 @@ def generate_insights(user=None) -> dict:
             insights.append({
                 "type": "sales_lower_than_usual",
                 "severity": "warning",
-                "message": f"Sales are lower than usual today. Today: R{today_total:.2f}, 7-day average: R{average:.2f}."
+                "message": f"Sales are lower than usual today. Today: {currency_symbol}{today_total:.2f}, 7-day average: {currency_symbol}{average:.2f}."
             })
         elif average and today_total > average:
             insights.append({
                 "type": "sales_above_average",
                 "severity": "success",
-                "message": f"Sales are above the 7-day average today. Today: R{today_total:.2f}, average: R{average:.2f}."
+                "message": f"Sales are above the 7-day average today. Today: {currency_symbol}{today_total:.2f}, average: {currency_symbol}{average:.2f}."
             })
 
         fast_movers = (
@@ -278,15 +292,15 @@ def generate_whatsapp_summary(user):
     expenses = Expense.objects.filter(created_by=user, date=today, is_deleted=False)
     products = Product.objects.filter(user=user, is_deleted=False)
     sales_total = sales.aggregate(total=Sum("total"))["total"] or 0
-    expenses_total = expenses.aggregate(total=Sum("amount"))["total"] or 0
+    expenses_total = expenses.aggregate(total=Sum("amount_base"))["total"] or 0
     low_stock = products.filter(stock__lte=models.F("reorder_level"))[:5]
     lines = [
         "*Verifin Daily Summary*",
         today.strftime("%A, %d %B %Y"),
         "",
-        f"*Sales:* R{sales_total:.2f} ({sales.count()} transactions)",
-        f"*Expenses:* R{expenses_total:.2f}",
-        f"*Net:* R{sales_total - expenses_total:.2f}",
+        f"*Sales:* {format_user_money(sales_total, user)} ({sales.count()} transactions)",
+        f"*Expenses:* {format_user_money(expenses_total, user)}",
+        f"*Net:* {format_user_money(sales_total - expenses_total, user)}",
         f"*Products:* {products.count()} active items",
     ]
     if low_stock:
@@ -322,7 +336,7 @@ def command_assistant(command, user=None):
         return {"action": "unknown", "message": "Type a command like today sales, low stock, or top products.", "data": {}}
     if "today" in text and "sale" in text:
         data = query_sales({"date": django_timezone.localdate()}, user=user)
-        return {"action": "query_sales", "message": f"Today sales total is R{data.get('total_revenue', 0):.2f}.", "data": data}
+        return {"action": "query_sales", "message": f"Today sales total is {format_user_money(data.get('total_revenue', 0), user)}.", "data": data}
     if "low stock" in text or "running low" in text:
         data = query_stock({"stock__lte": models.F("reorder_level")}, user=user)
         return {"action": "query_stock", "message": f"{data.get('total_items', 0)} products need stock attention.", "data": data}
@@ -338,7 +352,7 @@ def command_assistant(command, user=None):
         return {"action": "top_products", "message": "Top products by quantity sold.", "data": {"items": list(rows)}}
     if "expense" in text:
         data = query_expenses(user=user)
-        return {"action": "query_expenses", "message": f"Total expenses found: R{data.get('total_cost', 0):.2f}.", "data": data}
+        return {"action": "query_expenses", "message": f"Total expenses found: {format_user_money(data.get('total_cost', 0), user)}.", "data": data}
     if "customer" in text:
         data = query_customers(user=user)
         return {"action": "query_customers", "message": f"You have {data.get('total_customers', 0)} customers.", "data": data}

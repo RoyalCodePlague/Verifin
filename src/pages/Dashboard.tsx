@@ -8,12 +8,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart } from "recharts";
 import { useStore } from "@/lib/store";
-import { buildWeeklyFinanceData, formatMoney } from "@/lib/reporting";
+import { buildWeeklyFinanceData, expenseBaseAmount, formatMoney } from "@/lib/reporting";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { fetchRuleInsightsApi, fetchWhatsAppSummaryApi } from "@/lib/api";
 import { useFeatureAccess, useUpgradePrompt, LockedBadge } from "@/lib/features";
 import { useQuery } from "@tanstack/react-query";
+import { symbolForCurrency } from "@/lib/currency";
 
 const Dashboard = () => {
   const { products, sales, expenses, discrepancies, activities, profile, generateWhatsAppSummary } = useStore();
@@ -26,6 +27,17 @@ const Dashboard = () => {
     enabled: canUse("rule_insights"),
   });
   const sym = profile.currencySymbol || "R";
+  const secondaryCurrency = profile.enabledCurrencies?.find((code) => code !== profile.currency) || "";
+  const secondaryRate = secondaryCurrency ? profile.exchangeRates?.[secondaryCurrency] || 0 : 0;
+
+  const formatSecondaryMoney = (amountBase: number) => {
+    if (!secondaryCurrency || !secondaryRate) return null;
+    const converted = amountBase / secondaryRate;
+    return `${symbolForCurrency(secondaryCurrency)}${converted.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  };
 
   const todaySales = sales.filter(s => s.date === "Today");
   const todayTotal = todaySales.reduce((sum, s) => sum + s.total, 0);
@@ -36,12 +48,12 @@ const Dashboard = () => {
   
   const inventoryValue = products.reduce((sum, p) => sum + p.stock * p.price, 0);
   const lowStockCount = products.filter(p => p.status === "low" || p.status === "out").length;
-  const todayExpenses = expenses.filter(e => e.date === "Today").reduce((sum, e) => sum + e.amount, 0);
+  const todayExpenses = expenses.filter(e => e.date === "Today").reduce((sum, e) => sum + expenseBaseAmount(e), 0);
 
   const displayName = profile.name || "there";
 
   // Calculate percentage change in expenses
-  const yesterdayExpenses = expenses.filter(e => e.date !== "Today").slice(0, 10).reduce((sum, e) => sum + e.amount, 0);
+  const yesterdayExpenses = expenses.filter(e => e.date !== "Today").slice(0, 10).reduce((sum, e) => sum + expenseBaseAmount(e), 0);
   const expensesChange = yesterdayExpenses > 0 ? Math.round(((todayExpenses - yesterdayExpenses) / yesterdayExpenses) * 100) : 0;
 
   const salesData = useMemo(() => {
@@ -53,11 +65,11 @@ const Dashboard = () => {
   const salesVsExpensesData = useMemo(() => buildWeeklyFinanceData(sales, expenses), [sales, expenses]);
 
   const metrics = [
-    { label: "Today's Sales", value: formatMoney(todayTotal, sym), change: `${salesChange > 0 ? '+' : ''}${salesChange}%`, up: salesChange >= 0, icon: ShoppingCart },
-    { label: "This Week", value: formatMoney(weeklySalesTotal, sym), change: `${weeklySalesTotal >= todayTotal ? 'Up' : 'Down'}`, up: weeklySalesTotal >= todayTotal, icon: TrendingUp },
-    { label: "Inventory Value", value: formatMoney(inventoryValue, sym), change: `${lowStockCount} low`, up: lowStockCount === 0, icon: Package },
-    { label: "Low Stock Items", value: String(lowStockCount), change: `${lowStockCount}`, up: false, icon: AlertTriangle },
-    { label: "Today's Expenses", value: formatMoney(todayExpenses, sym), change: `${expensesChange > 0 ? '+' : ''}${expensesChange}%`, up: expensesChange <= 0, icon: Receipt },
+    { label: "Today's Sales", value: formatMoney(todayTotal, sym), secondaryValue: formatSecondaryMoney(todayTotal), change: `${salesChange > 0 ? '+' : ''}${salesChange}%`, up: salesChange >= 0, icon: ShoppingCart },
+    { label: "This Week", value: formatMoney(weeklySalesTotal, sym), secondaryValue: formatSecondaryMoney(weeklySalesTotal), change: `${weeklySalesTotal >= todayTotal ? 'Up' : 'Down'}`, up: weeklySalesTotal >= todayTotal, icon: TrendingUp },
+    { label: "Inventory Value", value: formatMoney(inventoryValue, sym), secondaryValue: formatSecondaryMoney(inventoryValue), change: `${lowStockCount} low`, up: lowStockCount === 0, icon: Package },
+    { label: "Low Stock Items", value: String(lowStockCount), secondaryValue: null, change: `${lowStockCount}`, up: false, icon: AlertTriangle },
+    { label: "Today's Expenses", value: formatMoney(todayExpenses, sym), secondaryValue: formatSecondaryMoney(todayExpenses), change: `${expensesChange > 0 ? '+' : ''}${expensesChange}%`, up: expensesChange <= 0, icon: Receipt },
   ];
 
   const topProduct = useMemo(() => {
@@ -113,7 +125,7 @@ const Dashboard = () => {
         <div>
           <div className="inline-flex items-center gap-2 rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground mb-3">
             <span className="h-2.5 w-2.5 rounded-full bg-success" />
-            Currency: {profile.currency}
+            Currency: {profile.currency}{secondaryCurrency ? ` | ${secondaryCurrency}` : ""}
           </div>
           <h2 className="text-xl font-display font-bold">Welcome back, {displayName}!</h2>
           <p className="text-sm text-muted-foreground">Here's what's happening with your business today.</p>
@@ -138,6 +150,7 @@ const Dashboard = () => {
                   </span>
                 </div>
                 <p className="text-2xl font-display font-bold">{m.value}</p>
+                {m.secondaryValue ? <p className="mt-1 text-xs text-muted-foreground">{m.secondaryValue}</p> : null}
                 <p className="text-xs text-muted-foreground mt-1">{m.label}</p>
               </CardContent>
             </Card>

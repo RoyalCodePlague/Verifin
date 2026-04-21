@@ -66,7 +66,7 @@ def chat_endpoint(request):
 @permission_classes([IsAuthenticated])
 def insights_endpoint(request):
     enforce_feature(request.user, "rule_insights")
-    return Response(services.generate_insights(user=request.user))
+    return Response(services.make_json_safe(services.generate_insights(user=request.user)))
 
 
 @api_view(["GET"])
@@ -84,7 +84,7 @@ def reorder_suggestions_endpoint(request):
 @permission_classes([IsAuthenticated])
 def whatsapp_summary_endpoint(request):
     enforce_feature(request.user, "whatsapp_reports")
-    return Response(services.generate_whatsapp_summary(request.user))
+    return Response(services.make_json_safe(services.generate_whatsapp_summary(request.user)))
 
 
 @api_view(["POST"])
@@ -111,11 +111,11 @@ def live_activity_endpoint(request):
     stock = services.query_stock(user=request.user)
     expenses = services.query_expenses(user=request.user)
     sales = services.query_sales(user=request.user)
-    return Response({
+    return Response(services.make_json_safe({
         "inventory": {"items": stock.get("total_items", 0), "qty": stock.get("total_quantity", 0)},
         "expenses": {"total": expenses.get("total_cost", 0)},
         "sales": {"revenue": sales.get("total_revenue", 0)},
-    })
+    }))
 
 
 class AssistantCommandView(APIView):
