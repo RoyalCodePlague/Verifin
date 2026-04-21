@@ -172,7 +172,6 @@ const Sales = () => {
     const apiPayload = {
       payment_method: method,
       payment_currency: paymentCurrency,
-      payment_allocations: paymentAllocations,
       // Multi-branch is disabled for now. Keep sending null until branch routing is restored.
       branch: null,
       till_session: till?.id || null,
@@ -187,11 +186,6 @@ const Sales = () => {
     const offlinePayload = {
       payment_method: method,
       payment_currency: paymentCurrency,
-      payment_allocations: paymentAllocations.map((row) => ({
-        currency: row.currency,
-        amount: row.amount.toFixed(2),
-        fx_rate_to_base: row.fx_rate_to_base,
-      })),
       customer: null,
       sale_items: lineItems.map((l) => {
         const productId = parseInt(l.productId, 10);
@@ -205,6 +199,17 @@ const Sales = () => {
         };
       }),
     };
+
+    if (SHOW_SPLIT_PAYMENT && paymentAllocations.length > 0) {
+      Object.assign(apiPayload, { payment_allocations: paymentAllocations });
+      Object.assign(offlinePayload, {
+        payment_allocations: paymentAllocations.map((row) => ({
+          currency: row.currency,
+          amount: row.amount.toFixed(2),
+          fx_rate_to_base: row.fx_rate_to_base,
+        })),
+      });
+    }
 
     if (!navigator.onLine && !canQueueOfflineAction()) {
       toast.error("Offline mode is available after you have signed in on this device.");
