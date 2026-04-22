@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { closeTillApi, createSaleApi, deleteSaleApi, fetchReceiptApi, getCurrentTillApi, openTillApi, type ApiTillSession } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { addToOfflineQueue, canQueueOfflineAction } from "@/lib/offlineQueue";
 import { motion } from "framer-motion";
-import { Plus, Search, ArrowUpRight, Trash2, ShoppingCart, Receipt, Wallet } from "lucide-react";
+import { Plus, Search, ArrowUpRight, Trash2, ShoppingCart, Receipt, Wallet, ScanBarcode } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,8 +12,10 @@ import { useStore } from "@/lib/store";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { EmptyState } from "@/components/ui/empty-state";
+import { BarcodeScanner } from "@/components/BarcodeScanner";
 import { toast } from "sonner";
 import { symbolForCurrency } from "@/lib/currency";
+import { useFeatureAccess, useUpgradePrompt } from "@/lib/features";
 
 interface SaleLineItem {
   productId: string;
@@ -32,9 +34,12 @@ function roundMoney(value: number) {
 const Sales = () => {
   const { sales, deleteSale, profile, products, addSale } = useStore();
   const { refreshUser } = useAuth();
+  const { canUse } = useFeatureAccess();
+  const promptUpgrade = useUpgradePrompt();
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
   const [tillOpen, setTillOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [receiptText, setReceiptText] = useState("");
@@ -44,9 +49,12 @@ const Sales = () => {
   const [method, setMethod] = useState<"Cash" | "EFT" | "Card">("Cash");
   const [lineItems, setLineItems] = useState<SaleLineItem[]>([]);
   const [selectedProduct, setSelectedProduct] = useState("");
+  const [barcodeInput, setBarcodeInput] = useState("");
   const [qty, setQty] = useState("1");
   const [paymentCurrency, setPaymentCurrency] = useState(profile.currency);
   const [paymentRate, setPaymentRate] = useState("");
+  const [canUseCameraScan, setCanUseCameraScan] = useState(false);
+  const barcodeInputRef = useRef<HTMLInputElement>(null);
   const baseCurrency = profile.currency || "ZAR";
   const sym = profile.currencySymbol || symbolForCurrency(baseCurrency);
   const enabledCurrencies = profile.enabledCurrencies?.length ? profile.enabledCurrencies : [baseCurrency];
@@ -60,6 +68,24 @@ const Sales = () => {
   useEffect(() => {
     setPaymentCurrency(profile.currency);
   }, [profile.currency]);
+
+  useEffect(() => {
+    const updateCameraSupport = () => {
+      setCanUseCameraScan(!!navigator.mediaDevices?.getUserMedia);
+    };
+    updateCameraSupport();
+    window.addEventListener("resize", updateCameraSupport);
+    return () => window.removeEventListener("resize", updateCameraSupport);
+  }, []);
+
+  useEffect(() => {
+    if (!addOpen) return;
+    const timeout = window.setTimeout(() => {
+      barcodeInputRef.current?.focus();
+      barcodeInputRef.current?.select();
+    }, 50);
+    return () => window.clearTimeout(timeout);
+  }, [addOpen]);
 
   const filtered = sales.filter(s => s.items.toLowerCase().includes(search.toLowerCase()));
   const todayTotal = sales.filter(s => s.date === "Today").reduce((sum, s) => sum + s.total, 0);
@@ -89,18 +115,17 @@ const Sales = () => {
     setPaymentRate("");
   };
 
-  const addLineItem = () => {
-    const product = products.find(p => p.id === selectedProduct);
-    if (!product) return;
-    const quantity = parseInt(qty, 10) || 1;
+  const addProductToSale = (productId: string, quantity = 1) => {
+    const product = products.find(p => p.id === productId);
+    if (!product) return false;
     const unitPrice = parseFloat(String(product.costPrice || 0)) || 0;
     if (quantity > product.stock) {
       toast.error(`Only ${product.stock} ${product.name} in stock`);
-      return;
+      return false;
     }
     if (unitPrice <= 0) {
       toast.error("Set a product cost greater than zero before recording the sale.");
-      return;
+      return false;
     }
     const existing = lineItems.findIndex(l => l.productId === product.id);
     if (existing >= 0) {
@@ -109,14 +134,43 @@ const Sales = () => {
       newItems[existing].unitPrice = unitPrice;
       if (newItems[existing].quantity > product.stock) {
         toast.error(`Only ${product.stock} ${product.name} in stock`);
-        return;
+        return false;
       }
       setLineItems(newItems);
     } else {
       setLineItems([...lineItems, { productId: product.id, productName: product.name, quantity, unitPrice }]);
     }
+    return true;
+  };
+
+  const addLineItem = () => {
+    const quantity = parseInt(qty, 10) || 1;
+    if (!addProductToSale(selectedProduct, quantity)) return;
     setSelectedProduct("");
     setQty("1");
+  };
+
+  const handleBarcodeLookup = (rawCode: string) => {
+    const code = rawCode.trim();
+    if (!code) return;
+    const quantity = parseInt(qty, 10) || 1;
+
+    const matchedProduct = products.find((product) => product.barcode?.trim() === code);
+    if (!matchedProduct) {
+      toast.error(`No product found for barcode ${code}`);
+      return;
+    }
+
+    if (!addProductToSale(matchedProduct.id, quantity)) return;
+
+    setSelectedProduct(matchedProduct.id);
+    setBarcodeInput("");
+    toast.success(`${quantity} ${matchedProduct.name} added to this sale`);
+  };
+
+  const handleBarcodeDetected = (code: string) => {
+    handleBarcodeLookup(code);
+    setScanOpen(false);
   };
 
   const removeLineItem = (idx: number) => setLineItems(lineItems.filter((_, i) => i !== idx));
@@ -232,6 +286,9 @@ const Sales = () => {
       addToOfflineQueue({ type: "sale", payload: offlinePayload });
       toast.success("Sale saved locally while offline. It will sync automatically when you are back online.");
       setLineItems([]);
+      setBarcodeInput("");
+      setSelectedProduct("");
+      setQty("1");
       resetPaymentForm();
       setAddOpen(false);
       setSaving(false);
@@ -242,6 +299,9 @@ const Sales = () => {
       await createSaleApi(apiPayload);
       toast.success("Sale recorded");
       setLineItems([]);
+      setBarcodeInput("");
+      setSelectedProduct("");
+      setQty("1");
       resetPaymentForm();
       setAddOpen(false);
       await refreshUser();
@@ -400,6 +460,42 @@ const Sales = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Barcode</Label>
+              <div className="flex gap-2">
+                <Input
+                  ref={barcodeInputRef}
+                  value={barcodeInput}
+                  onChange={e => setBarcodeInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleBarcodeLookup(barcodeInput);
+                    }
+                  }}
+                  placeholder="Scan or type barcode, then press Enter"
+                />
+                {canUseCameraScan ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      if (!canUse("barcode_scanning")) {
+                        promptUpgrade("barcode_scanning", "Barcode scanning");
+                        return;
+                      }
+                      setScanOpen(true);
+                    }}
+                  >
+                    <ScanBarcode className="h-4 w-4" />
+                  </Button>
+                ) : null}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Scan a saved barcode to add that product straight into the sale.
+              </p>
+            </div>
+
             <div className="flex gap-2 items-end">
               <div className="flex-1">
                 <Label>Product</Label>
@@ -519,6 +615,7 @@ const Sales = () => {
           </div>
         </DialogContent>
       </Dialog>
+      <BarcodeScanner open={scanOpen} onClose={() => setScanOpen(false)} onDetected={handleBarcodeDetected} />
       {SHOW_TILL_CONTROLS && (
         <Dialog open={tillOpen} onOpenChange={setTillOpen}>
           <DialogContent>

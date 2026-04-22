@@ -53,7 +53,7 @@ FEATURE_METADATA = {
     "reports": {"label": "Simple reports", "plan": "starter", "category": "Core"},
     "onboarding_checklist": {"label": "Onboarding checklist", "plan": "starter", "category": "Guidance"},
     "usage_indicators": {"label": "Usage indicators", "plan": "starter", "category": "Guidance"},
-    "barcode_scanning": {"label": "Barcode scanning", "plan": "growth", "category": "Operations"},
+    "barcode_scanning": {"label": "Barcode scanning", "plan": "starter", "category": "Operations"},
     "audits": {"label": "Inventory audits", "plan": "growth", "category": "Operations"},
     "alerts": {"label": "Low-stock alerts", "plan": "growth", "category": "Operations"},
     "discrepancy_tracking": {"label": "Discrepancy tracking", "plan": "growth", "category": "Operations"},

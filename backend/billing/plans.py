@@ -7,7 +7,7 @@ COMMON_LIMITS = {
     "usage_indicators": ("Usage indicators", True, None, ""),
     "ai_assistant": ("AI/Admin Assistance System", False, 0, ""),
     "audits": ("Inventory audits", False, 0, ""),
-    "barcode_scanning": ("Barcode scanning", False, 0, ""),
+    "barcode_scanning": ("Barcode scanning", True, None, ""),
     "receipt_ocr": ("Receipt OCR", False, 0, ""),
     "whatsapp_reports": ("WhatsApp reports", False, 0, ""),
     "qr_loyalty": ("QR loyalty", False, 0, ""),
