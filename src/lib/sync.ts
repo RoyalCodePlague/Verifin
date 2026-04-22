@@ -129,6 +129,7 @@ type ApiAudit = {
 
 type ApiDiscrepancy = {
   id: number;
+  audit: number;
   product: number;
   product_name?: string;
   expected_stock: number;
@@ -298,6 +299,7 @@ export async function loadServerData(user: {
 
   const discrepancies: Discrepancy[] = rawDiscrepancies.map((d) => ({
     id: String(d.id),
+    auditId: String(d.audit),
     product: d.product_name || productNameById.get(d.product) || `Product #${d.product}`,
     expected: d.expected_stock,
     actual: d.actual_stock,

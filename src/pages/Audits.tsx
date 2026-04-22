@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { ClipboardCheck, AlertTriangle, CheckCircle, XCircle, Check, Square, PlayCircle, Loader2, Zap, Search, Eye } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,6 +11,7 @@ import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { createAuditApi, createDiscrepancyApi, resolveDiscrepancyApi, updateAuditApi } from "@/lib/api";
+import { useNavigate } from "react-router-dom";
 
 function formatAuditDate(value: string) {
   return new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -33,6 +34,7 @@ function mapApiAuditToRecord(
 
 function mapApiDiscrepancyToRecord(discrepancy: {
   id: number;
+  audit?: number;
   product_name?: string;
   expected_stock: number;
   actual_stock: number;
@@ -41,6 +43,7 @@ function mapApiDiscrepancyToRecord(discrepancy: {
 }): Discrepancy {
   return {
     id: String(discrepancy.id),
+    auditId: discrepancy.audit ? String(discrepancy.audit) : undefined,
     product: discrepancy.product_name || "Product",
     expected: discrepancy.expected_stock,
     actual: discrepancy.actual_stock,
@@ -63,6 +66,7 @@ const Audits = () => {
     profile,
     addActivity,
   } = useStore();
+  const navigate = useNavigate();
   const [resolveId, setResolveId] = useState<string | null>(null);
   const [completeId, setCompleteId] = useState<string | null>(null);
   const [countOpen, setCountOpen] = useState<string | null>(null);
@@ -77,11 +81,81 @@ const Audits = () => {
   const sym = profile.currencySymbol || "R";
 
   const openDisc = discrepancies.filter((d) => d.status !== "resolved");
+  const outOfStockCount = products.filter((product) => product.status === "out").length;
+  const lowStockCount = products.filter((product) => product.status === "low").length;
+  const highValueCount = products.filter((product) => product.stock > 0 && product.costPrice * product.stock > 5000).length;
   const accuracy = products.length > 0 ? Math.round(((products.length - openDisc.length) / products.length) * 100) : 100;
   const lossValue = openDisc.reduce((sum, d) => {
     const prod = products.find((p) => p.name === d.product);
-    return sum + Math.abs(d.diff) * (prod?.price || 0);
+    return sum + Math.abs(d.diff) * (prod?.costPrice || 0);
   }, 0);
+  const backgroundFlaggedItems = useMemo(() => {
+    return products
+      .filter((product) => product.status === "low" || product.status === "out" || (product.stock > 0 && product.costPrice * product.stock > 5000))
+      .map((product) => {
+        const reorderGap = Math.max(product.reorder - product.stock, 0);
+        const reorderCost = reorderGap * (product.costPrice || 0);
+        const reasons = [
+          product.status === "out" ? "Out of stock" : null,
+          product.status === "low" ? "Low stock" : null,
+          product.stock > 0 && product.costPrice * product.stock > 5000 ? "High value" : null,
+        ].filter(Boolean) as string[];
+
+        return {
+          id: product.id,
+          name: product.name,
+          stock: product.stock,
+          reorder: product.reorder,
+          reorderGap,
+          reorderCost,
+          stockValueAtCost: product.stock * (product.costPrice || 0),
+          reasons,
+        };
+      })
+      .sort((a, b) => {
+        const aPriority = a.reasons.includes("Out of stock") ? 0 : a.reasons.includes("Low stock") ? 1 : 2;
+        const bPriority = b.reasons.includes("Out of stock") ? 0 : b.reasons.includes("Low stock") ? 1 : 2;
+        if (aPriority !== bPriority) return aPriority - bPriority;
+        return b.stockValueAtCost - a.stockValueAtCost;
+      });
+  }, [products]);
+  const estimatedReorderCost = backgroundFlaggedItems.reduce((sum, item) => sum + item.reorderCost, 0);
+  const repeatIssueProducts = useMemo(() => {
+    const counts = discrepancies.reduce<Record<string, number>>((acc, discrepancy) => {
+      acc[discrepancy.product] = (acc[discrepancy.product] || 0) + 1;
+      return acc;
+    }, {});
+
+    return Object.entries(counts)
+      .filter(([, count]) => count > 1)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+  }, [discrepancies]);
+
+  const copyRestockList = async () => {
+    const restockItems = backgroundFlaggedItems.filter((item) => item.reorderGap > 0);
+    if (restockItems.length === 0) {
+      toast.info("No restock list to copy yet.");
+      return;
+    }
+
+    const message = [
+      "Verifin Restock List",
+      ...restockItems.map((item) => `${item.name} - need ${item.reorderGap} more units`),
+    ].join("\n");
+
+    try {
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(message);
+        toast.success("Restock list copied to clipboard.");
+        return;
+      }
+    } catch {
+      // ignore clipboard failure and fall through to a lighter confirmation
+    }
+
+    toast.success("Restock list prepared.", { description: "Clipboard access was unavailable on this device." });
+  };
 
   useEffect(() => {
     return () => {
@@ -155,8 +229,8 @@ const Audits = () => {
         } else if (product.status === "low") {
           findings.push(`Low stock: ${product.name} is at ${product.stock}/${product.reorder}, reorder soon`);
         }
-        if (product.stock > 0 && product.price * product.stock > 5000) {
-          findings.push(`High value: ${product.name} currently holds ${sym}${(product.stock * product.price).toLocaleString()}, verify count`);
+        if (product.stock > 0 && product.costPrice * product.stock > 5000) {
+          findings.push(`High value: ${product.name} currently holds ${sym}${(product.stock * product.costPrice).toLocaleString()}, verify count`);
         }
         setBgFindings([...findings]);
       }
@@ -181,6 +255,12 @@ const Audits = () => {
 
   const filteredDisc = discrepancies.filter((d) => d.status !== "resolved" && d.product.toLowerCase().includes(search.toLowerCase()));
   const viewingAudit = audits.find((a) => a.id === viewFindings);
+  const auditDiscrepancies = viewingAudit ? discrepancies.filter((discrepancy) => discrepancy.auditId === viewingAudit.id) : [];
+  const auditOpenIssues = auditDiscrepancies.filter((discrepancy) => discrepancy.status !== "resolved");
+  const auditLossValue = auditDiscrepancies.reduce((sum, discrepancy) => {
+    const product = products.find((item) => item.name === discrepancy.product);
+    return sum + Math.abs(discrepancy.diff) * (product?.costPrice || 0);
+  }, 0);
 
   const openStockCount = (auditId: string) => {
     const counts: Record<string, string> = {};
@@ -220,7 +300,7 @@ const Audits = () => {
           return;
         }
       } else {
-        addDiscrepancy({ product: p.name, expected: p.stock, actual, diff: actual - p.stock, status: "unresolved" });
+        addDiscrepancy({ auditId: auditId, product: p.name, expected: p.stock, actual, diff: actual - p.stock, status: "unresolved" });
       }
 
       if (canQueueOfflineAction()) {
@@ -359,6 +439,72 @@ const Audits = () => {
             <CardTitle className="flex items-center gap-2 text-base font-display text-success"><Zap className="h-4 w-4" /> Background Audit Results</CardTitle>
           </CardHeader>
           <CardContent className="p-4 pt-0">
+            <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+              <div className="rounded border border-border bg-muted/30 p-2 text-center">
+                <p className="text-lg font-display font-bold">{outOfStockCount}</p>
+                <p className="text-[11px] text-muted-foreground">Out</p>
+              </div>
+              <div className="rounded border border-border bg-muted/30 p-2 text-center">
+                <p className="text-lg font-display font-bold">{lowStockCount}</p>
+                <p className="text-[11px] text-muted-foreground">Low</p>
+              </div>
+              <div className="rounded border border-border bg-muted/30 p-2 text-center">
+                <p className="text-lg font-display font-bold">{highValueCount}</p>
+                <p className="text-[11px] text-muted-foreground">High value</p>
+              </div>
+              <div className="rounded border border-border bg-muted/30 p-2 text-center">
+                <p className="text-lg font-display font-bold">{sym}{estimatedReorderCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                <p className="text-[11px] text-muted-foreground">Reorder cost</p>
+              </div>
+              <div className="rounded border border-border bg-muted/30 p-2 text-center">
+                <p className="text-lg font-display font-bold">{repeatIssueProducts.length}</p>
+                <p className="text-[11px] text-muted-foreground">Repeat issues</p>
+              </div>
+            </div>
+            <div className="mb-3 flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={() => void copyRestockList()}>
+                Copy Restock List
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => navigate("/inventory?view=flagged")}>
+                Open Inventory
+              </Button>
+            </div>
+            {repeatIssueProducts.length > 0 ? (
+              <div className="mb-3 rounded-lg border border-border p-3">
+                <p className="text-xs font-medium text-muted-foreground">Repeat issue warnings</p>
+                <div className="mt-2 space-y-1">
+                  {repeatIssueProducts.map(([product, count]) => (
+                    <p key={product} className="text-xs text-muted-foreground">
+                      {product} has appeared in {count} audit discrepancies.
+                    </p>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {backgroundFlaggedItems.length > 0 ? (
+              <div className="mb-3 rounded-lg border border-border p-3">
+                <p className="text-xs font-medium text-muted-foreground">Flagged items</p>
+                <div className="mt-2 max-h-44 space-y-2 overflow-y-auto">
+                  {backgroundFlaggedItems.slice(0, 8).map((item) => (
+                    <div key={item.id} className="rounded bg-muted/30 p-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium">{item.name}</p>
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            Stock: {item.stock} | Reorder at: {item.reorder} | Reasons: {item.reasons.join(", ")}
+                          </p>
+                        </div>
+                        {item.reorderGap > 0 ? (
+                          <p className="text-[11px] text-muted-foreground">
+                            Need {item.reorderGap}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <div className="max-h-48 space-y-1.5 overflow-y-auto">
               {bgFindings.map((f, i) => <p key={i} className="rounded bg-muted/30 p-2 text-xs text-muted-foreground">{f}</p>)}
             </div>
@@ -412,12 +558,19 @@ const Audits = () => {
                     <Badge className={a.status === "completed" ? "bg-success/10 text-success hover:bg-success/10" : "bg-accent/10 text-accent hover:bg-accent/10"}>{a.status === "completed" ? "Completed" : "In Progress"}</Badge>
                     {a.discrepancies > 0 && <p className="mt-1 text-xs text-destructive">{a.discrepancies} discrepancies</p>}
                   </div>
+                  <div className="flex gap-1">
+                    {a.status === "completed" ? (
+                      <Button size="sm" variant="outline" onClick={() => setViewFindings(a.id)}>
+                        <Eye className="mr-1 h-3.5 w-3.5" /> View
+                      </Button>
+                    ) : null}
                   {a.status === "in_progress" && (
                     <div className="flex gap-1">
                       <Button size="sm" variant="outline" onClick={() => openStockCount(a.id)}><PlayCircle className="mr-1 h-3.5 w-3.5" /> Count</Button>
                       <Button size="sm" variant="outline" onClick={() => setCompleteId(a.id)}><Square className="mr-1 h-3.5 w-3.5" /> Close</Button>
                     </div>
                   )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -432,7 +585,7 @@ const Audits = () => {
         <DialogContent className="max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-display">Audit Findings - {viewingAudit?.date}</DialogTitle>
-            <DialogDescription>Review the saved findings from this audit.</DialogDescription>
+            <DialogDescription>Review the saved findings, issue count, and estimated stock loss for this audit.</DialogDescription>
           </DialogHeader>
           {viewingAudit && (
             <div className="space-y-3">
@@ -440,6 +593,36 @@ const Audits = () => {
                 <Badge className={viewingAudit.status === "completed" ? "bg-success/10 text-success hover:bg-success/10" : "bg-accent/10 text-accent hover:bg-accent/10"}>{viewingAudit.status}</Badge>
                 <span className="text-muted-foreground">{viewingAudit.items} items - {viewingAudit.discrepancies} discrepancies</span>
               </div>
+              <div className="grid grid-cols-2 gap-3 rounded-lg border border-border p-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">Open issues</p>
+                  <p className="text-sm font-medium">{auditOpenIssues.length}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Estimated loss</p>
+                  <p className="text-sm font-medium">{sym}{auditLossValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                </div>
+              </div>
+              {auditDiscrepancies.length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">Linked discrepancies</p>
+                  {auditDiscrepancies.map((discrepancy) => (
+                    <div key={discrepancy.id} className="rounded-lg border border-border p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium">{discrepancy.product}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Expected: {discrepancy.expected} - Actual: {discrepancy.actual} - Difference: {discrepancy.diff}
+                          </p>
+                        </div>
+                        <Badge className={discrepancy.status === "resolved" ? "bg-success/10 text-success hover:bg-success/10" : "bg-destructive/10 text-destructive hover:bg-destructive/10"}>
+                          {discrepancy.status}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
               {viewingAudit.autoFindings && viewingAudit.autoFindings.length > 0 ? (
                 <div className="space-y-2">
                   {viewingAudit.autoFindings.map((f, i) => (

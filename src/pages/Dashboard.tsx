@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart } from "recharts";
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { useStore } from "@/lib/store";
 import { buildWeeklyFinanceData, expenseBaseAmount, formatMoney, parseBusinessDate } from "@/lib/reporting";
 import { useNavigate } from "react-router-dom";
@@ -251,13 +251,7 @@ const Dashboard = () => {
         <CardHeader className="pb-2"><CardTitle className="text-base font-display">Sales vs Expenses (Weekly)</CardTitle></CardHeader>
         <CardContent className="p-4 pt-0">
           <ResponsiveContainer width="100%" height={240}>
-            <ComposedChart data={salesVsExpensesData}>
-              <defs>
-                <linearGradient id="salesGrad2" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="hsl(152 55% 28%)" stopOpacity={0.2} />
-                  <stop offset="100%" stopColor="hsl(152 55% 28%)" stopOpacity={0} />
-                </linearGradient>
-              </defs>
+            <BarChart data={salesVsExpensesData} barCategoryGap={18}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
               <XAxis dataKey="day" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
               <YAxis tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
@@ -265,9 +259,9 @@ const Dashboard = () => {
                 formatter={(value) => formatMoney(Number(value), sym)}
               />
               <Legend />
-              <Bar dataKey="sales" fill="hsl(152 55% 28%)" name="Sales" />
-              <Bar dataKey="expenses" fill="hsl(0 84% 60%)" name="Expenses" />
-            </ComposedChart>
+              <Bar dataKey="sales" fill="hsl(152 55% 28%)" name="Sales" radius={[4, 4, 0, 0]} minPointSize={3} />
+              <Bar dataKey="expenses" fill="hsl(0 84% 60%)" name="Expenses" radius={[4, 4, 0, 0]} minPointSize={3} />
+            </BarChart>
           </ResponsiveContainer>
         </CardContent>
       </Card>

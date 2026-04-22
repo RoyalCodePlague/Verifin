@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Search, Plus, Package, Edit2, Trash2, ScanBarcode, Calendar, TrendingUp } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -24,9 +24,34 @@ const allCategories = [
   "Bakery", "Frozen Foods", "Health & Beauty", "Tools", "Other"
 ];
 
+function forecastRiskMeta(risk: ApiForecastItem["risk"], horizonDays: number, daysRemaining: number | null) {
+  if (risk === "stockout") {
+    return {
+      label: "Out of stock",
+      badgeClass: "bg-destructive/10 text-destructive hover:bg-destructive/10",
+      description: "This item already needs restocking.",
+    };
+  }
+  if (risk === "high") {
+    return {
+      label: "Restock soon",
+      badgeClass: "bg-warning/10 text-warning hover:bg-warning/10",
+      description: daysRemaining == null
+        ? `Expected to run low within ${horizonDays} days.`
+        : `Projected to run low in about ${daysRemaining} day${daysRemaining === 1 ? "" : "s"}.`,
+    };
+  }
+  return {
+    label: "Stable",
+    badgeClass: "bg-success/10 text-success hover:bg-success/10",
+    description: "Stock level looks okay for the current forecast window.",
+  };
+}
+
 const Inventory = () => {
   const { products, addProduct, upsertProduct, updateProduct, deleteProduct, profile, addActivity } = useStore();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { canUse } = useFeatureAccess();
   const promptUpgrade = useUpgradePrompt();
   const canUseForecasting = canUse("forecasting");
@@ -38,11 +63,14 @@ const Inventory = () => {
   const [scanOpen, setScanOpen] = useState(false);
   const [form, setForm] = useState({ name: "", category: "", branchId: "", supplierId: "", stock: "", reorder: "", costPrice: "", price: "", barcode: "" });
   const [forecast, setForecast] = useState<ApiForecastItem[]>([]);
+  const [forecastHorizon, setForecastHorizon] = useState(7);
   const [saving, setSaving] = useState(false);
   const [canUseCameraScan, setCanUseCameraScan] = useState(false);
   const sym = profile.currencySymbol || "R";
   const secondaryCurrency = profile.enabledCurrencies?.find((code) => code !== profile.currency) || "";
   const secondaryRate = secondaryCurrency ? profile.exchangeRates?.[secondaryCurrency] || 0 : 0;
+
+  const flaggedView = searchParams.get("view") === "flagged";
 
   const inventoryCostMetaText = (currency?: string, rate?: number) => {
     const sourceCurrency = currency || profile.currency;
@@ -85,18 +113,50 @@ const Inventory = () => {
       setForecast([]);
     } else {
       fetchInventoryForecast(7)
-        .then((data) => setForecast(data.items.slice(0, 5)))
+        .then((data) => {
+          setForecast(data.items.slice(0, 5));
+          setForecastHorizon(data.horizon_days || 7);
+        })
         .catch(() => setForecast([]));
     }
   }, [canUseForecasting, products.length]);
 
+  useEffect(() => {
+    if (flaggedView) {
+      setCategory("All");
+      if (!search.trim()) {
+        setSearch("");
+      }
+    }
+  }, [flaggedView]);
+
   const mergedCategories = Array.from(new Set([...profile.categories, ...allCategories]));
   const categories = ["All", ...mergedCategories];
 
-  const filtered = products.filter(
-    (p) => (category === "All" || p.category === category) && 
-    (p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase()) || (p.barcode || "").includes(search))
-  );
+  const filtered = products
+    .filter((p) => {
+      const matchesCategory = category === "All" || p.category === category;
+      const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase()) || (p.barcode || "").includes(search);
+      const matchesFlaggedView = !flaggedView || p.status === "low" || p.status === "out" || (p.stock > 0 && p.costPrice * p.stock > 5000);
+      return matchesCategory && matchesSearch && matchesFlaggedView;
+    })
+    .sort((a, b) => {
+      if (!flaggedView) return 0;
+
+      const priority = (product: typeof a) => {
+        if (product.status === "out") return 0;
+        if (product.status === "low") return 1;
+        if (product.stock > 0 && product.costPrice * product.stock > 5000) return 2;
+        return 3;
+      };
+
+      const priorityDiff = priority(a) - priority(b);
+      if (priorityDiff !== 0) return priorityDiff;
+
+      const aCostValue = a.stock * (a.costPrice || 0);
+      const bCostValue = b.stock * (b.costPrice || 0);
+      return bCostValue - aCostValue;
+    });
   const selectedEditProduct = editProduct ? products.find((item) => item.id === editProduct) : undefined;
 
   const openAdd = () => {
@@ -364,21 +424,51 @@ const Inventory = () => {
         ))}
       </div>
 
+      {flaggedView ? (
+        <Card className="border-primary/20 bg-muted/40 shadow-soft dark:bg-muted/10">
+          <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium">Showing flagged inventory items</p>
+              <p className="text-xs text-muted-foreground">This view includes low stock, out of stock, and high-value items from audit results.</p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setSearchParams({});
+              }}
+            >
+              Clear Filter
+            </Button>
+          </div>
+        </Card>
+      ) : null}
+
       {forecast.length > 0 && (
-        <Card className="shadow-soft p-4">
+        <Card className="shadow-soft p-4 dark:border-border dark:bg-card">
           <div className="flex items-center gap-2 mb-3">
             <TrendingUp className="h-4 w-4 text-primary" />
-            <p className="text-sm font-medium">Inventory Forecast</p>
+            <div>
+              <p className="text-sm font-medium">Inventory Forecast</p>
+              <p className="text-xs text-muted-foreground">Based on the last {forecastHorizon} days of sales activity</p>
+            </div>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
-            {forecast.map((item) => (
-              <div key={item.product.id} className="rounded-lg border border-border p-3">
+            {forecast.map((item) => {
+              const meta = forecastRiskMeta(item.risk, forecastHorizon, item.days_remaining);
+              return (
+              <div key={item.product.id} className="rounded-lg border border-border bg-background/80 p-3 dark:bg-muted/10">
                 <p className="text-sm font-medium truncate">{item.product.name}</p>
-                <p className="text-xs text-muted-foreground">{item.days_remaining == null ? "No recent sales" : `${item.days_remaining} days left`}</p>
-                <p className="text-xs mt-2">Reorder: <span className="font-semibold">{item.suggested_reorder}</span></p>
-                <Badge variant={item.risk === "low" ? "default" : "destructive"} className="mt-2">{item.risk}</Badge>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {item.days_remaining == null ? "No recent sales yet, so days remaining cannot be projected." : `${item.days_remaining} days of stock left at the current sales pace`}
+                </p>
+                <p className="mt-2 text-xs">Sold in period: <span className="font-semibold">{item.sold_in_period}</span></p>
+                <p className="mt-1 text-xs">Average per day: <span className="font-semibold">{item.average_daily_sales}</span></p>
+                <p className="mt-1 text-xs">Suggested reorder: <span className="font-semibold">{item.suggested_reorder}</span></p>
+                <p className="mt-2 text-[11px] text-muted-foreground">{meta.description}</p>
+                <Badge className={`mt-2 ${meta.badgeClass}`}>{meta.label}</Badge>
               </div>
-            ))}
+            )})}
           </div>
         </Card>
       )}
@@ -386,7 +476,7 @@ const Inventory = () => {
       {filtered.length === 0 ? (
         <EmptyState icon={Package} title="No products found" description={search ? "Try a different search term" : "Add your first product to get started"} actionLabel="Add Product" onAction={openAdd} />
       ) : (
-        <Card className="shadow-soft overflow-hidden">
+        <Card className="shadow-soft overflow-hidden dark:border-border dark:bg-card">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>

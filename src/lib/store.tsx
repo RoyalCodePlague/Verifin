@@ -66,6 +66,7 @@ export interface AuditRecord {
 
 export interface Discrepancy {
   id: string;
+  auditId?: string;
   product: string;
   expected: number;
   actual: number;

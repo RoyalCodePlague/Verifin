@@ -4,13 +4,13 @@ export const currencyOptions = [
   { code: "ZWL", symbol: "ZWL", label: "Zimbabwean Dollar (ZWL)" },
   { code: "ZWG", symbol: "ZiG", label: "Zimbabwe Gold (ZiG)" },
   { code: "KES", symbol: "KSh", label: "Kenyan Shilling (KSh)" },
-  { code: "NGN", symbol: "NGN", label: "Nigerian Naira (NGN)" },
-  { code: "GHS", symbol: "GHS", label: "Ghanaian Cedi (GHS)" },
+  { code: "NGN", symbol: "₦", label: "Nigerian Naira (₦)" },
+  { code: "GHS", symbol: "GH₵", label: "Ghanaian Cedi (GH₵)" },
   { code: "BWP", symbol: "P", label: "Botswana Pula (P)" },
   { code: "TZS", symbol: "TSh", label: "Tanzanian Shilling (TSh)" },
   { code: "ZMW", symbol: "K", label: "Zambian Kwacha (K)" },
-  { code: "EUR", symbol: "EUR", label: "Euro (EUR)" },
-  { code: "GBP", symbol: "GBP", label: "British Pound (GBP)" },
+  { code: "EUR", symbol: "€", label: "Euro (€)" },
+  { code: "GBP", symbol: "£", label: "British Pound (£)" },
 ] as const;
 
 export function symbolForCurrency(code: string) {
