@@ -2,8 +2,10 @@
 const QUEUE_KEY = "sp_offline_queue";
 const SESSION_KEY = "sp_offline_logged_in";
 const AUTHENTICATED_SESSION_KEY = "sp_offline_authenticated";
+const OFFLINE_ACCESS_ENABLED_KEY = "sp_offline_access_enabled";
 const ACCESS_KEY = "sp_access_token";
 const CACHED_USER_KEY = "sp_cached_user";
+export const LAST_SUCCESSFUL_SYNC_KEY = "sp_last_successful_sync_at";
 
 export type OfflineActionType =
   | "sale"
@@ -69,6 +71,7 @@ export function clearAuthenticatedOfflineSession() {
 
 export function hasAuthenticatedOfflineSession() {
   return (
+    isOfflineAccessEnabled() &&
     localStorage.getItem(AUTHENTICATED_SESSION_KEY) === "1" &&
     !!localStorage.getItem(ACCESS_KEY) &&
     !!localStorage.getItem(CACHED_USER_KEY)
@@ -81,6 +84,23 @@ export function canQueueOfflineAction() {
 
 export function isOnline(): boolean {
   return navigator.onLine;
+}
+
+export function isOfflineAccessEnabled(): boolean {
+  const value = localStorage.getItem(OFFLINE_ACCESS_ENABLED_KEY);
+  return value == null ? true : value === "1";
+}
+
+export function setOfflineAccessEnabled(enabled: boolean) {
+  localStorage.setItem(OFFLINE_ACCESS_ENABLED_KEY, enabled ? "1" : "0");
+}
+
+export function setLastSuccessfulSync(timestamp: string) {
+  localStorage.setItem(LAST_SUCCESSFUL_SYNC_KEY, timestamp);
+}
+
+export function getLastSuccessfulSync(): string | null {
+  return localStorage.getItem(LAST_SUCCESSFUL_SYNC_KEY);
 }
 
 // Listen for online status and trigger sync when the app is back online

@@ -126,6 +126,7 @@ export interface ActivityItem {
   id: string;
   text: string;
   time: string;
+  timestamp?: string;
   type: "sale" | "restock" | "expense" | "alert";
 }
 
@@ -393,7 +394,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const deleteBranch = useCallback((id: string) => setBranches(prev => prev.filter(b => b.id !== id)), []);
 
   const addActivity = useCallback((a: Omit<ActivityItem, "id">) => {
-    setActivities(prev => [{ ...a, id: uid() }, ...prev].slice(0, 50));
+    setActivities(prev => [{
+      ...a,
+      id: uid(),
+      time: a.time || "Just now",
+      timestamp: a.timestamp || new Date().toISOString(),
+    }, ...prev].slice(0, 50));
   }, []);
 
   const resolveDiscrepancy = useCallback((id: string) => {

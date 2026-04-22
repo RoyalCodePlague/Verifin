@@ -11,6 +11,7 @@ import { useAuth } from "@/lib/auth-context";
 import { getAccessToken, pushOfflineActions } from "@/lib/api";
 import {
   clearOfflineQueue,
+  setLastSuccessfulSync,
   getOfflineQueue,
   hasAuthenticatedOfflineSession,
   markOfflineSession,
@@ -79,6 +80,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
         const syncSucceeded = (result.errors?.length ?? 0) === 0;
         if (syncSucceeded) {
           clearOfflineQueue();
+          setLastSuccessfulSync(new Date().toISOString());
         }
         if (result.processed > 0 && syncSucceeded) {
           toast.success(`Synced ${result.processed} offline changes`);

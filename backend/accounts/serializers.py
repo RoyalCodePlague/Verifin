@@ -1,4 +1,4 @@
-from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth import authenticate, get_user_model, password_validation
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import Profile, Staff, StaffActivityLog
@@ -124,6 +124,28 @@ class UserSerializer(serializers.ModelSerializer):
             "onboarding_complete",
             "email_verified",
         ]
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    current_password = serializers.CharField(write_only=True, trim_whitespace=False)
+    new_password = serializers.CharField(write_only=True, trim_whitespace=False, min_length=8)
+    confirm_password = serializers.CharField(write_only=True, trim_whitespace=False, min_length=8)
+
+    def validate_current_password(self, value):
+        user = self.context["request"].user
+        if not user.check_password(value):
+            raise serializers.ValidationError("Current password is incorrect.")
+        return value
+
+    def validate(self, attrs):
+        if attrs["new_password"] != attrs["confirm_password"]:
+            raise serializers.ValidationError({"confirm_password": "New passwords do not match."})
+
+        if attrs["current_password"] == attrs["new_password"]:
+            raise serializers.ValidationError({"new_password": "Choose a different password from your current one."})
+
+        password_validation.validate_password(attrs["new_password"], self.context["request"].user)
+        return attrs
 
 
 class ProfileSerializer(serializers.ModelSerializer):

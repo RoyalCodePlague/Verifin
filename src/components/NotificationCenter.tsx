@@ -175,7 +175,7 @@ export function NotificationCenter() {
             message: a.text,
             type: "audit",
             time: a.time,
-            timestamp: getTimestampForId(id),
+            timestamp: a.timestamp || getTimestampForId(id),
             read: readIds.includes(id),
           });
         });

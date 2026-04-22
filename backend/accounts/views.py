@@ -11,11 +11,12 @@ from rest_framework import exceptions, permissions, status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 from billing.services import enforce_feature, enforce_limit
 from .models import Profile, Staff, StaffActivityLog
 from .permissions import IsOwnerOrManager
-from .serializers import CustomTokenObtainPairSerializer, ProfileSerializer, RegisterSerializer, StaffActivityLogSerializer, StaffSerializer, UserSerializer
+from .serializers import ChangePasswordSerializer, CustomTokenObtainPairSerializer, ProfileSerializer, RegisterSerializer, StaffActivityLogSerializer, StaffSerializer, UserSerializer
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -218,6 +219,45 @@ class MeView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+class ChangePasswordView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = ChangePasswordSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        request.user.set_password(serializer.validated_data["new_password"])
+        request.user.save(update_fields=["password"])
+        return Response({"detail": "Password updated successfully."})
+
+
+class LogoutOtherDevicesView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        current_refresh = request.data.get("refresh")
+        current_token_jti = None
+
+        if current_refresh:
+            try:
+                current_token_jti = RefreshToken(current_refresh)["jti"]
+            except Exception:
+                current_token_jti = None
+
+        outstanding_tokens = OutstandingToken.objects.filter(user=request.user)
+        revoked = 0
+
+        for token in outstanding_tokens:
+            if current_token_jti and token.jti == current_token_jti:
+                continue
+            try:
+                RefreshToken(token.token).blacklist()
+                revoked += 1
+            except Exception:
+                continue
+
+        return Response({"detail": "Other devices logged out successfully.", "revoked": revoked})
 
 
 class GoogleOAuthPlaceholderView(APIView):

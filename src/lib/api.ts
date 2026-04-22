@@ -171,6 +171,24 @@ export async function logoutRequest() {
   }
 }
 
+export async function changePasswordRequest(payload: {
+  current_password: string;
+  new_password: string;
+  confirm_password: string;
+}) {
+  return apiFetch<{ detail: string }>("/api/v1/accounts/change-password/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function logoutOtherDevicesRequest() {
+  return apiFetch<{ detail: string; revoked: number }>("/api/v1/accounts/logout-other-devices/", {
+    method: "POST",
+    body: JSON.stringify({ refresh: getRefreshToken() }),
+  });
+}
+
 function normalizeApiPath(next: string | null): string | null {
   if (!next) return null;
   try {
