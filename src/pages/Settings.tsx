@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Bell,
   Clock3,
   Cloud,
   CloudOff,
+  Eye,
+  EyeOff,
   Loader2,
   Lock,
   Moon,
@@ -48,6 +51,11 @@ import { currencyOptions, getDetectedCountryCode, getRegionalCurrencyDefaults, s
 
 const SECURITY_PREFS_KEY = "sp_security_prefs";
 const EXTENDED_NOTIFICATION_PREFS_KEY = "sp_extended_notification_prefs";
+const PASSWORD_STAGE_PROMPTS = [
+  "First, confirm it is really you.",
+  "Now choose the new password carefully.",
+  "One last look before we lock it in.",
+] as const;
 
 type SecurityPrefs = {
   offlineAccessEnabled: boolean;
@@ -99,6 +107,63 @@ function formatRelativeSync(timestamp: string | null) {
   });
 }
 
+function passwordStrength(password: string) {
+  let score = 0;
+  if (password.length >= 8) score += 1;
+  if (password.length >= 12) score += 1;
+  if (/[A-Z]/.test(password) && /[a-z]/.test(password)) score += 1;
+  if (/\d/.test(password)) score += 1;
+  if (/[^A-Za-z0-9]/.test(password)) score += 1;
+
+  if (!password) {
+    return {
+      label: "Not set yet",
+      hint: "Start with something only you would know.",
+      bars: 0,
+      tone: "text-muted-foreground",
+      fill: "bg-border",
+    };
+  }
+
+  if (score <= 2) {
+    return {
+      label: "Light",
+      hint: "Add length, numbers, and a symbol to toughen it up.",
+      bars: 1,
+      tone: "text-amber-600 dark:text-amber-400",
+      fill: "bg-amber-500",
+    };
+  }
+
+  if (score === 3) {
+    return {
+      label: "Good",
+      hint: "Pretty solid. A bit more length or a symbol would make it stronger.",
+      bars: 2,
+      tone: "text-sky-600 dark:text-sky-400",
+      fill: "bg-sky-500",
+    };
+  }
+
+  if (score === 4) {
+    return {
+      label: "Strong",
+      hint: "Nice. This already looks like a password with some backbone.",
+      bars: 3,
+      tone: "text-emerald-600 dark:text-emerald-400",
+      fill: "bg-emerald-500",
+    };
+  }
+
+  return {
+    label: "Very strong",
+    hint: "Lovely. Harder to guess, easier to trust.",
+    bars: 4,
+    tone: "text-violet-600 dark:text-violet-400",
+    fill: "bg-violet-500",
+  };
+}
+
 const SettingsPage = () => {
   const { profile, setProfile } = useStore();
   const { logout, refreshUser, user } = useAuth();
@@ -136,6 +201,14 @@ const SettingsPage = () => {
     newPassword: "",
     confirmPassword: "",
   });
+  const [passwordStage, setPasswordStage] = useState(0);
+  const [capsLockOn, setCapsLockOn] = useState(false);
+  const [showPasswords, setShowPasswords] = useState({
+    current: false,
+    next: false,
+    confirm: false,
+  });
+  const [passwordCelebration, setPasswordCelebration] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [loggingOutOthers, setLoggingOutOthers] = useState(false);
   const detectedCountry = getDetectedCountryCode();
@@ -203,6 +276,12 @@ const SettingsPage = () => {
       cancelled = true;
     };
   }, [online, queueCount]);
+
+  useEffect(() => {
+    if (!passwordCelebration) return;
+    const timer = window.setTimeout(() => setPasswordCelebration(false), 2200);
+    return () => window.clearTimeout(timer);
+  }, [passwordCelebration]);
 
   const handleSave = async () => {
     const baseCurrency = currency.trim().toUpperCase();
@@ -308,6 +387,9 @@ const SettingsPage = () => {
         confirm_password: passwordForm.confirmPassword,
       });
       setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      setPasswordStage(0);
+      setShowPasswords({ current: false, next: false, confirm: false });
+      setPasswordCelebration(true);
       toast.success(result.detail || "Password updated successfully.");
     } catch (error) {
       toast.error("Could not update password.", {
@@ -316,6 +398,44 @@ const SettingsPage = () => {
     } finally {
       setChangingPassword(false);
     }
+  };
+
+  const resetPasswordFlow = () => {
+    setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+    setPasswordStage(0);
+    setShowPasswords({ current: false, next: false, confirm: false });
+  };
+
+  const goToNextPasswordStage = () => {
+    if (passwordStage === 0 && !passwordForm.currentPassword) {
+      toast.error("Enter your current password first.");
+      return;
+    }
+
+    if (passwordStage === 1) {
+      if (!passwordForm.newPassword || !passwordForm.confirmPassword) {
+        toast.error("Fill in the new password and confirmation first.");
+        return;
+      }
+      if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+        toast.error("The new passwords do not match yet.");
+        return;
+      }
+    }
+
+    setPasswordStage((prev) => Math.min(prev + 1, 2));
+  };
+
+  const handlePasswordKeyEvent = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    setCapsLockOn(event.getModifierState("CapsLock"));
+  };
+
+  const handlePasswordBlur = () => {
+    setCapsLockOn(false);
+  };
+
+  const togglePasswordVisibility = (key: "current" | "next" | "confirm") => {
+    setShowPasswords((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   const handleLogoutOtherDevices = async () => {
@@ -390,6 +510,7 @@ const SettingsPage = () => {
   }, [online, queueCount]);
 
   const authenticatedOffline = hasAuthenticatedOfflineSession();
+  const strength = passwordStrength(passwordForm.newPassword);
 
   return (
     <div className="max-w-4xl space-y-6">
@@ -719,41 +840,177 @@ const SettingsPage = () => {
           <div className="rounded-lg border border-border bg-background p-4 dark:bg-card">
             <p className="text-sm font-medium">Change Password</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Update your account password for this Verifin account.
+              Update your account password in small steps, so there is a moment to think before the final change.
             </p>
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
-              <div>
-                <Label>Current Password</Label>
-                <Input
-                  type="password"
-                  className="mt-1.5"
-                  value={passwordForm.currentPassword}
-                  onChange={(e) => setPasswordForm((prev) => ({ ...prev, currentPassword: e.target.value }))}
-                />
+            <AnimatePresence>
+              {passwordCelebration ? (
+                <motion.div
+                  initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                  transition={{ duration: 0.24, ease: "easeOut" }}
+                  className="mt-4 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-emerald-900 dark:border-emerald-700/60 dark:bg-emerald-950/30 dark:text-emerald-100"
+                >
+                  <div className="flex items-start gap-3">
+                    <motion.div
+                      initial={{ scale: 0.8, rotate: -8 }}
+                      animate={{ scale: 1, rotate: 0 }}
+                      transition={{ type: "spring", stiffness: 320, damping: 18 }}
+                      className="mt-0.5 rounded-full bg-emerald-100 p-1.5 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-300"
+                    >
+                      <Shield className="h-4 w-4" />
+                    </motion.div>
+                    <div>
+                      <p className="text-sm font-medium">Password changed</p>
+                      <p className="mt-1 text-xs text-emerald-800/90 dark:text-emerald-200/90">
+                        Nice. Your account just got a little tougher to mess with.
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+            <div className="mt-4 rounded-lg border border-border bg-muted/20 p-4 dark:bg-muted/10">
+              <div className="flex flex-wrap items-center gap-2">
+                {[0, 1, 2].map((stage) => (
+                  <div
+                    key={stage}
+                    className={`h-2 flex-1 rounded-full transition-colors ${
+                      stage <= passwordStage ? "bg-primary" : "bg-border"
+                    }`}
+                  />
+                ))}
               </div>
-              <div>
-                <Label>New Password</Label>
-                <Input
-                  type="password"
-                  className="mt-1.5"
-                  value={passwordForm.newPassword}
-                  onChange={(e) => setPasswordForm((prev) => ({ ...prev, newPassword: e.target.value }))}
-                />
-              </div>
-              <div>
-                <Label>Confirm New Password</Label>
-                <Input
-                  type="password"
-                  className="mt-1.5"
-                  value={passwordForm.confirmPassword}
-                  onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirmPassword: e.target.value }))}
-                />
-              </div>
+              <p className="mt-3 text-sm font-medium">Step {passwordStage + 1} of 3</p>
+              <p className="mt-1 text-xs text-muted-foreground">{PASSWORD_STAGE_PROMPTS[passwordStage]}</p>
+
+              {passwordStage === 0 ? (
+                <div className="mt-4">
+                  <Label>Current Password</Label>
+                  <div className="relative mt-1.5">
+                    <Input
+                      type={showPasswords.current ? "text" : "password"}
+                      className="pr-11"
+                      value={passwordForm.currentPassword}
+                      onChange={(e) => setPasswordForm((prev) => ({ ...prev, currentPassword: e.target.value }))}
+                      onKeyDown={handlePasswordKeyEvent}
+                      onKeyUp={handlePasswordKeyEvent}
+                      onBlur={handlePasswordBlur}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => togglePasswordVisibility("current")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                      title={showPasswords.current ? "Hide password" : "Show password"}
+                    >
+                      {showPasswords.current ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {passwordStage === 1 ? (
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <div>
+                    <Label>New Password</Label>
+                    <div className="relative mt-1.5">
+                      <Input
+                        type={showPasswords.next ? "text" : "password"}
+                        className="pr-11"
+                        value={passwordForm.newPassword}
+                        onChange={(e) => setPasswordForm((prev) => ({ ...prev, newPassword: e.target.value }))}
+                        onKeyDown={handlePasswordKeyEvent}
+                        onKeyUp={handlePasswordKeyEvent}
+                        onBlur={handlePasswordBlur}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => togglePasswordVisibility("next")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                        title={showPasswords.next ? "Hide password" : "Show password"}
+                      >
+                        {showPasswords.next ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <Label>Confirm New Password</Label>
+                    <div className="relative mt-1.5">
+                      <Input
+                        type={showPasswords.confirm ? "text" : "password"}
+                        className="pr-11"
+                        value={passwordForm.confirmPassword}
+                        onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirmPassword: e.target.value }))}
+                        onKeyDown={handlePasswordKeyEvent}
+                        onKeyUp={handlePasswordKeyEvent}
+                        onBlur={handlePasswordBlur}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => togglePasswordVisibility("confirm")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                        title={showPasswords.confirm ? "Hide password" : "Show password"}
+                      >
+                        {showPasswords.confirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {capsLockOn ? (
+                <p className="mt-3 text-xs font-medium text-amber-600 dark:text-amber-400">
+                  Caps Lock is on.
+                </p>
+              ) : null}
+
+              {passwordStage === 2 ? (
+                <div className="mt-4 rounded-lg border border-border bg-background p-4 dark:bg-card">
+                  <p className="text-sm font-medium">Ready to change?</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Your current password is filled, your new password is confirmed, and this is the last checkpoint.
+                  </p>
+                  <div className="mt-4 rounded-lg border border-border bg-muted/20 p-3 dark:bg-muted/10">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs font-medium">Password strength</p>
+                      <p className={`text-xs font-medium ${strength.tone}`}>{strength.label}</p>
+                    </div>
+                    <div className="mt-2 grid grid-cols-4 gap-1.5">
+                      {[0, 1, 2, 3].map((bar) => (
+                        <div
+                          key={bar}
+                          className={`h-2 rounded-full ${bar < strength.bars ? strength.fill : "bg-border"}`}
+                        />
+                      ))}
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">{strength.hint}</p>
+                  </div>
+                  <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                    <p>Current password: {passwordForm.currentPassword ? "Added" : "Missing"}</p>
+                    <p>New password: {passwordForm.newPassword ? `${passwordForm.newPassword.length} characters` : "Missing"}</p>
+                    <p>Confirmation: {passwordForm.confirmPassword && passwordForm.newPassword === passwordForm.confirmPassword ? "Matches" : "Does not match yet"}</p>
+                  </div>
+                </div>
+              ) : null}
             </div>
             <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-              <Button onClick={() => void handleChangePassword()} disabled={changingPassword}>
-                {changingPassword ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                Update Password
+              {passwordStage > 0 ? (
+                <Button variant="outline" onClick={() => setPasswordStage((prev) => Math.max(prev - 1, 0))} disabled={changingPassword}>
+                  Back
+                </Button>
+              ) : null}
+              {passwordStage < 2 ? (
+                <Button onClick={goToNextPasswordStage} disabled={changingPassword}>
+                  Continue
+                </Button>
+              ) : (
+                <Button onClick={() => void handleChangePassword()} disabled={changingPassword}>
+                  {changingPassword ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Change Password Now
+                </Button>
+              )}
+              <Button variant="ghost" onClick={resetPasswordFlow} disabled={changingPassword}>
+                Start Over
               </Button>
               <Button variant="outline" onClick={() => void handleLogoutOtherDevices()} disabled={loggingOutOthers}>
                 {loggingOutOthers ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
