@@ -7,14 +7,19 @@ import { useStore } from "@/lib/store";
 import { toast } from "sonner";
 import { useEffect, useState } from "react";
 import { Moon, Sun } from "lucide-react";
-import { patchMe } from "@/lib/api";
+import {
+  createNotificationPreferencesApi,
+  fetchNotificationPreferencesApi,
+  patchMe,
+  updateNotificationPreferencesApi,
+} from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useNavigate } from "react-router-dom";
 import { currencyOptions, getDetectedCountryCode, getRegionalCurrencyDefaults, symbolForCurrency } from "@/lib/currency";
 
 const SettingsPage = () => {
   const { profile, setProfile } = useStore();
-  const { logout } = useAuth();
+  const { logout, refreshUser } = useAuth();
   const navigate = useNavigate();
   const [name, setName] = useState(profile.name);
   const [currency, setCurrency] = useState(profile.currency);
@@ -56,14 +61,31 @@ const SettingsPage = () => {
 
     setSaving(true);
     try {
-      await patchMe({
+      const savedUser = await patchMe({
         business_name: name,
         currency: baseCurrency,
         currency_symbol: nextProfile.currencySymbol,
         enabled_currencies: enabledCurrencies,
         exchange_rates: exchangeRates,
+        dark_mode: nextProfile.darkMode,
       });
+      const preferences = await fetchNotificationPreferencesApi();
+      const preferencePayload = {
+        whatsapp_daily: nextProfile.whatsappDaily,
+        low_stock_alerts: nextProfile.lowStockAlerts,
+        discrepancy_alerts: nextProfile.discrepancyAlerts,
+        push_enabled: true,
+      };
+
+      if (preferences[0]) {
+        await updateNotificationPreferencesApi(preferences[0].id, preferencePayload);
+      } else {
+        await createNotificationPreferencesApi(preferencePayload);
+      }
+
       setProfile(nextProfile);
+      localStorage.setItem("sp_cached_user", JSON.stringify(savedUser));
+      await refreshUser();
       toast.success("Settings saved!");
     } catch (e) {
       setProfile(nextProfile);

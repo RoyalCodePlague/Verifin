@@ -841,6 +841,107 @@ export async function fetchNotificationLogsApi() {
   return fetchAllPages<NotificationLog>("/api/v1/notifications/");
 }
 
+export type NotificationPreference = {
+  id: number;
+  user: number;
+  whatsapp_daily: boolean;
+  low_stock_alerts: boolean;
+  discrepancy_alerts: boolean;
+  push_enabled: boolean;
+};
+
+export async function fetchNotificationPreferencesApi() {
+  return fetchAllPages<NotificationPreference>("/api/v1/notifications/preferences/");
+}
+
+export async function createNotificationPreferencesApi(payload: Omit<NotificationPreference, "id" | "user">) {
+  return apiFetch<NotificationPreference>("/api/v1/notifications/preferences/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateNotificationPreferencesApi(
+  id: number,
+  payload: Partial<Omit<NotificationPreference, "id" | "user">>
+) {
+  return apiFetch<NotificationPreference>(`/api/v1/notifications/preferences/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export type ApiAudit = {
+  id: number;
+  date: string;
+  status: "in_progress" | "completed";
+  items_counted: number;
+  discrepancies_found: number;
+  conductor: number | null;
+  completed_at: string | null;
+};
+
+export async function createAuditApi(payload: {
+  status?: ApiAudit["status"];
+  items_counted: number;
+  discrepancies_found?: number;
+}) {
+  return apiFetch<ApiAudit>("/api/v1/audits/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateAuditApi(
+  id: string,
+  payload: Partial<{
+    status: ApiAudit["status"];
+    items_counted: number;
+    discrepancies_found: number;
+  }>
+) {
+  return apiFetch<ApiAudit>(`/api/v1/audits/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export type ApiDiscrepancy = {
+  id: number;
+  audit: number;
+  product: number;
+  product_name?: string;
+  expected_stock: number;
+  actual_stock: number;
+  difference: number;
+  status: "unresolved" | "investigating" | "resolved";
+  resolved_by: number | null;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string;
+  is_deleted: boolean;
+};
+
+export async function createDiscrepancyApi(payload: {
+  audit: number;
+  product: number;
+  expected_stock: number;
+  actual_stock: number;
+  difference: number;
+  status?: ApiDiscrepancy["status"];
+}) {
+  return apiFetch<ApiDiscrepancy>("/api/v1/audits/discrepancies/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function resolveDiscrepancyApi(id: string) {
+  return apiFetch<ApiDiscrepancy>(`/api/v1/audits/discrepancies/${id}/resolve/`, {
+    method: "POST",
+  });
+}
+
 export async function mockCheckoutApi(payload: { plan: PlanCode; billing_period: BillingPeriod; trial_days?: number; country_code?: string }) {
   return apiFetch<{ detail: string; subscription: BillingSubscription; billing: BillingOverview }>("/api/v1/billing/subscriptions/mock-checkout/", {
     method: "POST",

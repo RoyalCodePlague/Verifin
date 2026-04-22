@@ -1,4 +1,4 @@
-import { fetchAllPages } from "@/lib/api";
+import { fetchAllPages, fetchNotificationPreferencesApi } from "@/lib/api";
 import type {
   Branch,
   Product,
@@ -137,6 +137,14 @@ type ApiDiscrepancy = {
   status: Discrepancy["status"];
 };
 
+type ApiNotificationPreference = {
+  id: number;
+  whatsapp_daily: boolean;
+  low_stock_alerts: boolean;
+  discrepancy_alerts: boolean;
+  push_enabled: boolean;
+};
+
 export async function loadServerData(user: {
   business_name: string;
   currency: string;
@@ -166,7 +174,16 @@ export async function loadServerData(user: {
     }
   };
 
-  const [rawBranches, rawProducts, rawSales, rawExpenses, rawCustomers, rawStaff, rawAudits, rawDiscrepancies] =
+  const safeFetchNotificationPreferences = async (): Promise<ApiNotificationPreference[]> => {
+    try {
+      return await fetchNotificationPreferencesApi();
+    } catch (error) {
+      console.warn("Failed to fetch notification preferences:", error);
+      return [];
+    }
+  };
+
+  const [rawBranches, rawProducts, rawSales, rawExpenses, rawCustomers, rawStaff, rawAudits, rawDiscrepancies, rawNotificationPreferences] =
     await Promise.all([
       safeFetch<ApiBranch>("/api/v1/inventory/branches/"),
       safeFetch<ApiProduct>("/api/v1/inventory/products/"),
@@ -176,6 +193,7 @@ export async function loadServerData(user: {
       safeFetch<ApiStaff>("/api/v1/accounts/staff/"),
       safeFetch<ApiAudit>("/api/v1/audits/"),
       safeFetch<ApiDiscrepancy>("/api/v1/audits/discrepancies/"),
+      safeFetchNotificationPreferences(),
     ]);
 
   const productNameById = new Map<number, string>();
@@ -288,6 +306,7 @@ export async function loadServerData(user: {
   }));
 
   const categoryNames = Array.from(new Set(products.map((p) => p.category).filter(Boolean)));
+  const notificationPreference = rawNotificationPreferences[0];
 
   const profile: BusinessProfile = {
     name: user.business_name || "",
@@ -296,9 +315,9 @@ export async function loadServerData(user: {
     enabledCurrencies: user.enabled_currencies?.length ? user.enabled_currencies : [user.currency || "ZAR"],
     exchangeRates: user.exchange_rates || {},
     categories: categoryNames.length ? categoryNames : ["Groceries", "Beverages", "Hardware", "Personal Care"],
-    whatsappDaily: true,
-    lowStockAlerts: true,
-    discrepancyAlerts: true,
+    whatsappDaily: notificationPreference?.whatsapp_daily ?? true,
+    lowStockAlerts: notificationPreference?.low_stock_alerts ?? true,
+    discrepancyAlerts: notificationPreference?.discrepancy_alerts ?? true,
     onboardingComplete: user.onboarding_complete,
     darkMode: user.dark_mode,
   };

@@ -162,8 +162,10 @@ interface StoreState {
   addActivity: (a: Omit<ActivityItem, "id">) => void;
   resolveDiscrepancy: (id: string) => void;
   addAudit: (a: Omit<AuditRecord, "id">) => string;
+  upsertAudit: (audit: AuditRecord) => void;
   updateAudit: (id: string, a: Partial<AuditRecord>) => void;
   addDiscrepancy: (d: Omit<Discrepancy, "id">) => void;
+  upsertDiscrepancy: (discrepancy: Discrepancy) => void;
   generateWhatsAppSummary: () => string;
   hydrateFromServer: (data: {
     profile: BusinessProfile;
@@ -403,12 +405,36 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return id;
   }, []);
 
+  const upsertAudit = useCallback((audit: AuditRecord) => {
+    setAudits(prev => {
+      const existingIndex = prev.findIndex((item) => item.id === audit.id);
+      if (existingIndex === -1) {
+        return [audit, ...prev];
+      }
+      const updated = [...prev];
+      updated[existingIndex] = audit;
+      return updated;
+    });
+  }, []);
+
   const updateAudit = useCallback((id: string, updates: Partial<AuditRecord>) => {
     setAudits(prev => prev.map(a => a.id === id ? { ...a, ...updates } : a));
   }, []);
 
   const addDiscrepancy = useCallback((d: Omit<Discrepancy, "id">) => {
     setDiscrepancies(prev => [{ ...d, id: uid() }, ...prev]);
+  }, []);
+
+  const upsertDiscrepancy = useCallback((discrepancy: Discrepancy) => {
+    setDiscrepancies(prev => {
+      const existingIndex = prev.findIndex((item) => item.id === discrepancy.id);
+      if (existingIndex === -1) {
+        return [discrepancy, ...prev];
+      }
+      const updated = [...prev];
+      updated[existingIndex] = discrepancy;
+      return updated;
+    });
   }, []);
 
   const generateWhatsAppSummary = useCallback(() => {
@@ -482,7 +508,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setProfile, addProduct, upsertProduct, updateProduct, deleteProduct,
       addSale, upsertSale, deleteSale, addExpense, upsertExpense, deleteExpense,
       addCustomer, updateCustomer, deleteCustomer, addStaff, updateStaff, deleteStaff,
-      addBranch, updateBranch, deleteBranch, addActivity, resolveDiscrepancy, addAudit, updateAudit, addDiscrepancy, generateWhatsAppSummary,
+      addBranch, updateBranch, deleteBranch, addActivity, resolveDiscrepancy, addAudit, upsertAudit, updateAudit, addDiscrepancy, upsertDiscrepancy, generateWhatsAppSummary,
       hydrateFromServer, resetForLogout,
     }}>
       {children}
