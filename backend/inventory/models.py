@@ -47,6 +47,17 @@ class Supplier(TimeStampedSoftDeleteModel):
         return self.name
 
 
+class BarcodeLookupCache(TimeStampedSoftDeleteModel):
+    barcode = models.CharField(max_length=100, unique=True, db_index=True)
+    name = models.CharField(max_length=255)
+    brand = models.CharField(max_length=255, blank=True)
+    category = models.CharField(max_length=120, blank=True)
+    source = models.CharField(max_length=50, default="cache")
+
+    def __str__(self):
+        return f"{self.barcode} - {self.name}"
+
+
 class Product(TimeStampedSoftDeleteModel):
     STATUS_CHOICES = [("ok", "ok"), ("low", "low"), ("out", "out")]
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="products")

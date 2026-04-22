@@ -499,6 +499,17 @@ export async function fetchInventoryForecast(days = 7) {
   return apiFetch<{ horizon_days: number; items: ApiForecastItem[] }>(`/api/v1/inventory/products/forecast/?days=${days}`);
 }
 
+export async function identifyBarcodeProductApi(code: string) {
+  return apiFetch<{
+    barcode: string;
+    name: string;
+    brand?: string;
+    category?: string;
+    source: "inventory" | "open_food_facts";
+    existing_product_id?: number;
+  }>(`/api/v1/inventory/products/barcode-identify/?code=${encodeURIComponent(code)}`);
+}
+
 type ApiSale = {
   id: number;
   items: string;

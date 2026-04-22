@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Search, Plus, Package, Edit2, Trash2, ScanBarcode, Calendar, TrendingUp } from "lucide-react";
@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { useStore } from "@/lib/store";
-import { createProductApi, deleteProductApi, fetchInventoryForecast, mapProductResponse, updateProductApi, type ApiForecastItem } from "@/lib/api";
+import { createProductApi, deleteProductApi, fetchInventoryForecast, identifyBarcodeProductApi, mapProductResponse, updateProductApi, type ApiForecastItem } from "@/lib/api";
 import { addToOfflineQueue, canQueueOfflineAction } from "@/lib/offlineQueue";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
@@ -17,6 +17,7 @@ import { BarcodeScanner } from "@/components/BarcodeScanner";
 import { toast } from "sonner";
 import { useFeatureAccess, useUpgradePrompt } from "@/lib/features";
 import { symbolForCurrency } from "@/lib/currency";
+import { cacheBarcodeEntry, getCachedBarcodeEntry } from "@/lib/barcodeCache";
 
 const allCategories = [
   "Groceries", "Beverages", "Hardware", "Personal Care", "Electronics",
@@ -66,6 +67,7 @@ const Inventory = () => {
   const [forecastHorizon, setForecastHorizon] = useState(7);
   const [saving, setSaving] = useState(false);
   const [canUseCameraScan, setCanUseCameraScan] = useState(false);
+  const productNameInputRef = useRef<HTMLInputElement>(null);
   const sym = profile.currencySymbol || "R";
   const secondaryCurrency = profile.enabledCurrencies?.find((code) => code !== profile.currency) || "";
   const secondaryRate = secondaryCurrency ? profile.exchangeRates?.[secondaryCurrency] || 0 : 0;
@@ -130,8 +132,24 @@ const Inventory = () => {
     }
   }, [flaggedView]);
 
+  useEffect(() => {
+    if (!addOpen) return;
+    const timeout = window.setTimeout(() => {
+      productNameInputRef.current?.focus();
+      productNameInputRef.current?.select();
+    }, 50);
+    return () => window.clearTimeout(timeout);
+  }, [addOpen]);
+
   const mergedCategories = Array.from(new Set([...profile.categories, ...allCategories]));
   const categories = ["All", ...mergedCategories];
+
+  const resolveCategoryForForm = (rawCategory?: string) => {
+    const normalized = (rawCategory || "").trim();
+    if (!normalized) return mergedCategories[0] || "Other";
+    const existing = mergedCategories.find((categoryName) => categoryName.toLowerCase() === normalized.toLowerCase());
+    return existing || normalized;
+  };
 
   const filtered = products
     .filter((p) => {
@@ -308,13 +326,66 @@ const Inventory = () => {
     }
   };
 
-  const handleBarcodeDetected = (code: string) => {
+  const handleBarcodeDetected = async (code: string) => {
     const found = products.find(p => p.barcode === code);
     if (found) {
+      cacheBarcodeEntry({
+        barcode: code,
+        name: found.name,
+        category: found.category,
+        source: "inventory",
+      });
       toast.info(`Found: ${found.name} (Stock: ${found.stock})`);
       setSearch(found.name);
-    } else {
-      toast.info(`New barcode: ${code}. Fill in the product details and save.`);
+      setScanOpen(false);
+      return;
+    }
+
+    const cached = getCachedBarcodeEntry(code);
+    if (cached) {
+      setForm({
+        name: cached.name,
+        category: resolveCategoryForForm(cached.category),
+        branchId: "",
+        supplierId: "",
+        stock: "",
+        reorder: "5",
+        costPrice: "",
+        price: "",
+        barcode: code,
+      });
+      setAddOpen(true);
+      toast.success(`Loaded cached barcode match: ${cached.name}`);
+      setScanOpen(false);
+      return;
+    }
+
+    try {
+      const identified = await identifyBarcodeProductApi(code);
+      const identifiedName = [identified.brand, identified.name].filter(Boolean).join(" ");
+      cacheBarcodeEntry({
+        barcode: code,
+        name: identifiedName || identified.name,
+        brand: identified.brand,
+        category: identified.category,
+        source: identified.source,
+      });
+      setForm({
+        name: identifiedName || identified.name || "",
+        category: resolveCategoryForForm(identified.category),
+        branchId: "",
+        supplierId: "",
+        stock: "",
+        reorder: "5",
+        costPrice: "",
+        price: "",
+        barcode: code,
+      });
+      setAddOpen(true);
+      toast.success(identified.name ? `Identified: ${identified.name}` : `Barcode found: ${code}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not identify this barcode.";
+      toast.info(`${message} Fill in the product details and save.`);
       setForm({ name: "", category: mergedCategories[0] || "", branchId: "", supplierId: "", stock: "", reorder: "5", costPrice: "", price: "", barcode: code });
       setAddOpen(true);
     }
@@ -330,7 +401,7 @@ const Inventory = () => {
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-3">
-        <div><Label>Product Name</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="mt-1" placeholder="e.g. White Bread Loaf" /></div>
+        <div><Label>Product Name</Label><Input ref={productNameInputRef} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="mt-1" placeholder="e.g. White Bread Loaf" /></div>
         <div>
           <Label>Category</Label>
           <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm">

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Branch, Category, Product, PurchaseOrder, PurchaseOrderItem, StockMovement, StockTransfer, Supplier
+from .models import BarcodeLookupCache, Branch, Category, Product, PurchaseOrder, PurchaseOrderItem, StockMovement, StockTransfer, Supplier
 
 
 @admin.register(Branch)
@@ -29,6 +29,13 @@ class ProductAdmin(admin.ModelAdmin):
     list_display = ("name", "sku", "branch", "preferred_supplier", "user", "stock", "status", "cost_price", "price", "created_at")
     search_fields = ("name", "sku", "barcode", "preferred_supplier__name", "user__email")
     list_filter = ("status", "branch", "preferred_supplier", "user")
+
+
+@admin.register(BarcodeLookupCache)
+class BarcodeLookupCacheAdmin(admin.ModelAdmin):
+    list_display = ("barcode", "name", "brand", "category", "source", "updated_at")
+    search_fields = ("barcode", "name", "brand", "category")
+    list_filter = ("source",)
 
 
 @admin.register(StockMovement)

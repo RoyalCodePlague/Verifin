@@ -1,5 +1,6 @@
 from datetime import timedelta
 from decimal import Decimal
+import httpx
 from django.db import models, transaction
 from django.db.models import Sum
 from django.utils import timezone
@@ -10,8 +11,60 @@ from rest_framework.response import Response
 from accounts.activity import log_staff_activity
 from billing.services import enforce_feature, enforce_limit
 from sales.models import SaleItem
-from .models import Branch, Category, Product, PurchaseOrder, StockMovement, StockTransfer, Supplier
+from .models import BarcodeLookupCache, Branch, Category, Product, PurchaseOrder, StockMovement, StockTransfer, Supplier
 from .serializers import BranchSerializer, CategorySerializer, ProductSerializer, PurchaseOrderSerializer, StockMovementSerializer, StockTransferSerializer, SupplierSerializer
+
+BARCODE_IDENTIFICATION_SOURCES = [
+    ("open_food_facts", "https://world.openfoodfacts.org/api/v2/product/{barcode}"),
+    ("open_products_facts", "https://world.openproductsfacts.org/api/v2/product/{barcode}"),
+    ("open_beauty_facts", "https://world.openbeautyfacts.org/api/v2/product/{barcode}"),
+    ("open_pet_food_facts", "https://world.openpetfoodfacts.org/api/v2/product/{barcode}"),
+]
+
+
+def _clean_text(value):
+    return (value or "").strip()
+
+
+def _extract_product_identity(payload, barcode, source):
+    product = payload.get("product") or {}
+    name = (
+        _clean_text(product.get("product_name"))
+        or _clean_text(product.get("product_name_en"))
+        or _clean_text(product.get("generic_name"))
+        or _clean_text(product.get("generic_name_en"))
+    )
+    brand = _clean_text(product.get("brands"))
+    category = ""
+
+    categories_tags = product.get("categories_tags") or []
+    if categories_tags:
+        category = _clean_text(str(categories_tags[0]).split(":")[-1].replace("-", " ").title())
+    if not category:
+        categories = _clean_text(product.get("categories"))
+        if categories:
+            category = _clean_text(categories.split(",")[0])
+
+    return {
+        "barcode": barcode,
+        "name": name,
+        "brand": brand,
+        "category": category,
+        "source": source,
+    }
+
+
+def _cache_identity(identity):
+    BarcodeLookupCache.objects.update_or_create(
+        barcode=identity["barcode"],
+        defaults={
+            "name": identity["name"],
+            "brand": identity.get("brand", ""),
+            "category": identity.get("category", ""),
+            "source": identity.get("source", "cache"),
+            "is_deleted": False,
+        },
+    )
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -75,6 +128,61 @@ class ProductViewSet(viewsets.ModelViewSet):
         if not product:
             return Response({"detail": "Product not found."}, status=404)
         return Response(ProductSerializer(product).data)
+
+    @action(detail=False, methods=["get"], url_path="barcode-identify")
+    def barcode_identify(self, request):
+        enforce_feature(request.user, "barcode_scanning")
+        code = _clean_text(request.query_params.get("code"))
+        if not code:
+            return Response({"detail": "Barcode is required."}, status=400)
+
+        existing = self.get_queryset().filter(barcode=code).first()
+        if existing:
+            return Response({
+                "barcode": code,
+                "name": existing.name,
+                "brand": existing.preferred_supplier.name if existing.preferred_supplier else "",
+                "category": existing.category.name if existing.category else "",
+                "source": "inventory",
+                "existing_product_id": existing.id,
+            })
+
+        cached = BarcodeLookupCache.objects.filter(barcode=code, is_deleted=False).first()
+        if cached:
+            return Response({
+                "barcode": code,
+                "name": cached.name,
+                "brand": cached.brand,
+                "category": cached.category,
+                "source": f"{cached.source}_cache",
+            })
+
+        request_failed = False
+        for source, url in BARCODE_IDENTIFICATION_SOURCES:
+            try:
+                response = httpx.get(
+                    url.format(barcode=code),
+                    params={"fields": "product_name,product_name_en,generic_name,generic_name_en,brands,categories,categories_tags"},
+                    timeout=5.0,
+                    headers={"User-Agent": "Verifin/1.0 barcode-identify"},
+                )
+                response.raise_for_status()
+                payload = response.json()
+            except httpx.HTTPError:
+                request_failed = True
+                continue
+
+            if payload.get("status") != 1:
+                continue
+
+            identity = _extract_product_identity(payload, code, source)
+            if identity["name"]:
+                _cache_identity(identity)
+                return Response(identity)
+
+        if request_failed:
+            return Response({"detail": "Could not identify this barcode right now."}, status=502)
+        return Response({"detail": "Product not found for this barcode."}, status=404)
 
     @action(detail=False, methods=["post"], url_path="bulk-import")
     def bulk_import(self, request):
