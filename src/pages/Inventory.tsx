@@ -420,13 +420,7 @@ const Inventory = () => {
                         <p>{sym}{(p.costPrice || 0).toFixed(2)}</p>
                         {secondaryCurrency && secondaryRate ? (
                           <p className="text-[10px] text-muted-foreground">{formatSecondaryCost(p.costPrice || 0)}</p>
-                        ) : (
-                          <p className="text-[10px] text-muted-foreground">
-                            {p.costCurrency && p.costCurrency !== profile.currency
-                              ? `${symbolForCurrency(p.costCurrency)} ${p.costCurrency}`
-                              : "Base"}
-                          </p>
-                        )}
+                        ) : null}
                       </div>
                     </td>
                     {/* Selling price is hidden in the inventory table for now. */}

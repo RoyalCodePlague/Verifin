@@ -4,7 +4,7 @@ import { Download, FileText, BarChart3, Package, AlertTriangle, Users, Receipt, 
 import { useStore } from "@/lib/store";
 import { toast } from "sonner";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { buildWeeklyFinanceData, csvCell, expenseBaseAmount, formatMoney, salePaymentBreakdown } from "@/lib/reporting";
+import { buildWeeklyFinanceData, csvCell, expenseBaseAmount, formatMoney, parseBusinessDate, salePaymentBreakdown } from "@/lib/reporting";
 import { LockedBadge, useFeatureAccess, useUpgradePrompt } from "@/lib/features";
 import { symbolForCurrency } from "@/lib/currency";
 
@@ -15,7 +15,11 @@ const Reports = () => {
   const { canUse } = useFeatureAccess();
   const promptUpgrade = useUpgradePrompt();
   const sym = profile.currencySymbol || "R";
-  const todaySales = sales.filter((s) => s.date === "Today");
+  const isToday = (value: string) => {
+    const parsed = parseBusinessDate(value);
+    return !!parsed && parsed.toDateString() === new Date().toDateString();
+  };
+  const todaySales = sales.filter((sale) => isToday(sale.date));
   const todaySalesTotal = todaySales.reduce((sum, s) => sum + s.total, 0);
   const totalExpenses = expenses.reduce((sum, e) => sum + expenseBaseAmount(e), 0);
   const totalSales = sales.reduce((sum, s) => sum + s.total, 0);
@@ -26,7 +30,7 @@ const Reports = () => {
   const weeklyData = buildWeeklyFinanceData(sales, expenses);
   const weeklySalesTotal = weeklyData.reduce((sum, d) => sum + d.sales, 0);
   const weeklyExpensesTotal = weeklyData.reduce((sum, d) => sum + d.expenses, 0);
-  const paymentBreakdown = salePaymentBreakdown(sales);
+  const paymentBreakdown = salePaymentBreakdown(sales, profile.currency);
 
   const categoryData = profile.categories.map(cat => {
     const catProducts = products.filter(p => p.category === cat);
@@ -167,8 +171,8 @@ const Reports = () => {
                 <XAxis dataKey="day" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
                 <YAxis tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
                 <Tooltip formatter={(value) => formatMoney(Number(value), sym)} />
-                <Bar dataKey="sales" fill="hsl(152 55% 28%)" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="expenses" fill="hsl(38 92% 50%)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="sales" fill="hsl(152 55% 28%)" radius={[4, 4, 0, 0]} minPointSize={3} />
+                <Bar dataKey="expenses" fill="hsl(0 84% 60%)" radius={[4, 4, 0, 0]} minPointSize={3} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>

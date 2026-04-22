@@ -64,13 +64,13 @@ export function expenseBaseAmount(expense: Expense) {
   return expense.amountBase ?? expense.amount;
 }
 
-export function salePaymentBreakdown(sales: Sale[]) {
+export function salePaymentBreakdown(sales: Sale[], baseCurrency = "ZAR") {
   const totals: Record<string, { amount: number; amountBase: number }> = {};
 
   sales.forEach((sale) => {
     const rows = sale.paymentAllocations?.length
       ? sale.paymentAllocations
-      : [{ currency: sale.paymentCurrency || "ZAR", amount: sale.total, amountBase: sale.total }];
+      : [{ currency: sale.paymentCurrency || baseCurrency, amount: sale.total, amountBase: sale.total }];
 
     rows.forEach((row) => {
       const key = row.currency;
