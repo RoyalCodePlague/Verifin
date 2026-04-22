@@ -57,15 +57,53 @@ export function BarcodeScanner({ open, onClose, onDetected }: BarcodeScannerProp
       const scanner = new Html5Qrcode(mountId);
       scannerRef.current = scanner;
 
-      scanner.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        (decodedText) => {
+      const startScanner = async () => {
+        const onSuccess = (decodedText: string) => {
           onDetected(decodedText);
           closeScanner();
-        },
-        () => {}
-      ).catch((err) => {
+        };
+
+        const highQualityConfig = {
+          fps: 12,
+          aspectRatio: 1.7777778,
+          qrbox: (viewfinderWidth: number, viewfinderHeight: number) => {
+            const size = Math.max(220, Math.min(viewfinderWidth, viewfinderHeight) * 0.7);
+            return { width: size, height: size };
+          },
+          videoConstraints: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
+        };
+
+        const fallbackConfig = {
+          fps: 10,
+          qrbox: { width: 250, height: 250 },
+          videoConstraints: {
+            facingMode: { ideal: "environment" },
+          },
+        };
+
+        try {
+          await scanner.start(
+            { facingMode: { ideal: "environment" } },
+            highQualityConfig,
+            onSuccess,
+            () => {}
+          );
+        } catch (highQualityError) {
+          console.warn("High quality scanner start failed, falling back", highQualityError);
+          await scanner.start(
+            { facingMode: { ideal: "environment" } },
+            fallbackConfig,
+            onSuccess,
+            () => {}
+          );
+        }
+      };
+
+      startScanner().catch((err) => {
         setError("Camera access denied or unavailable. Please allow camera permissions.");
         console.warn("Scanner error:", err);
       });
@@ -89,7 +127,7 @@ export function BarcodeScanner({ open, onClose, onDetected }: BarcodeScannerProp
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          <div id={mountId} className="w-full min-h-[280px] rounded-lg overflow-hidden bg-muted" />
+          <div id={mountId} className="w-full min-h-[320px] rounded-lg overflow-hidden bg-muted [&_video]:h-full [&_video]:w-full [&_video]:object-cover [&_video]:rounded-lg [&_canvas]:rounded-lg" />
           {error && (
             <p className="text-sm text-destructive text-center">{error}</p>
           )}
