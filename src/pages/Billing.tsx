@@ -15,9 +15,9 @@ import {
 } from "@/lib/api";
 
 const planTone: Record<PlanCode, string> = {
-  starter: "border-slate-200 bg-white",
-  growth: "border-emerald-300 bg-emerald-50/70",
-  business: "border-sky-300 bg-sky-50/70",
+  starter: "border-border bg-card dark:bg-card",
+  growth: "border-emerald-300 bg-emerald-50/70 dark:border-emerald-700/60 dark:bg-emerald-950/30",
+  business: "border-sky-300 bg-sky-50/70 dark:border-sky-700/60 dark:bg-sky-950/30",
 };
 
 const formatMoney = (value: string, period: BillingPeriod, symbol = "R") => {
@@ -44,7 +44,7 @@ function UsageRow({ limit }: { limit: FeatureLimit }) {
         <span className="font-medium text-foreground">{limit.label}</span>
         <span className="text-muted-foreground">{limit.limit == null ? `${used} used, unlimited` : `${used}/${limit.limit}`}</span>
       </div>
-      <div className="h-2 rounded bg-muted overflow-hidden">
+      <div className="h-2 overflow-hidden rounded bg-muted dark:bg-muted/40">
         <div className={`h-full rounded ${pct >= 90 ? "bg-rose-500" : pct >= 70 ? "bg-amber-500" : "bg-emerald-500"}`} style={{ width: `${pct}%` }} />
       </div>
     </div>
@@ -67,13 +67,13 @@ const CheckoutModal = ({
   pending: boolean;
 }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 p-4">
-    <div className="w-full max-w-md rounded-lg bg-background p-6 shadow-xl">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Test checkout</p>
+    <div className="w-full max-w-md rounded-lg border border-border bg-background p-6 shadow-xl dark:bg-card">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-400">Test checkout</p>
       <h2 className="mt-2 text-2xl font-bold">Activate {plan.name}</h2>
       <p className="mt-2 text-sm text-muted-foreground">
         This mock checkout updates your local subscription only. No card is charged and no payment gateway is contacted.
       </p>
-      <div className="mt-5 rounded-md border p-4">
+      <div className="mt-5 rounded-md border border-border bg-muted/30 p-4 dark:bg-muted/15">
         <div className="flex items-center justify-between">
           <span className="font-medium">{plan.name}</span>
           <span className="font-bold">
@@ -89,7 +89,7 @@ const CheckoutModal = ({
         <p className="mt-2 text-xs text-muted-foreground">Provider: mock. Ready to swap for Stripe, Paystack, or another gateway later.</p>
       </div>
       <div className="mt-6 flex gap-3">
-        <button type="button" onClick={onClose} className="flex-1 rounded-md border px-4 py-2 text-sm font-semibold hover:bg-muted">
+        <button type="button" onClick={onClose} className="flex-1 rounded-md border border-border px-4 py-2 text-sm font-semibold hover:bg-muted dark:hover:bg-muted/30">
           Back
         </button>
         <button type="button" disabled={pending} onClick={onConfirm} className="flex-1 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
@@ -140,38 +140,38 @@ const Billing = () => {
   return (
     <div className="space-y-8">
       <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-        <div className="rounded-lg border bg-background p-6">
+        <div className="rounded-lg border border-border bg-background p-6 dark:bg-card">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold text-emerald-700">Current plan</p>
+              <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-400">Current plan</p>
               <h1 className="mt-2 text-3xl font-bold">{billing?.plan.name ?? "Loading..."}</h1>
               <p className="mt-2 max-w-2xl text-sm text-muted-foreground">{billing?.plan.description ?? "Checking your billing setup."}</p>
             </div>
-            <span className="rounded-md bg-emerald-100 px-3 py-1 text-xs font-bold uppercase text-emerald-800">{billing?.subscription.status ?? "loading"}</span>
+            <span className="rounded-md bg-emerald-100 px-3 py-1 text-xs font-bold uppercase text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">{billing?.subscription.status ?? "loading"}</span>
           </div>
           <div className="mt-6 grid gap-4 sm:grid-cols-3">
-            <div className="rounded-md border p-4">
+            <div className="rounded-md border border-border bg-muted/20 p-4 dark:bg-muted/10">
               <p className="text-xs text-muted-foreground">Billing period</p>
               <p className="mt-1 font-semibold capitalize">{billing?.subscription.billing_period ?? period}</p>
             </div>
-            <div className="rounded-md border p-4">
+            <div className="rounded-md border border-border bg-muted/20 p-4 dark:bg-muted/10">
               <p className="text-xs text-muted-foreground">Renewal</p>
               <p className="mt-1 font-semibold">{formatDate(billing?.subscription.current_period_end ?? null)}</p>
             </div>
-            <div className="rounded-md border p-4">
+            <div className="rounded-md border border-border bg-muted/20 p-4 dark:bg-muted/10">
               <p className="text-xs text-muted-foreground">Trial ends</p>
               <p className="mt-1 font-semibold">{formatDate(billing?.subscription.trial_ends_at ?? null)}</p>
             </div>
           </div>
           {billing?.subscription.cancel_at_period_end && (
-            <div className="mt-5 flex gap-3 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+            <div className="mt-5 flex gap-3 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200">
               <AlertTriangle className="mt-0.5 h-4 w-4 flex-none" />
               Your plan is set to cancel at the end of this billing period.
             </div>
           )}
         </div>
 
-        <div className="rounded-lg border bg-background p-6">
+        <div className="rounded-lg border border-border bg-background p-6 dark:bg-card">
           <h2 className="text-lg font-bold">Usage</h2>
           <div className="mt-5 space-y-5">
             {usageLimits.map((limit) => (
@@ -181,7 +181,7 @@ const Billing = () => {
         </div>
       </section>
 
-      <section className="rounded-lg border bg-background p-6">
+      <section className="rounded-lg border border-border bg-background p-6 dark:bg-card">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-bold">Change Plan</h2>
@@ -189,9 +189,9 @@ const Billing = () => {
               Use the mock checkout to test upgrades, downgrades, renewals, and cancellations. Prices are shown for {pricing?.country_name ?? "your region"}.
             </p>
           </div>
-          <div className="rounded-md border p-1">
+          <div className="rounded-md border border-border bg-muted/20 p-1 dark:bg-muted/10">
             {(["monthly", "yearly"] as BillingPeriod[]).map((next) => (
-              <button key={next} type="button" onClick={() => setPeriod(next)} className={`rounded px-4 py-2 text-sm font-semibold capitalize ${period === next ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}>
+              <button key={next} type="button" onClick={() => setPeriod(next)} className={`rounded px-4 py-2 text-sm font-semibold capitalize transition-colors ${period === next ? "bg-foreground text-background dark:bg-primary dark:text-primary-foreground" : "text-muted-foreground hover:text-foreground dark:hover:bg-muted/30"}`}>
                 {next}
               </button>
             ))}
@@ -204,7 +204,7 @@ const Billing = () => {
             const price = regional ? (period === "yearly" ? regional.yearly_price : regional.monthly_price) : (period === "yearly" ? plan.yearly_price : plan.monthly_price);
             const isCurrent = currentCode === plan.code;
             return (
-              <article key={plan.code} className={`rounded-lg border p-5 ${planTone[plan.code]}`}>
+              <article key={plan.code} className={`rounded-lg border p-5 shadow-soft transition-colors ${planTone[plan.code]}`}>
                 <div className="flex items-center justify-between">
                   <h3 className="text-xl font-bold">{plan.name}</h3>
                   {plan.code === "growth" && <span className="rounded-md bg-emerald-600 px-2 py-1 text-xs font-bold text-white">Most Popular</span>}
@@ -223,7 +223,7 @@ const Billing = () => {
                   type="button"
                   disabled={checkoutMutation.isPending || isCurrent}
                   onClick={() => setCheckoutPlan(plan)}
-                  className={`mt-6 w-full rounded-md px-4 py-2 text-sm font-bold ${isCurrent ? "bg-muted text-muted-foreground" : "bg-primary text-primary-foreground hover:bg-primary/90"} disabled:opacity-70`}
+                  className={`mt-6 w-full rounded-md px-4 py-2 text-sm font-bold transition-colors ${isCurrent ? "bg-muted text-muted-foreground dark:bg-muted/40" : "bg-primary text-primary-foreground hover:bg-primary/90"} disabled:opacity-70`}
                 >
                   {isCurrent ? "Current plan" : plan.sort_order > (billing?.plan.sort_order ?? 0) ? "Upgrade" : "Downgrade"}
                 </button>
@@ -234,11 +234,11 @@ const Billing = () => {
       </section>
 
       <section className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-lg border bg-background p-6">
+        <div className="rounded-lg border border-border bg-background p-6 dark:bg-card">
           <h2 className="text-xl font-bold">Locked Features</h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {(billing?.locked_features ?? []).slice(0, 10).map((feature) => (
-              <div key={feature.key} className="flex items-center gap-3 rounded-md border p-3 text-sm">
+              <div key={feature.key} className="flex items-center gap-3 rounded-md border border-border bg-muted/20 p-3 text-sm dark:bg-muted/10">
                 <Lock className="h-4 w-4 text-muted-foreground" />
                 <span>{feature.label}</span>
               </div>
@@ -247,19 +247,19 @@ const Billing = () => {
           </div>
         </div>
         {SHOW_BILLING_TEST_CONTROLS && (
-          <div className="rounded-lg border bg-background p-6">
+          <div className="rounded-lg border border-border bg-background p-6 dark:bg-card">
             <h2 className="text-xl font-bold">Billing Controls</h2>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <button type="button" onClick={() => actionMutation.mutate({ action: "renew" })} className="flex items-center justify-center gap-2 rounded-md border px-4 py-3 text-sm font-semibold hover:bg-muted">
+              <button type="button" onClick={() => actionMutation.mutate({ action: "renew" })} className="flex items-center justify-center gap-2 rounded-md border border-border px-4 py-3 text-sm font-semibold hover:bg-muted dark:hover:bg-muted/30">
                 <RefreshCw className="h-4 w-4" /> Renew now
               </button>
-              <button type="button" onClick={() => actionMutation.mutate({ action: "resume" })} className="flex items-center justify-center gap-2 rounded-md border px-4 py-3 text-sm font-semibold hover:bg-muted">
+              <button type="button" onClick={() => actionMutation.mutate({ action: "resume" })} className="flex items-center justify-center gap-2 rounded-md border border-border px-4 py-3 text-sm font-semibold hover:bg-muted dark:hover:bg-muted/30">
                 <ShieldCheck className="h-4 w-4" /> Resume
               </button>
-              <button type="button" onClick={() => actionMutation.mutate({ action: "cancel", payload: { at_period_end: true } })} className="flex items-center justify-center gap-2 rounded-md border border-amber-300 px-4 py-3 text-sm font-semibold text-amber-800 hover:bg-amber-50">
+              <button type="button" onClick={() => actionMutation.mutate({ action: "cancel", payload: { at_period_end: true } })} className="flex items-center justify-center gap-2 rounded-md border border-amber-300 px-4 py-3 text-sm font-semibold text-amber-800 hover:bg-amber-50 dark:border-amber-700/60 dark:text-amber-300 dark:hover:bg-amber-950/30">
                 <Zap className="h-4 w-4" /> Cancel at renewal
               </button>
-              <button type="button" onClick={() => actionMutation.mutate({ action: "cancel", payload: { at_period_end: false } })} className="flex items-center justify-center gap-2 rounded-md border border-rose-300 px-4 py-3 text-sm font-semibold text-rose-700 hover:bg-rose-50">
+              <button type="button" onClick={() => actionMutation.mutate({ action: "cancel", payload: { at_period_end: false } })} className="flex items-center justify-center gap-2 rounded-md border border-rose-300 px-4 py-3 text-sm font-semibold text-rose-700 hover:bg-rose-50 dark:border-rose-700/60 dark:text-rose-300 dark:hover:bg-rose-950/30">
                 <Crown className="h-4 w-4" /> Cancel now
               </button>
             </div>

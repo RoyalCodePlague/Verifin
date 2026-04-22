@@ -7,6 +7,7 @@ import { fetchNotificationLogsApi, type NotificationLog } from "@/lib/api";
 import { parseBusinessDate } from "@/lib/reporting";
 
 const NOTIFICATION_READ_IDS = "sp_notification_read_ids";
+const LOCAL_NOTIFICATION_TIMESTAMPS = "sp_notification_timestamps";
 
 export interface AppNotification {
   id: string;
@@ -28,6 +29,18 @@ function loadReadIds(): string[] {
 
 function persistReadIds(ids: string[]) {
   localStorage.setItem(NOTIFICATION_READ_IDS, JSON.stringify(ids));
+}
+
+function loadNotificationTimestamps(): Record<string, string> {
+  try {
+    return JSON.parse(localStorage.getItem(LOCAL_NOTIFICATION_TIMESTAMPS) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function persistNotificationTimestamps(timestamps: Record<string, string>) {
+  localStorage.setItem(LOCAL_NOTIFICATION_TIMESTAMPS, JSON.stringify(timestamps));
 }
 
 function formatRelativeTime(timestamp: string) {
@@ -60,8 +73,21 @@ export function NotificationCenter() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [history, setHistory] = useState<AppNotification[]>([]);
   const [readIds, setReadIds] = useState<string[]>(() => loadReadIds());
+  const [notificationTimestamps, setNotificationTimestamps] = useState<Record<string, string>>(() => loadNotificationTimestamps());
   const [open, setOpen] = useState(false);
+  const [, setClockMinute] = useState(() => Date.now());
   const sym = profile.currencySymbol || "R";
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setClockMinute(Date.now());
+    }, 60000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    persistNotificationTimestamps(notificationTimestamps);
+  }, [notificationTimestamps]);
 
   useEffect(() => {
     fetchNotificationLogsApi()
@@ -86,20 +112,30 @@ export function NotificationCenter() {
   };
 
   useEffect(() => {
-    const nowIso = new Date().toISOString();
     const notifs: AppNotification[] = [];
+    const nextTimestamps = { ...notificationTimestamps };
+    let timestampsChanged = false;
+    const getTimestampForId = (id: string, fallback?: string) => {
+      const existing = nextTimestamps[id];
+      if (existing) return existing;
+      const createdAt = fallback || new Date().toISOString();
+      nextTimestamps[id] = createdAt;
+      timestampsChanged = true;
+      return createdAt;
+    };
 
     if (profile.lowStockAlerts) {
       const lowStock = products.filter((p) => p.status === "low" || p.status === "out");
       lowStock.forEach((p) => {
+        const id = `low-${p.id}`;
         notifs.push({
-          id: `low-${p.id}`,
+          id,
           title: p.status === "out" ? "Out of Stock" : "Low Stock Alert",
           message: `${p.name} has ${p.stock} units remaining (reorder level: ${p.reorder})`,
           type: "low_stock",
           time: "Just now",
-          timestamp: nowIso,
-          read: readIds.includes(`low-${p.id}`),
+          timestamp: getTimestampForId(id),
+          read: readIds.includes(id),
         });
       });
     }
@@ -107,14 +143,23 @@ export function NotificationCenter() {
     const todaySales = sales.filter((sale) => isTodaySale(sale.date));
     const todayTotal = todaySales.reduce((sum, s) => sum + s.total, 0);
     if (todaySales.length > 0) {
+      const latestSaleDate = todaySales
+        .map((sale) => {
+          const parsed = parseBusinessDate(sale.date);
+          return parsed?.toISOString() || null;
+        })
+        .filter((value): value is string => Boolean(value))
+        .sort()
+        .at(-1);
+      const summaryId = `daily-summary-${new Date().toDateString()}`;
       notifs.push({
-        id: "daily-summary",
+        id: summaryId,
         title: "Daily Sales Summary",
         message: `Today's total: ${sym}${todayTotal.toLocaleString()} from ${todaySales.length} transactions`,
         type: "sales_summary",
         time: "Just now",
-        timestamp: nowIso,
-        read: readIds.includes("daily-summary"),
+        timestamp: getTimestampForId(summaryId, latestSaleDate),
+        read: readIds.includes(summaryId),
       });
     }
 
@@ -123,16 +168,21 @@ export function NotificationCenter() {
         .filter((a) => a.type === "alert" && /audit|discrepancy/i.test(a.text))
         .slice(0, 20)
         .forEach((a) => {
+          const id = `activity-${a.id}`;
           notifs.push({
-            id: `activity-${a.id}`,
+            id,
             title: /resolved/i.test(a.text) ? "Issue Resolved" : "Audit Update",
             message: a.text,
             type: "audit",
             time: a.time,
-            timestamp: nowIso,
-            read: readIds.includes(`activity-${a.id}`),
+            timestamp: getTimestampForId(id),
+            read: readIds.includes(id),
           });
         });
+    }
+
+    if (timestampsChanged) {
+      setNotificationTimestamps(nextTimestamps);
     }
 
     const merged = [...history, ...notifs]
@@ -144,7 +194,7 @@ export function NotificationCenter() {
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
     setNotifications(merged);
-  }, [products, sales, activities, profile.lowStockAlerts, profile.discrepancyAlerts, sym, readIds, history]);
+  }, [products, sales, activities, profile.lowStockAlerts, profile.discrepancyAlerts, sym, readIds, history, notificationTimestamps]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
