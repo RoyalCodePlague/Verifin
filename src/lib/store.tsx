@@ -133,6 +133,7 @@ export interface ActivityItem {
 export interface SupplyEntry {
   id: string;
   direction: "incoming" | "outgoing";
+  paymentStatus: "pending" | "partial" | "paid";
   partnerName: string;
   partnerCategory: "supplier" | "customer" | "shop" | "company" | "other";
   productId: string;
@@ -182,6 +183,7 @@ interface StoreState {
   deleteBranch: (id: string) => void;
   addActivity: (a: Omit<ActivityItem, "id">) => void;
   addSupplyEntry: (entry: Omit<SupplyEntry, "id" | "recordedAt" | "invoiceNumber" | "movementTime"> & { movementTime?: string }) => { ok: boolean; message?: string; entry?: SupplyEntry };
+  updateSupplyEntry: (id: string, updates: Partial<SupplyEntry>) => void;
   resolveDiscrepancy: (id: string) => void;
   addAudit: (a: Omit<AuditRecord, "id">) => string;
   upsertAudit: (audit: AuditRecord) => void;
@@ -257,7 +259,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [staff, setStaff] = useState<StaffMember[]>(() => loadState("staff", []));
   const [branches, setBranches] = useState<Branch[]>(() => loadState("branches", []));
   const [activities, setActivities] = useState<ActivityItem[]>(() => loadState("activities", []));
-  const [supplyEntries, setSupplyEntries] = useState<SupplyEntry[]>(() => loadState("supplyEntries", []));
+  const [supplyEntries, setSupplyEntries] = useState<SupplyEntry[]>(() =>
+    loadState<SupplyEntry[]>("supplyEntries", []).map((entry) => ({
+      ...entry,
+      paymentStatus: entry.paymentStatus || (entry.direction === "incoming" ? "paid" : "pending"),
+    }))
+  );
 
   useEffect(() => {
     if (profile.darkMode) {
@@ -483,6 +490,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return { ok: true, entry: nextEntry };
   }, [addActivity, products]);
 
+  const updateSupplyEntry = useCallback((id: string, updates: Partial<SupplyEntry>) => {
+    setSupplyEntries((prev) => prev.map((entry) => entry.id === id ? { ...entry, ...updates, id: entry.id } : entry));
+  }, []);
+
   const resolveDiscrepancy = useCallback((id: string) => {
     setDiscrepancies(prev => prev.map(d => d.id === id ? { ...d, status: "resolved" as const } : d));
   }, []);
@@ -597,7 +608,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setProfile, addProduct, upsertProduct, updateProduct, deleteProduct,
       addSale, upsertSale, deleteSale, addExpense, upsertExpense, deleteExpense,
       addCustomer, updateCustomer, deleteCustomer, addStaff, updateStaff, deleteStaff,
-      addBranch, updateBranch, deleteBranch, addActivity, addSupplyEntry, resolveDiscrepancy, addAudit, upsertAudit, updateAudit, addDiscrepancy, upsertDiscrepancy, generateWhatsAppSummary,
+      addBranch, updateBranch, deleteBranch, addActivity, addSupplyEntry, updateSupplyEntry, resolveDiscrepancy, addAudit, upsertAudit, updateAudit, addDiscrepancy, upsertDiscrepancy, generateWhatsAppSummary,
       hydrateFromServer, resetForLogout,
     }}>
       {children}
