@@ -130,6 +130,24 @@ export interface ActivityItem {
   type: "sale" | "restock" | "expense" | "alert";
 }
 
+export interface SupplyEntry {
+  id: string;
+  direction: "incoming" | "outgoing";
+  partnerName: string;
+  partnerCategory: "supplier" | "customer" | "shop" | "company" | "other";
+  productId: string;
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+  unitCost: number;
+  currency: string;
+  movementDate: string;
+  movementTime: string;
+  recordedAt: string;
+  notes?: string;
+  invoiceNumber: string;
+}
+
 interface StoreState {
   profile: BusinessProfile;
   products: Product[];
@@ -141,6 +159,7 @@ interface StoreState {
   staff: StaffMember[];
   branches: Branch[];
   activities: ActivityItem[];
+  supplyEntries: SupplyEntry[];
   setProfile: (p: BusinessProfile) => void;
   addProduct: (p: Omit<Product, "id" | "status">) => string;
   upsertProduct: (product: Product) => void;
@@ -162,6 +181,7 @@ interface StoreState {
   updateBranch: (id: string, b: Partial<Branch>) => void;
   deleteBranch: (id: string) => void;
   addActivity: (a: Omit<ActivityItem, "id">) => void;
+  addSupplyEntry: (entry: Omit<SupplyEntry, "id" | "recordedAt" | "invoiceNumber" | "movementTime"> & { movementTime?: string }) => { ok: boolean; message?: string; entry?: SupplyEntry };
   resolveDiscrepancy: (id: string) => void;
   addAudit: (a: Omit<AuditRecord, "id">) => string;
   upsertAudit: (audit: AuditRecord) => void;
@@ -185,6 +205,13 @@ interface StoreState {
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 const today = () => new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+const nowTime = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+function formatInvoiceNumber(direction: SupplyEntry["direction"]) {
+  const now = new Date();
+  const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}${String(now.getSeconds()).padStart(2, "0")}`;
+  return `${direction === "incoming" ? "SUP" : "INV"}-${stamp}`;
+}
 
 const defaultProfile: BusinessProfile = {
   name: "",
@@ -230,6 +257,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [staff, setStaff] = useState<StaffMember[]>(() => loadState("staff", []));
   const [branches, setBranches] = useState<Branch[]>(() => loadState("branches", []));
   const [activities, setActivities] = useState<ActivityItem[]>(() => loadState("activities", []));
+  const [supplyEntries, setSupplyEntries] = useState<SupplyEntry[]>(() => loadState("supplyEntries", []));
 
   useEffect(() => {
     if (profile.darkMode) {
@@ -249,6 +277,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => saveState("staff", staff), [staff]);
   useEffect(() => saveState("branches", branches), [branches]);
   useEffect(() => saveState("activities", activities), [activities]);
+  useEffect(() => saveState("supplyEntries", supplyEntries), [supplyEntries]);
 
   const setProfile = useCallback((p: BusinessProfile) => setProfileState(p), []);
   
@@ -402,6 +431,58 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }, ...prev].slice(0, 50));
   }, []);
 
+  const addSupplyEntry = useCallback((entry: Omit<SupplyEntry, "id" | "recordedAt" | "invoiceNumber" | "movementTime"> & { movementTime?: string }) => {
+    const existingProduct = products.find((product) => product.id === entry.productId);
+    if (!existingProduct) {
+      return { ok: false, message: "Select a valid product." };
+    }
+
+    if (entry.quantity <= 0) {
+      return { ok: false, message: "Quantity must be greater than zero." };
+    }
+
+    if (entry.direction === "outgoing" && existingProduct.stock < entry.quantity) {
+      return { ok: false, message: `Only ${existingProduct.stock} ${existingProduct.name} in stock.` };
+    }
+
+    const recordedAt = new Date().toISOString();
+    const nextEntry: SupplyEntry = {
+      ...entry,
+      id: uid(),
+      productName: existingProduct.name,
+      movementTime: entry.movementTime || nowTime(),
+      recordedAt,
+      invoiceNumber: formatInvoiceNumber(entry.direction),
+    };
+
+    setSupplyEntries(prev => [nextEntry, ...prev]);
+    setProducts(prev => prev.map((product) => {
+      if (product.id !== entry.productId) return product;
+      const nextStock = entry.direction === "incoming"
+        ? product.stock + entry.quantity
+        : Math.max(0, product.stock - entry.quantity);
+      return {
+        ...product,
+        stock: nextStock,
+        costPrice: entry.direction === "incoming" ? entry.unitCost : product.costPrice,
+        supplierName: entry.direction === "incoming" ? entry.partnerName : product.supplierName,
+        lastRestocked: entry.direction === "incoming" ? entry.movementDate : product.lastRestocked,
+        status: computeStatus(nextStock, product.reorder),
+      };
+    }));
+
+    addActivity({
+      text: entry.direction === "incoming"
+        ? `Received ${entry.quantity} ${existingProduct.name} from ${entry.partnerName}`
+        : `Supplied ${entry.quantity} ${existingProduct.name} to ${entry.partnerName}`,
+      time: entry.movementTime || "Just now",
+      timestamp: recordedAt,
+      type: "restock",
+    });
+
+    return { ok: true, entry: nextEntry };
+  }, [addActivity, products]);
+
   const resolveDiscrepancy = useCallback((id: string) => {
     setDiscrepancies(prev => prev.map(d => d.id === id ? { ...d, status: "resolved" as const } : d));
   }, []);
@@ -488,10 +569,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setDiscrepancies(data.discrepancies);
       setCustomers(data.customers);
       setStaff(data.staff);
-      setBranches(data.branches);
-    },
-    []
-  );
+    setBranches(data.branches);
+  },
+  []
+);
 
   const resetForLogout = useCallback(() => {
     setProfileState(defaultProfile);
@@ -504,18 +585,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setStaff([]);
     setBranches([]);
     setActivities([]);
-    ["profile", "products", "sales", "expenses", "audits", "discrepancies", "customers", "staff", "branches", "activities"].forEach((key) => {
+    setSupplyEntries([]);
+    ["profile", "products", "sales", "expenses", "audits", "discrepancies", "customers", "staff", "branches", "activities", "supplyEntries"].forEach((key) => {
       localStorage.removeItem(`sp_${key}`);
     });
   }, []);
 
   return (
     <StoreContext.Provider value={{
-      profile, products, sales, expenses, audits, discrepancies, customers, staff, branches, activities,
+      profile, products, sales, expenses, audits, discrepancies, customers, staff, branches, activities, supplyEntries,
       setProfile, addProduct, upsertProduct, updateProduct, deleteProduct,
       addSale, upsertSale, deleteSale, addExpense, upsertExpense, deleteExpense,
       addCustomer, updateCustomer, deleteCustomer, addStaff, updateStaff, deleteStaff,
-      addBranch, updateBranch, deleteBranch, addActivity, resolveDiscrepancy, addAudit, upsertAudit, updateAudit, addDiscrepancy, upsertDiscrepancy, generateWhatsAppSummary,
+      addBranch, updateBranch, deleteBranch, addActivity, addSupplyEntry, resolveDiscrepancy, addAudit, upsertAudit, updateAudit, addDiscrepancy, upsertDiscrepancy, generateWhatsAppSummary,
       hydrateFromServer, resetForLogout,
     }}>
       {children}
