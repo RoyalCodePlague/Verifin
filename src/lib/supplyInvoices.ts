@@ -1,5 +1,6 @@
 import type { BusinessProfile, SupplyEntry } from "@/lib/store";
 import { symbolForCurrency } from "@/lib/currency";
+import { supplyInvoiceAmountBase, supplyInvoiceCostAmountBase } from "@/lib/reporting";
 
 export function formatSupplyDate(date: string) {
   if (!date) return "Not set";
@@ -53,6 +54,8 @@ export function buildInvoiceHtml(entry: SupplyEntry, profile: BusinessProfile) {
   const currencySymbol = symbolForCurrency(entry.currency);
   const total = invoiceAmount(entry).toFixed(2);
   const totalCost = invoiceCostAmount(entry).toFixed(2);
+  const totalBase = supplyInvoiceAmountBase(entry, profile.currency).toFixed(2);
+  const totalCostBase = supplyInvoiceCostAmountBase(entry, profile.currency).toFixed(2);
   const businessName = profile.name || "Verifin";
 
   return `<!doctype html>
@@ -242,6 +245,7 @@ export function buildInvoiceHtml(entry: SupplyEntry, profile: BusinessProfile) {
               <div class="label">Dates</div>
               <div class="value">${escapeHtml(formatSupplyDate(entry.movementDate))} ${escapeHtml(entry.movementTime)}</div>
               <div style="margin-top: 8px; color: var(--muted); font-size: 14px;">Recorded ${escapeHtml(formatSupplyDateTime(entry.recordedAt))}</div>
+              <div style="margin-top: 8px; color: var(--muted); font-size: 14px;">${entry.currency === profile.currency ? `1 ${escapeHtml(entry.currency)} = 1 ${escapeHtml(profile.currency)}` : `1 ${escapeHtml(entry.currency)} = ${(entry.fxRateToBase || 0).toLocaleString(undefined, { maximumFractionDigits: 6 })} ${escapeHtml(profile.currency)}`}</div>
             </div>
           </div>
 
@@ -276,6 +280,7 @@ export function buildInvoiceHtml(entry: SupplyEntry, profile: BusinessProfile) {
             <div class="totals-card">
               <div class="total-row"><span>Subtotal</span><strong>${currencySymbol}${total}</strong></div>
               <div class="total-row"><span>Total Cost</span><strong>${currencySymbol}${totalCost}</strong></div>
+              ${entry.currency !== profile.currency ? `<div class="total-row"><span>Base Total</span><strong>${escapeHtml(profile.currencySymbol || symbolForCurrency(profile.currency))}${totalBase}</strong></div><div class="total-row"><span>Base Cost</span><strong>${escapeHtml(profile.currencySymbol || symbolForCurrency(profile.currency))}${totalCostBase}</strong></div>` : ""}
               <div class="total-row"><span>Invoice Total</span><strong>${currencySymbol}${total}</strong></div>
             </div>
           </div>
@@ -302,6 +307,9 @@ export async function downloadSupplyInvoicePdf(entry: SupplyEntry, profile: Busi
   const currencySymbol = symbolForCurrency(entry.currency);
   const total = invoiceAmount(entry);
   const totalCost = invoiceCostAmount(entry);
+  const baseSymbol = profile.currencySymbol || symbolForCurrency(profile.currency);
+  const totalBase = supplyInvoiceAmountBase(entry, profile.currency);
+  const totalCostBase = supplyInvoiceCostAmountBase(entry, profile.currency);
   const pageBottom = pageHeight - 44;
 
   const drawWrappedText = (text: string, x: number, y: number, width: number, options?: { bold?: boolean; size?: number; color?: [number, number, number] }) => {
@@ -363,6 +371,9 @@ export async function downloadSupplyInvoicePdf(entry: SupplyEntry, profile: Busi
   const rightBoxHeight = drawInfoBox(margin + boxWidth + boxGap, "Dates", [
     `${formatSupplyDate(entry.movementDate)} ${entry.movementTime}`,
     `Recorded ${formatSupplyDateTime(entry.recordedAt)}`,
+    entry.currency === profile.currency
+      ? `1 ${entry.currency} = 1 ${profile.currency}`
+      : `1 ${entry.currency} = ${(entry.fxRateToBase || 0).toLocaleString(undefined, { maximumFractionDigits: 6 })} ${profile.currency}`,
   ]);
 
   y += Math.max(leftBoxHeight, rightBoxHeight) + 24;
@@ -416,7 +427,17 @@ export async function downloadSupplyInvoicePdf(entry: SupplyEntry, profile: Busi
   const notesWidth = contentWidth * 0.57;
   const totalsWidth = contentWidth - notesWidth - boxGap;
   const noteLines = doc.splitTextToSize(entry.notes?.trim() || "No extra notes recorded for this invoice.", notesWidth - 32);
-  const notesHeight = Math.max(132, 44 + noteLines.length * 14);
+  const totalRows = [
+    ["Subtotal", `${currencySymbol}${total.toFixed(2)}`],
+    ["Total Cost", `${currencySymbol}${totalCost.toFixed(2)}`],
+    ...(entry.currency !== profile.currency ? [
+      ["Base Total", `${baseSymbol}${totalBase.toFixed(2)}`],
+      ["Base Cost", `${baseSymbol}${totalCostBase.toFixed(2)}`],
+    ] as Array<[string, string]> : []),
+    ["Invoice Total", `${currencySymbol}${total.toFixed(2)}`],
+  ];
+  const totalsHeight = Math.max(132, totalRows.length * 38 + 18);
+  const notesHeight = Math.max(132, 44 + noteLines.length * 14, totalsHeight);
 
   if (y + notesHeight > pageBottom) {
     doc.addPage();
@@ -434,21 +455,16 @@ export async function downloadSupplyInvoicePdf(entry: SupplyEntry, profile: Busi
 
   const totalsX = margin + notesWidth + boxGap;
   doc.roundedRect(totalsX, y, totalsWidth, notesHeight, 18, 18, "S");
-  const totalRows = [
-    ["Subtotal", `${currencySymbol}${total.toFixed(2)}`],
-    ["Total Cost", `${currencySymbol}${totalCost.toFixed(2)}`],
-    ["Invoice Total", `${currencySymbol}${total.toFixed(2)}`],
-  ];
   totalRows.forEach((row, index) => {
     const rowY = y + index * 38;
-    if (index === 2) {
+    if (index === totalRows.length - 1) {
       doc.setFillColor(255, 244, 221);
       doc.roundedRect(totalsX + 1, rowY + 1, totalsWidth - 2, 36, 0, 0, "F");
     }
     if (index > 0) doc.line(totalsX, rowY, totalsX + totalsWidth, rowY);
     doc.setTextColor(92, 103, 125);
-    doc.setFont("helvetica", index === 2 ? "bold" : "normal");
-    doc.setFontSize(index === 2 ? 12 : 10);
+    doc.setFont("helvetica", index === totalRows.length - 1 ? "bold" : "normal");
+    doc.setFontSize(index === totalRows.length - 1 ? 12 : 10);
     doc.text(row[0], totalsX + 16, rowY + 24);
     doc.setTextColor(20, 33, 61);
     doc.text(row[1], totalsX + totalsWidth - 16, rowY + 24, { align: "right" });

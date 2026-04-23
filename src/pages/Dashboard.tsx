@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { useStore } from "@/lib/store";
-import { buildWeeklyFinanceData, expenseBaseAmount, formatMoney, parseBusinessDate } from "@/lib/reporting";
+import { buildWeeklyFinanceData, expenseBaseAmount, formatMoney, parseBusinessDate, supplyInvoiceAmountBase } from "@/lib/reporting";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { fetchRuleInsightsApi, fetchWhatsAppSummaryApi } from "@/lib/api";
@@ -52,10 +52,10 @@ const Dashboard = () => {
   const todaySupplyEntries = supplyEntries.filter((entry) => isSameCalendarDay(entry.movementDate, new Date()));
   const todayPaidSupply = todaySupplyEntries
     .filter((entry) => entry.direction === "outgoing" && entry.paymentStatus === "paid")
-    .reduce((sum, entry) => sum + (entry.quantity * entry.unitPrice), 0);
+    .reduce((sum, entry) => sum + supplyInvoiceAmountBase(entry, profile.currency), 0);
   const openSupplyInvoiceValue = supplyEntries
     .filter((entry) => entry.direction === "outgoing" && entry.paymentStatus !== "paid")
-    .reduce((sum, entry) => sum + (entry.quantity * entry.unitPrice), 0);
+    .reduce((sum, entry) => sum + supplyInvoiceAmountBase(entry, profile.currency), 0);
   const outstandingSupplyCount = supplyEntries.filter((entry) => entry.direction === "outgoing" && entry.paymentStatus !== "paid").length;
   
   const yesterdayTotal = sales
@@ -63,14 +63,14 @@ const Dashboard = () => {
     .reduce((sum, s) => sum + s.total, 0);
   const yesterdayPaidSupply = supplyEntries
     .filter((entry) => isSameCalendarDay(entry.movementDate, previousDay) && entry.direction === "outgoing" && entry.paymentStatus === "paid")
-    .reduce((sum, entry) => sum + (entry.quantity * entry.unitPrice), 0);
+    .reduce((sum, entry) => sum + supplyInvoiceAmountBase(entry, profile.currency), 0);
   const salesChange = yesterdayTotal > 0 ? Math.round(((todayTotal - yesterdayTotal) / yesterdayTotal) * 100) : null;
   const supplyRevenueChange = yesterdayPaidSupply > 0 ? Math.round(((todayPaidSupply - yesterdayPaidSupply) / yesterdayPaidSupply) * 100) : null;
   const paidSupplyRevenue = supplyEntries
     .filter((entry) => entry.direction === "outgoing" && entry.paymentStatus === "paid")
     .map((entry) => ({
       date: entry.movementDate,
-      total: entry.quantity * entry.unitPrice,
+      total: supplyInvoiceAmountBase(entry, profile.currency),
     }));
   
   const inventoryValue = products.reduce((sum, p) => sum + p.stock * p.costPrice, 0);
@@ -106,7 +106,7 @@ const Dashboard = () => {
 
   const salesVsExpensesData = useMemo(
     () => buildWeeklyFinanceData(sales, expenses, new Date(), paidSupplyRevenue),
-    [expenses, paidSupplyRevenue, sales]
+    [expenses, paidSupplyRevenue, profile.currency, sales]
   );
 
   const metrics = [

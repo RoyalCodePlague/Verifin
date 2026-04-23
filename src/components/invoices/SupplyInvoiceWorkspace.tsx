@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { useStore } from "@/lib/store";
 import { symbolForCurrency } from "@/lib/currency";
+import { supplyInvoiceAmountBase, supplyInvoiceCostAmountBase } from "@/lib/reporting";
 import {
   buildInvoiceHtml,
   downloadSupplyInvoicePdf,
@@ -75,14 +76,14 @@ export function SupplyInvoiceWorkspace({
 
   const totals = useMemo(() => {
     return filteredInvoices.reduce((acc, entry) => {
-      const total = invoiceAmount(entry);
-      acc.total += total;
-      if (entry.paymentStatus === "paid") acc.paid += total;
-      if (entry.paymentStatus === "partial") acc.partial += total;
-      if (entry.paymentStatus === "pending") acc.pending += total;
+      const totalBase = supplyInvoiceAmountBase(entry, profile.currency);
+      acc.total += totalBase;
+      if (entry.paymentStatus === "paid") acc.paid += totalBase;
+      if (entry.paymentStatus === "partial") acc.partial += totalBase;
+      if (entry.paymentStatus === "pending") acc.pending += totalBase;
       return acc;
     }, { total: 0, paid: 0, partial: 0, pending: 0 });
-  }, [filteredInvoices]);
+  }, [filteredInvoices, profile.currency]);
 
   const baseSymbol = profile.currencySymbol || symbolForCurrency(profile.currency);
 
@@ -105,7 +106,7 @@ export function SupplyInvoiceWorkspace({
     {
       label: "Total Value",
       value: `${baseSymbol}${totals.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      helper: "Across filtered invoices",
+      helper: `Across filtered invoices in ${profile.currency}`,
     },
     {
       label: "Paid",
@@ -190,6 +191,11 @@ export function SupplyInvoiceWorkspace({
                     <p className="text-xs text-muted-foreground">
                       Cost {symbolForCurrency(entry.currency)}{invoiceCostAmount(entry).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
+                    {entry.currency !== profile.currency ? (
+                      <p className="text-xs text-muted-foreground">
+                        Base {baseSymbol}{supplyInvoiceAmountBase(entry, profile.currency).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                    ) : null}
                   </div>
 
                   <select
@@ -252,6 +258,9 @@ export function SupplyInvoiceWorkspace({
                       <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Timeline</p>
                       <p className="mt-2 text-lg font-semibold break-words">{formatSupplyDate(selectedInvoice.movementDate)} at {selectedInvoice.movementTime}</p>
                       <p className="mt-1 text-sm text-muted-foreground">Recorded {formatSupplyDateTime(selectedInvoice.recordedAt)}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Rate: {selectedInvoice.currency === profile.currency ? `1 ${selectedInvoice.currency} = 1 ${profile.currency}` : `1 ${selectedInvoice.currency} = ${(selectedInvoice.fxRateToBase || 0).toLocaleString(undefined, { maximumFractionDigits: 6 })} ${profile.currency}`}
+                      </p>
                     </div>
                   </div>
 
@@ -294,6 +303,12 @@ export function SupplyInvoiceWorkspace({
                         <span className="text-muted-foreground">Total Cost</span>
                         <span className="font-semibold">{symbolForCurrency(selectedInvoice.currency)}{invoiceCostAmount(selectedInvoice).toFixed(2)}</span>
                       </div>
+                      {selectedInvoice.currency !== profile.currency ? (
+                        <div className="flex items-center justify-between border-b border-border py-3 text-sm">
+                          <span className="text-muted-foreground">Base Total</span>
+                          <span className="font-semibold">{baseSymbol}{supplyInvoiceAmountBase(selectedInvoice, profile.currency).toFixed(2)}</span>
+                        </div>
+                      ) : null}
                       <div className="flex items-center justify-between pt-4">
                         <span className="font-medium">Invoice Total</span>
                         <span className="font-display text-xl font-bold sm:text-2xl">{symbolForCurrency(selectedInvoice.currency)}{invoiceAmount(selectedInvoice).toFixed(2)}</span>

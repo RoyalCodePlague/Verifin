@@ -142,6 +142,7 @@ export interface SupplyEntry {
   unitPrice: number;
   unitCost: number;
   currency: string;
+  fxRateToBase?: number;
   movementDate: string;
   movementTime: string;
   recordedAt: string;
@@ -262,6 +263,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [supplyEntries, setSupplyEntries] = useState<SupplyEntry[]>(() =>
     loadState<SupplyEntry[]>("supplyEntries", []).map((entry) => ({
       ...entry,
+      currency: entry.currency || defaultProfile.currency,
+      fxRateToBase: entry.fxRateToBase || 1,
       paymentStatus: entry.paymentStatus || (entry.direction === "incoming" ? "paid" : "pending"),
     }))
   );
@@ -457,6 +460,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ...entry,
       id: uid(),
       productName: existingProduct.name,
+      fxRateToBase: entry.currency === profile.currency ? 1 : entry.fxRateToBase || profile.exchangeRates?.[entry.currency] || 0,
       movementTime: entry.movementTime || nowTime(),
       recordedAt,
       invoiceNumber: formatInvoiceNumber(entry.direction),
@@ -472,6 +476,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ...product,
         stock: nextStock,
         costPrice: entry.direction === "incoming" ? entry.unitCost : product.costPrice,
+        costCurrency: entry.direction === "incoming" ? entry.currency : product.costCurrency,
+        costFxRateToBase: entry.direction === "incoming"
+          ? (entry.currency === profile.currency ? 1 : entry.fxRateToBase || profile.exchangeRates?.[entry.currency] || 0)
+          : product.costFxRateToBase,
         supplierName: entry.direction === "incoming" ? entry.partnerName : product.supplierName,
         lastRestocked: entry.direction === "incoming" ? entry.movementDate : product.lastRestocked,
         status: computeStatus(nextStock, product.reorder),
@@ -488,7 +496,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     });
 
     return { ok: true, entry: nextEntry };
-  }, [addActivity, products]);
+  }, [addActivity, products, profile.currency, profile.exchangeRates]);
 
   const updateSupplyEntry = useCallback((id: string, updates: Partial<SupplyEntry>) => {
     setSupplyEntries((prev) => prev.map((entry) => entry.id === id ? { ...entry, ...updates, id: entry.id } : entry));

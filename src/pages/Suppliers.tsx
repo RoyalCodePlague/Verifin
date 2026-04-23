@@ -66,6 +66,8 @@ const Suppliers = () => {
     partnerCategory: "supplier" as "supplier" | "customer" | "shop" | "company" | "other",
     productId: "",
     quantity: "1",
+    currency: profile.currency,
+    fxRate: "",
     unitPrice: "",
     unitCost: "",
     movementDate: todayIso(),
@@ -107,6 +109,14 @@ const Suppliers = () => {
     setOrderForm((current) => ({ ...current, currency: profile.currency }));
   }, [profile.currency]);
 
+  useEffect(() => {
+    setEntryForm((current) => ({
+      ...current,
+      currency: current.currency || profile.currency,
+      fxRate: current.currency === profile.currency ? "" : current.fxRate,
+    }));
+  }, [profile.currency]);
+
   const selectedProduct = useMemo(
     () => products.find((product) => product.id === entryForm.productId),
     [entryForm.productId, products]
@@ -119,6 +129,14 @@ const Suppliers = () => {
   const outboundEntries = supplyEntries.filter((entry) => entry.direction === "outgoing");
   const totalIncomingUnits = inboundEntries.reduce((sum, entry) => sum + entry.quantity, 0);
   const totalOutgoingUnits = outboundEntries.reduce((sum, entry) => sum + entry.quantity, 0);
+  const entryCurrency = entryForm.currency || profile.currency;
+  const entryCurrencySymbol = symbolForCurrency(entryCurrency);
+  const entryFxRate = entryCurrency === profile.currency
+    ? 1
+    : (Number(entryForm.fxRate) || profile.exchangeRates?.[entryCurrency] || 0);
+  const entryTotalValue = (Number(entryForm.quantity) || 0) * (Number(entryForm.unitPrice) || 0);
+  const entryTotalCost = (Number(entryForm.quantity) || 0) * (Number(entryForm.unitCost) || 0);
+  const entryTotalBaseValue = entryTotalValue * entryFxRate;
 
   const saveSupplier = async () => {
     try {
@@ -136,6 +154,14 @@ const Suppliers = () => {
     const quantity = Number(entryForm.quantity) || 0;
     const unitPrice = Number(entryForm.unitPrice) || 0;
     const unitCost = Number(entryForm.unitCost) || 0;
+    const fxRateToBase = entryForm.currency === profile.currency
+      ? 1
+      : (Number(entryForm.fxRate) || profile.exchangeRates?.[entryForm.currency] || 0);
+
+    if (entryForm.currency !== profile.currency && fxRateToBase <= 0) {
+      toast.error(`Enter a valid rate for ${entryForm.currency}`);
+      return;
+    }
 
     const result = addSupplyEntry({
       direction: entryForm.direction,
@@ -147,7 +173,8 @@ const Suppliers = () => {
       quantity,
       unitPrice,
       unitCost,
-      currency: profile.currency,
+      currency: entryForm.currency,
+      fxRateToBase,
       movementDate: entryForm.movementDate || todayIso(),
       movementTime: entryForm.movementTime || timeNow(),
       notes: entryForm.notes.trim(),
@@ -165,6 +192,8 @@ const Suppliers = () => {
       partnerCategory: "supplier",
       productId: "",
       quantity: "1",
+      currency: profile.currency,
+      fxRate: "",
       unitPrice: "",
       unitCost: "",
       movementDate: todayIso(),
@@ -384,12 +413,37 @@ const Suppliers = () => {
                     <Input type="number" min="1" value={entryForm.quantity} onChange={(e) => setEntryForm((current) => ({ ...current, quantity: e.target.value }))} className="mt-1" />
                   </div>
                   <div>
-                    <Label>Unit Price ({sym})</Label>
+                    <Label>Unit Price ({entryCurrencySymbol})</Label>
                     <Input type="number" min="0" value={entryForm.unitPrice} onChange={(e) => setEntryForm((current) => ({ ...current, unitPrice: e.target.value }))} className="mt-1" />
                   </div>
                   <div>
-                    <Label>Unit Cost ({sym})</Label>
+                    <Label>Unit Cost ({entryCurrencySymbol})</Label>
                     <Input type="number" min="0" value={entryForm.unitCost} onChange={(e) => setEntryForm((current) => ({ ...current, unitCost: e.target.value }))} className="mt-1" />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <Label>Currency</Label>
+                    <select
+                      value={entryForm.currency}
+                      onChange={(e) => setEntryForm((current) => ({ ...current, currency: e.target.value, fxRate: "" }))}
+                      className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      {enabledCurrencies.map((code) => <option key={code} value={code}>{code}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <Label>Rate to {profile.currency}</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.000001"
+                      value={entryForm.currency === profile.currency ? "1" : (entryForm.fxRate || String(profile.exchangeRates?.[entryForm.currency] ?? ""))}
+                      onChange={(e) => setEntryForm((current) => ({ ...current, fxRate: e.target.value }))}
+                      className="mt-1"
+                      disabled={entryForm.currency === profile.currency}
+                    />
                   </div>
                 </div>
 
@@ -411,8 +465,16 @@ const Suppliers = () => {
 
                 <div className="rounded-lg bg-muted/50 p-3 text-sm">
                   <p>
-                    Total value: <span className="font-semibold">{sym}{(((Number(entryForm.quantity) || 0) * (Number(entryForm.unitPrice) || 0))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    Total value: <span className="font-semibold">{entryCurrencySymbol}{entryTotalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </p>
+                  <p className="mt-1 text-muted-foreground">
+                    Total cost: {entryCurrencySymbol}{entryTotalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                  {entryCurrency !== profile.currency ? (
+                    <p className="mt-1 text-muted-foreground">
+                      Base value: {sym}{entryTotalBaseValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  ) : null}
                   <p className="mt-1 text-muted-foreground">
                     This will {entryForm.direction === "incoming" ? "increase" : "decrease"} inventory immediately and save the exact time entered.
                   </p>
@@ -455,6 +517,11 @@ const Suppliers = () => {
                         <p className="mt-1 text-xs text-muted-foreground">
                           Price {symbolForCurrency(entry.currency)}{entry.unitPrice.toFixed(2)} each | Cost {symbolForCurrency(entry.currency)}{entry.unitCost.toFixed(2)} each
                         </p>
+                        {entry.currency !== profile.currency ? (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Base total {sym}{((entry.quantity * entry.unitPrice) * (entry.fxRateToBase || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </p>
+                        ) : null}
                         {entry.notes ? <p className="mt-2 text-xs text-muted-foreground">{entry.notes}</p> : null}
                       </div>
                       <div className="text-left sm:text-right">

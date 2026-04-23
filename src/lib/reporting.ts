@@ -13,6 +13,14 @@ export type WeeklyRevenueEntry = {
   total: number;
 };
 
+export type SupplyAmountEntry = {
+  quantity: number;
+  unitPrice: number;
+  unitCost?: number;
+  currency: string;
+  fxRateToBase?: number;
+};
+
 export function parseBusinessDate(value?: string): Date | null {
   if (!value) return null;
   if (value === "Today") return new Date();
@@ -33,12 +41,31 @@ function startOfWeek(date: Date) {
   return d;
 }
 
-function isSameWeek(date: Date, reference = new Date()) {
-  return startOfWeek(date).getTime() === startOfWeek(reference).getTime();
+function startOfDay(date: Date) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
 }
 
-function weekDayName(date: Date) {
-  return WEEK_DAYS[(date.getDay() + 6) % 7];
+function addDays(date: Date, amount: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + amount);
+  return next;
+}
+
+function formatWeekBucket(date: Date) {
+  return `${WEEK_DAYS[(date.getDay() + 6) % 7]} ${date.getDate()}`;
+}
+
+function buildRollingWeek(reference = new Date()) {
+  const end = startOfDay(reference);
+  const start = addDays(end, -6);
+  const days = Array.from({ length: 7 }, (_, index) => addDays(start, index));
+  const labels = new Map(
+    days.map((date) => [startOfDay(date).getTime(), formatWeekBucket(date)])
+  );
+
+  return { start, end, labels };
 }
 
 export function buildWeeklyFinanceData(
@@ -47,29 +74,39 @@ export function buildWeeklyFinanceData(
   reference = new Date(),
   extraRevenue: WeeklyRevenueEntry[] = []
 ): WeeklyFinancePoint[] {
+  const { start, end, labels } = buildRollingWeek(reference);
   const totals = Object.fromEntries(
-    WEEK_DAYS.map((day) => [day, { sales: 0, expenses: 0 }])
+    Array.from(labels.values()).map((day) => [day, { sales: 0, expenses: 0 }])
   ) as Record<string, { sales: number; expenses: number }>;
 
+  const resolveBucket = (value?: string) => {
+    const date = parseBusinessDate(value);
+    if (!date) return null;
+    const normalized = startOfDay(date);
+    if (normalized < start || normalized > end) return null;
+    const key = labels.get(normalized.getTime());
+    return key ? { date: normalized, key } : null;
+  };
+
   sales.forEach((sale) => {
-    const date = parseBusinessDate(sale.date);
-    if (!date || !isSameWeek(date, reference)) return;
-    totals[weekDayName(date)].sales += sale.total;
+    const bucket = resolveBucket(sale.date);
+    if (!bucket) return;
+    totals[bucket.key].sales += sale.total;
   });
 
   extraRevenue.forEach((entry) => {
-    const date = parseBusinessDate(entry.date);
-    if (!date || !isSameWeek(date, reference)) return;
-    totals[weekDayName(date)].sales += entry.total;
+    const bucket = resolveBucket(entry.date);
+    if (!bucket) return;
+    totals[bucket.key].sales += entry.total;
   });
 
   expenses.forEach((expense) => {
-    const date = parseBusinessDate(expense.date);
-    if (!date || !isSameWeek(date, reference)) return;
-    totals[weekDayName(date)].expenses += expense.amountBase ?? expense.amount;
+    const bucket = resolveBucket(expense.date);
+    if (!bucket) return;
+    totals[bucket.key].expenses += expense.amountBase ?? expense.amount;
   });
 
-  return WEEK_DAYS.map((day) => ({
+  return Array.from(labels.values()).map((day) => ({
     day,
     sales: totals[day].sales,
     expenses: totals[day].expenses,
@@ -78,6 +115,27 @@ export function buildWeeklyFinanceData(
 
 export function expenseBaseAmount(expense: Expense) {
   return expense.amountBase ?? expense.amount;
+}
+
+export function supplyUnitPriceBase(entry: SupplyAmountEntry, baseCurrency: string) {
+  if (entry.currency === baseCurrency) return entry.unitPrice;
+  const fxRate = entry.fxRateToBase || 0;
+  return fxRate > 0 ? entry.unitPrice * fxRate : entry.unitPrice;
+}
+
+export function supplyUnitCostBase(entry: SupplyAmountEntry, baseCurrency: string) {
+  const unitCost = entry.unitCost ?? 0;
+  if (entry.currency === baseCurrency) return unitCost;
+  const fxRate = entry.fxRateToBase || 0;
+  return fxRate > 0 ? unitCost * fxRate : unitCost;
+}
+
+export function supplyInvoiceAmountBase(entry: SupplyAmountEntry, baseCurrency: string) {
+  return entry.quantity * supplyUnitPriceBase(entry, baseCurrency);
+}
+
+export function supplyInvoiceCostAmountBase(entry: SupplyAmountEntry, baseCurrency: string) {
+  return entry.quantity * supplyUnitCostBase(entry, baseCurrency);
 }
 
 export function salePaymentBreakdown(sales: Sale[], baseCurrency = "ZAR") {

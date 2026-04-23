@@ -4,14 +4,14 @@ import { Download, FileText, BarChart3, Package, AlertTriangle, Users, Receipt, 
 import { useStore } from "@/lib/store";
 import { toast } from "sonner";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { buildWeeklyFinanceData, csvCell, expenseBaseAmount, formatMoney, parseBusinessDate, salePaymentBreakdown } from "@/lib/reporting";
+import { buildWeeklyFinanceData, csvCell, expenseBaseAmount, formatMoney, parseBusinessDate, salePaymentBreakdown, supplyInvoiceAmountBase } from "@/lib/reporting";
 import { LockedBadge, useFeatureAccess, useUpgradePrompt } from "@/lib/features";
 import { symbolForCurrency } from "@/lib/currency";
 
 const COLORS = ["hsl(152 55% 28%)", "hsl(38 92% 50%)", "hsl(0 72% 51%)", "hsl(200 70% 50%)", "hsl(280 60% 50%)"];
 
 const Reports = () => {
-  const { sales, expenses, products, discrepancies, customers, profile } = useStore();
+  const { sales, expenses, products, discrepancies, customers, profile, supplyEntries } = useStore();
   const { canUse } = useFeatureAccess();
   const promptUpgrade = useUpgradePrompt();
   const sym = profile.currencySymbol || "R";
@@ -22,20 +22,33 @@ const Reports = () => {
   const todaySales = sales.filter((sale) => isToday(sale.date));
   const todaySalesTotal = todaySales.reduce((sum, s) => sum + s.total, 0);
   const totalExpenses = expenses.reduce((sum, e) => sum + expenseBaseAmount(e), 0);
-  const totalSales = sales.reduce((sum, s) => sum + s.total, 0);
+  const paidSupplyRevenue = supplyEntries
+    .filter((entry) => entry.direction === "outgoing" && entry.paymentStatus === "paid")
+    .map((entry) => ({
+      date: entry.movementDate,
+      total: supplyInvoiceAmountBase(entry, profile.currency),
+    }));
+  const totalSales = sales.reduce((sum, s) => sum + s.total, 0) + paidSupplyRevenue.reduce((sum, entry) => sum + entry.total, 0);
   const totalCostOfGoods = sales.reduce((sum, s) => sum + (s.totalCost || 0), 0);
   const grossProfit = sales.reduce((sum, s) => sum + (s.grossProfit ?? s.total), 0);
   const inventoryCost = products.reduce((sum, p) => sum + p.stock * (p.costPrice || 0), 0);
   const inventoryMarginValue = products.reduce((sum, p) => sum + p.stock * (p.price - (p.costPrice || 0)), 0);
-  const weeklyData = buildWeeklyFinanceData(sales, expenses);
+  const weeklyData = buildWeeklyFinanceData(sales, expenses, new Date(), paidSupplyRevenue);
   const weeklySalesTotal = weeklyData.reduce((sum, d) => sum + d.sales, 0);
   const weeklyExpensesTotal = weeklyData.reduce((sum, d) => sum + d.expenses, 0);
   const paymentBreakdown = salePaymentBreakdown(sales, profile.currency);
 
-  const categoryData = profile.categories.map(cat => {
-    const catProducts = products.filter(p => p.category === cat);
-    return { name: cat, value: catProducts.reduce((sum, p) => sum + p.stock * p.price, 0), count: catProducts.length };
-  }).filter(c => c.value > 0);
+  const categoryData = Array.from(
+    products.reduce((acc, product) => {
+      const key = product.category?.trim() || "Uncategorized";
+      const current = acc.get(key) || { name: key, value: 0, count: 0 };
+      current.value += product.stock * product.price;
+      current.count += 1;
+      acc.set(key, current);
+      return acc;
+    }, new Map<string, { name: string; value: number; count: number }>())
+      .values()
+  ).filter((category) => category.value > 0 || category.count > 0);
 
   const expenseByCat = expenses.reduce((acc, e) => {
     acc[e.category] = (acc[e.category] || 0) + expenseBaseAmount(e);
@@ -72,6 +85,9 @@ const Reports = () => {
       csvRows = [
         "Currency,Date,Time,Items,Total,Payment Method",
         ...sales.map(s => row([profile.currency, s.date, s.time, s.items, formatMoney(s.total, sym), s.method])),
+        "",
+        "Currency,Date,Source,Total",
+        ...paidSupplyRevenue.map((entry) => row([profile.currency, entry.date, "Paid Supply Invoice", formatMoney(entry.total, sym)])),
       ];
     } else if (title.includes("Performance")) {
       csvRows = [
