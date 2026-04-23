@@ -369,20 +369,32 @@ export async function downloadSupplyInvoicePdf(entry: SupplyEntry, profile: Busi
 
   const tableX = margin;
   const tableY = y;
-  const col1 = 250;
-  const col2 = 50;
-  const col3 = 90;
-  const col4 = 90;
+  const col1 = Math.floor(contentWidth * 0.34);
+  const col2 = 44;
+  const col3 = Math.floor(contentWidth * 0.18);
+  const col4 = Math.floor(contentWidth * 0.18);
   const col5 = contentWidth - (col1 + col2 + col3 + col4);
-  const productLines = doc.splitTextToSize(entry.productName, col1 - 18);
-  const rowHeight = Math.max(34, productLines.length * 14 + 18);
+  const cellPadding = 12;
+  const productLines = doc.splitTextToSize(entry.productName, col1 - cellPadding * 2);
+  const qtyLines = doc.splitTextToSize(String(entry.quantity), col2 - cellPadding * 2);
+  const unitPriceLines = doc.splitTextToSize(`${currencySymbol}${entry.unitPrice.toFixed(2)}`, col3 - cellPadding * 2);
+  const unitCostLines = doc.splitTextToSize(`${currencySymbol}${entry.unitCost.toFixed(2)}`, col4 - cellPadding * 2);
+  const lineTotalLines = doc.splitTextToSize(`${currencySymbol}${total.toFixed(2)}`, col5 - cellPadding * 2);
+  const maxRowLines = Math.max(
+    productLines.length,
+    qtyLines.length,
+    unitPriceLines.length,
+    unitCostLines.length,
+    lineTotalLines.length
+  );
+  const rowHeight = Math.max(40, maxRowLines * 14 + 18);
   const tableHeight = 36 + rowHeight + 20;
   doc.setDrawColor(216, 222, 233);
   doc.roundedRect(tableX, tableY, contentWidth, tableHeight, 18, 18, "S");
   doc.setTextColor(92, 103, 125);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
-  let cursorX = tableX + 16;
+  let cursorX = tableX + cellPadding;
   [["Product", col1], ["Qty", col2], ["Unit Price", col3], ["Unit Cost", col4], ["Line Total", col5]].forEach(([label, width]) => {
     doc.text(String(label).toUpperCase(), cursorX, tableY + 22);
     cursorX += Number(width);
@@ -390,14 +402,15 @@ export async function downloadSupplyInvoicePdf(entry: SupplyEntry, profile: Busi
   doc.line(tableX, tableY + 34, tableX + contentWidth, tableY + 34);
   doc.setTextColor(20, 33, 61);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(11);
-  doc.text(productLines, tableX + 16, tableY + 54);
+  doc.setFontSize(10);
+  const rowTop = tableY + 52;
+  doc.text(productLines, tableX + cellPadding, rowTop);
   doc.setFont("helvetica", "normal");
-  doc.text(String(entry.quantity), tableX + 16 + col1, tableY + 54);
-  doc.text(`${currencySymbol}${entry.unitPrice.toFixed(2)}`, tableX + 16 + col1 + col2, tableY + 54);
-  doc.text(`${currencySymbol}${entry.unitCost.toFixed(2)}`, tableX + 16 + col1 + col2 + col3, tableY + 54);
+  doc.text(qtyLines, tableX + cellPadding + col1, rowTop);
+  doc.text(unitPriceLines, tableX + cellPadding + col1 + col2, rowTop);
+  doc.text(unitCostLines, tableX + cellPadding + col1 + col2 + col3, rowTop);
   doc.setFont("helvetica", "bold");
-  doc.text(`${currencySymbol}${total.toFixed(2)}`, tableX + contentWidth - 16, tableY + 54, { align: "right" });
+  doc.text(lineTotalLines, tableX + contentWidth - cellPadding, rowTop, { align: "right" });
 
   y += tableHeight + 24;
   const notesWidth = contentWidth * 0.57;

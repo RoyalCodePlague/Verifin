@@ -66,6 +66,12 @@ const Dashboard = () => {
     .reduce((sum, entry) => sum + (entry.quantity * entry.unitPrice), 0);
   const salesChange = yesterdayTotal > 0 ? Math.round(((todayTotal - yesterdayTotal) / yesterdayTotal) * 100) : null;
   const supplyRevenueChange = yesterdayPaidSupply > 0 ? Math.round(((todayPaidSupply - yesterdayPaidSupply) / yesterdayPaidSupply) * 100) : null;
+  const paidSupplyRevenue = supplyEntries
+    .filter((entry) => entry.direction === "outgoing" && entry.paymentStatus === "paid")
+    .map((entry) => ({
+      date: entry.movementDate,
+      total: entry.quantity * entry.unitPrice,
+    }));
   
   const inventoryValue = products.reduce((sum, p) => sum + p.stock * p.costPrice, 0);
   const lowStockCount = products.filter(p => p.status === "low" || p.status === "out").length;
@@ -93,12 +99,15 @@ const Dashboard = () => {
   };
 
   const salesData = useMemo(() => {
-    return buildWeeklyFinanceData(sales, []).map(({ day, sales }) => ({ day, sales }));
-  }, [sales]);
+    return buildWeeklyFinanceData(sales, [], new Date(), paidSupplyRevenue).map(({ day, sales }) => ({ day, sales }));
+  }, [paidSupplyRevenue, sales]);
 
   const weeklySalesTotal = useMemo(() => salesData.reduce((sum, item) => sum + item.sales, 0), [salesData]);
 
-  const salesVsExpensesData = useMemo(() => buildWeeklyFinanceData(sales, expenses), [sales, expenses]);
+  const salesVsExpensesData = useMemo(
+    () => buildWeeklyFinanceData(sales, expenses, new Date(), paidSupplyRevenue),
+    [expenses, paidSupplyRevenue, sales]
+  );
 
   const metrics = [
     { label: "Today's Sales", value: formatMoney(todayTotal, sym), secondaryValue: formatSecondaryMoney(todayTotal), change: changeLabel(salesChange, todayTotal, yesterdayTotal), up: changeTrendUp(salesChange, todayTotal, yesterdayTotal), icon: ShoppingCart },

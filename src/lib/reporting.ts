@@ -8,6 +8,11 @@ export type WeeklyFinancePoint = {
   expenses: number;
 };
 
+export type WeeklyRevenueEntry = {
+  date: string;
+  total: number;
+};
+
 export function parseBusinessDate(value?: string): Date | null {
   if (!value) return null;
   if (value === "Today") return new Date();
@@ -36,7 +41,12 @@ function weekDayName(date: Date) {
   return WEEK_DAYS[(date.getDay() + 6) % 7];
 }
 
-export function buildWeeklyFinanceData(sales: Sale[], expenses: Expense[], reference = new Date()): WeeklyFinancePoint[] {
+export function buildWeeklyFinanceData(
+  sales: Sale[],
+  expenses: Expense[],
+  reference = new Date(),
+  extraRevenue: WeeklyRevenueEntry[] = []
+): WeeklyFinancePoint[] {
   const totals = Object.fromEntries(
     WEEK_DAYS.map((day) => [day, { sales: 0, expenses: 0 }])
   ) as Record<string, { sales: number; expenses: number }>;
@@ -45,6 +55,12 @@ export function buildWeeklyFinanceData(sales: Sale[], expenses: Expense[], refer
     const date = parseBusinessDate(sale.date);
     if (!date || !isSameWeek(date, reference)) return;
     totals[weekDayName(date)].sales += sale.total;
+  });
+
+  extraRevenue.forEach((entry) => {
+    const date = parseBusinessDate(entry.date);
+    if (!date || !isSameWeek(date, reference)) return;
+    totals[weekDayName(date)].sales += entry.total;
   });
 
   expenses.forEach((expense) => {
