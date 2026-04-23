@@ -434,7 +434,7 @@ const Suppliers = () => {
                     </select>
                   </div>
                   <div>
-                    <Label>Rate to {profile.currency}</Label>
+                    <Label>Exchange Rate ({entryForm.currency} to {profile.currency})</Label>
                     <Input
                       type="number"
                       min="0"
@@ -473,6 +473,11 @@ const Suppliers = () => {
                   {entryCurrency !== profile.currency ? (
                     <p className="mt-1 text-muted-foreground">
                       Base value: {sym}{entryTotalBaseValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  ) : null}
+                  {entryCurrency !== profile.currency ? (
+                    <p className="mt-1 text-muted-foreground">
+                      Using 1 {entryCurrency} = {entryFxRate.toLocaleString(undefined, { maximumFractionDigits: 6 })} {profile.currency}
                     </p>
                   ) : null}
                   <p className="mt-1 text-muted-foreground">
@@ -651,7 +656,7 @@ const Suppliers = () => {
                 </select>
               </div>
               <div>
-                <Label>Rate to {profile.currency}</Label>
+                <Label>Exchange Rate ({orderForm.currency} to {profile.currency})</Label>
                 <Input type="number" value={orderForm.currency === profile.currency ? "1" : (orderForm.fxRate || String(profile.exchangeRates?.[orderForm.currency] ?? ""))} onChange={(e) => setOrderForm({ ...orderForm, fxRate: e.target.value })} className="mt-1" disabled={orderForm.currency === profile.currency} />
               </div>
             </div>

@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { symbolForCurrency } from "@/lib/currency";
 import { useFeatureAccess, useUpgradePrompt } from "@/lib/features";
 import { barcodeMatches, normalizeBarcode } from "@/lib/barcodes";
+import { displayBusinessDate, isSameBusinessDay } from "@/lib/reporting";
 
 interface SaleLineItem {
   productId: string;
@@ -89,8 +90,8 @@ const Sales = () => {
   }, [addOpen]);
 
   const filtered = sales.filter(s => s.items.toLowerCase().includes(search.toLowerCase()));
-  const todayTotal = sales.filter(s => s.date === "Today").reduce((sum, s) => sum + s.total, 0);
-  const todayCount = sales.filter(s => s.date === "Today").length;
+  const todayTotal = sales.filter(s => isSameBusinessDay(s.date)).reduce((sum, s) => sum + s.total, 0);
+  const todayCount = sales.filter(s => isSameBusinessDay(s.date)).length;
   const saleTotal = lineItems.reduce((sum, l) => sum + l.quantity * l.unitPrice, 0);
   const alternateCurrency = SHOW_SPLIT_PAYMENT
     ? paymentCurrency === baseCurrency ? secondaryCurrency : baseCurrency
@@ -200,7 +201,7 @@ const Sales = () => {
       items: lineItems.map((l) => `${l.quantity} ${l.productName}`).join(", "),
       total: saleTotal,
       time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      date: "Today",
+      date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
       method,
       paymentCurrency,
       paymentAllocations: paymentAllocations.map((row) => ({
@@ -564,7 +565,7 @@ const Sales = () => {
 
             {paymentCurrency !== baseCurrency ? (
               <div>
-                <Label>Rate to {baseCurrency}</Label>
+                <Label>Exchange Rate ({paymentCurrency} to {baseCurrency})</Label>
                 <Input
                   type="number"
                   min="0"
@@ -589,7 +590,7 @@ const Sales = () => {
                 </div>
                 {alternateCurrency !== baseCurrency ? (
                   <div>
-                    <Label>Rate for {alternateCurrency}</Label>
+                    <Label>Exchange Rate ({alternateCurrency} to {baseCurrency})</Label>
                     <Input
                       type="number"
                       min="0"

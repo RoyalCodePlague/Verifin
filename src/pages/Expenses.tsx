@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { symbolForCurrency } from "@/lib/currency";
+import { displayBusinessDate, isSameBusinessDay } from "@/lib/reporting";
 
 const expenseCategories = ["Transport", "Utilities", "Stock Purchase", "Communication", "Rent", "Salary", "Other"];
 
@@ -48,7 +49,7 @@ const Expenses = () => {
   const filtered = expenses.filter(e => e.desc.toLowerCase().includes(search.toLowerCase()));
   const monthTotal = useMemo(() => expenses.reduce((sum, e) => sum + (e.amountBase ?? e.amount), 0), [expenses]);
   const todayTotal = useMemo(
-    () => expenses.filter(e => e.date === "Today").reduce((sum, e) => sum + (e.amountBase ?? e.amount), 0),
+    () => expenses.filter(e => isSameBusinessDay(e.date)).reduce((sum, e) => sum + (e.amountBase ?? e.amount), 0),
     [expenses]
   );
 
@@ -96,7 +97,7 @@ const Expenses = () => {
         currency,
         amountBase,
         category: form.category,
-        date: "Today",
+        date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
       });
       addToOfflineQueue({ type: "expense", payload });
       toast.success("Expense saved locally while offline. It will sync when you are back online.");
@@ -130,7 +131,7 @@ const Expenses = () => {
           amountBase: parseFloat(row.amount_base || "0"),
         })),
         category: created.category_name || form.category,
-        date: created.date === payload.date ? "Today" : created.date,
+        date: created.date || payload.date,
       });
       resetForm();
       setAddOpen(false);
@@ -177,7 +178,7 @@ const Expenses = () => {
                     <div>
                       <p className="font-medium text-sm">{e.desc}</p>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
-                        <span className="text-xs text-muted-foreground">{e.date}</span>
+                        <span className="text-xs text-muted-foreground">{displayBusinessDate(e.date)}</span>
                         <Badge variant="secondary" className="text-xs">{e.category}</Badge>
                         <Badge variant="outline" className="text-xs">{e.currency || baseCurrency}</Badge>
                       </div>
@@ -224,7 +225,7 @@ const Expenses = () => {
             <div><Label>Amount ({symbolForCurrency(selectedCurrency)})</Label><Input type="number" placeholder="0.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="mt-1" /></div>
             {selectedCurrency !== baseCurrency ? (
               <div>
-                <Label>Rate to {baseCurrency}</Label>
+                <Label>Exchange Rate ({selectedCurrency} to {baseCurrency})</Label>
                 <Input
                   type="number"
                   min="0"
@@ -245,7 +246,7 @@ const Expenses = () => {
             <div className="rounded-md bg-muted/50 px-3 py-2 text-sm space-y-1">
               <p>Total in {baseCurrency}: {baseSymbol}{amountBasePreview.toLocaleString()}</p>
               {selectedCurrency !== baseCurrency ? (
-                <p>{symbolForCurrency(selectedCurrency)}{enteredAmount.toLocaleString()} converts into {baseSymbol}{amountBasePreview.toLocaleString()}</p>
+                <p>Using 1 {selectedCurrency} = {selectedRate.toLocaleString(undefined, { maximumFractionDigits: 6 })} {baseCurrency}</p>
               ) : null}
             </div>
 

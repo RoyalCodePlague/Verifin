@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
+import { isSameBusinessDay } from "@/lib/reporting";
 
 export interface Product {
   id: string;
@@ -546,9 +547,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const generateWhatsAppSummary = useCallback(() => {
     const sym = profile.currencySymbol || "R";
-    const todaySales = sales.filter(s => s.date === "Today");
+    const todaySales = sales.filter(s => isSameBusinessDay(s.date));
     const todayTotal = todaySales.reduce((sum, s) => sum + s.total, 0);
-    const todayExpenses = expenses.filter(e => e.date === "Today").reduce((sum, e) => sum + e.amount, 0);
+    const todayExpenses = expenses.filter(e => isSameBusinessDay(e.date)).reduce((sum, e) => sum + e.amount, 0);
     const lowStock = products.filter(p => p.status === "low" || p.status === "out");
     const invValue = products.reduce((sum, p) => sum + p.stock * p.price, 0);
     const invCost = products.reduce((sum, p) => sum + p.stock * (p.costPrice || 0), 0);

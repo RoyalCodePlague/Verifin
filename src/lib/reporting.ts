@@ -33,6 +33,19 @@ export function parseBusinessDate(value?: string): Date | null {
   return Number.isNaN(displayParsed.getTime()) ? null : displayParsed;
 }
 
+export function isSameBusinessDay(value: string | undefined, reference = new Date()) {
+  const parsed = parseBusinessDate(value);
+  return !!parsed && parsed.toDateString() === reference.toDateString();
+}
+
+export function displayBusinessDate(value: string | undefined, reference = new Date()) {
+  if (!value) return "";
+  const parsed = parseBusinessDate(value);
+  if (!parsed) return value;
+  if (parsed.toDateString() === reference.toDateString()) return "Today";
+  return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
 function startOfWeek(date: Date) {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
