@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -20,7 +20,6 @@ const Expenses = lazy(() => import("./pages/Expenses"));
 const Audits = lazy(() => import("./pages/Audits"));
 const Reports = lazy(() => import("./pages/Reports"));
 const Customers = lazy(() => import("./pages/Customers"));
-const Invoices = lazy(() => import("./pages/Invoices"));
 const Suppliers = lazy(() => import("./pages/Suppliers"));
 const Staff = lazy(() => import("./pages/Staff"));
 const SettingsPage = lazy(() => import("./pages/Settings"));
@@ -94,7 +93,7 @@ const App = () => (
                 <Route path="/audits" element={<ProtectedRoute><AppRoute><Audits /></AppRoute></ProtectedRoute>} />
                 <Route path="/reports" element={<ProtectedRoute><AppRoute><Reports /></AppRoute></ProtectedRoute>} />
                 <Route path="/customers" element={<ProtectedRoute><AppRoute><Customers /></AppRoute></ProtectedRoute>} />
-                <Route path="/invoices" element={<ProtectedRoute><AppRoute><Invoices /></AppRoute></ProtectedRoute>} />
+                <Route path="/invoices" element={<Navigate to="/suppliers" replace />} />
                 <Route path="/suppliers" element={<ProtectedRoute><AppRoute><Suppliers /></AppRoute></ProtectedRoute>} />
                 <Route path="/staff" element={<ProtectedRoute><AppRoute><Staff /></AppRoute></ProtectedRoute>} />
                 <Route path="/settings" element={<ProtectedRoute><AppRoute><SettingsPage /></AppRoute></ProtectedRoute>} />

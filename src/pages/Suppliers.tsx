@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { Download, ExternalLink, FileText, PackagePlus, Plus, Printer, ShoppingBag, Truck } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { FileText, PackagePlus, Plus, ShoppingBag, Truck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { SupplyInvoiceWorkspace } from "@/components/invoices/SupplyInvoiceWorkspace";
 import {
   createPurchaseOrderApi,
   createSupplierApi,
@@ -22,16 +22,6 @@ import {
 import { useStore } from "@/lib/store";
 import { toast } from "sonner";
 import { symbolForCurrency } from "@/lib/currency";
-import {
-  buildInvoiceHtml,
-  downloadSupplyInvoicePdf,
-  formatSupplyDate,
-  formatSupplyDateTime,
-  invoiceAmount,
-  invoiceCostAmount,
-  invoiceTypeLabel,
-  paymentStatusLabel,
-} from "@/lib/supplyInvoices";
 
 type Suggestion = Awaited<ReturnType<typeof fetchPurchaseSuggestions>>["items"][number];
 
@@ -45,30 +35,29 @@ function timeNow() {
   return new Date().toTimeString().slice(0, 5);
 }
 
-function printInvoice(html: string) {
-  const printWindow = window.open("", "_blank", "width=960,height=720");
-  if (!printWindow) {
-    toast.error("Could not open print window");
-    return;
-  }
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.focus();
-  printWindow.onload = () => {
-    printWindow.print();
-  };
+function prettyDate(date: string) {
+  if (!date) return "Not set";
+  const parsed = new Date(`${date}T12:00:00`);
+  return Number.isNaN(parsed.getTime())
+    ? date
+    : parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function prettyDateTime(iso: string) {
+  const parsed = new Date(iso);
+  return Number.isNaN(parsed.getTime())
+    ? iso
+    : parsed.toLocaleString([], { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 const Suppliers = () => {
-  const navigate = useNavigate();
   const { products, profile, supplyEntries, addSupplyEntry } = useStore();
   const [suppliers, setSuppliers] = useState<ApiSupplier[]>([]);
   const [orders, setOrders] = useState<ApiPurchaseOrder[]>([]);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [supplierOpen, setSupplierOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
-  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("log");
   const [supplierForm, setSupplierForm] = useState(emptySupplier);
   const [entryForm, setEntryForm] = useState({
     direction: "incoming" as "incoming" | "outgoing",
@@ -126,28 +115,10 @@ const Suppliers = () => {
     () => products.find((product) => product.id === orderForm.product),
     [orderForm.product, products]
   );
-  const selectedInvoice = useMemo(
-    () => supplyEntries.find((entry) => entry.id === selectedInvoiceId) || null,
-    [selectedInvoiceId, supplyEntries]
-  );
   const inboundEntries = supplyEntries.filter((entry) => entry.direction === "incoming");
   const outboundEntries = supplyEntries.filter((entry) => entry.direction === "outgoing");
   const totalIncomingUnits = inboundEntries.reduce((sum, entry) => sum + entry.quantity, 0);
   const totalOutgoingUnits = outboundEntries.reduce((sum, entry) => sum + entry.quantity, 0);
-
-  const openInvoice = (entryId: string) => {
-    setSelectedInvoiceId(entryId);
-  };
-
-  const runInvoiceDownload = () => {
-    if (!selectedInvoice) return;
-    downloadSupplyInvoicePdf(selectedInvoice, profile);
-  };
-
-  const runInvoicePrint = () => {
-    if (!selectedInvoice) return;
-    printInvoice(buildInvoiceHtml(selectedInvoice, profile));
-  };
 
   const saveSupplier = async () => {
     try {
@@ -201,6 +172,7 @@ const Suppliers = () => {
       notes: "",
     });
     toast.success(result.entry?.direction === "incoming" ? "Supply received and inventory updated" : "Supply sale recorded and inventory updated");
+    setActiveTab("invoices");
   };
 
   const createOrder = async () => {
@@ -260,9 +232,6 @@ const Suppliers = () => {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => navigate("/invoices")}>
-            <ExternalLink className="mr-2 h-4 w-4" /> Invoice Center
-          </Button>
           <Button variant="outline" onClick={() => setSupplierOpen(true)}>
             <Plus className="mr-2 h-4 w-4" /> Supplier
           </Button>
@@ -291,7 +260,7 @@ const Suppliers = () => {
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Generated Invoices</p>
             <p className="mt-1 text-2xl font-display font-bold">{supplyEntries.length}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Downloadable and printable</p>
+            <p className="mt-1 text-xs text-muted-foreground">Full invoice tools now live here too</p>
           </CardContent>
         </Card>
         <Card className="shadow-soft">
@@ -303,7 +272,7 @@ const Suppliers = () => {
         </Card>
       </div>
 
-      <Tabs defaultValue="log" className="space-y-4">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="log">Supply Log</TabsTrigger>
           <TabsTrigger value="orders">Purchase Orders</TabsTrigger>
@@ -475,13 +444,13 @@ const Suppliers = () => {
                           <Badge variant={entry.direction === "incoming" ? "default" : "secondary"}>
                             {entry.direction === "incoming" ? "Stock In" : "Stock Out"}
                           </Badge>
-                          <Badge variant="outline">{paymentStatusLabel(entry.paymentStatus)}</Badge>
+                          <Badge variant="outline">{entry.paymentStatus}</Badge>
                         </div>
                         <p className="mt-1 text-xs text-muted-foreground">
                           {entry.quantity} unit(s) {entry.direction === "incoming" ? "from" : "to"} {entry.partnerName}
                         </p>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          Movement: {formatSupplyDate(entry.movementDate)} at {entry.movementTime} | Recorded: {formatSupplyDateTime(entry.recordedAt)}
+                          Movement: {prettyDate(entry.movementDate)} at {entry.movementTime} | Recorded: {prettyDateTime(entry.recordedAt)}
                         </p>
                         <p className="mt-1 text-xs text-muted-foreground">
                           Price {symbolForCurrency(entry.currency)}{entry.unitPrice.toFixed(2)} each | Cost {symbolForCurrency(entry.currency)}{entry.unitCost.toFixed(2)} each
@@ -489,12 +458,17 @@ const Suppliers = () => {
                         {entry.notes ? <p className="mt-2 text-xs text-muted-foreground">{entry.notes}</p> : null}
                       </div>
                       <div className="text-left sm:text-right">
-                        <p className="text-xs text-muted-foreground">{entry.invoiceNumber}</p>
+                        <p className="text-xs text-muted-foreground break-all">{entry.invoiceNumber}</p>
                         <p className="mt-1 font-display font-semibold">
-                          {symbolForCurrency(entry.currency)}{invoiceAmount(entry).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {symbolForCurrency(entry.currency)}{(entry.quantity * entry.unitPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </p>
-                        <Button size="sm" variant="outline" className="mt-3" onClick={() => openInvoice(entry.id)}>
-                          <FileText className="mr-2 h-3.5 w-3.5" /> View Invoice
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-3"
+                          onClick={() => setActiveTab("invoices")}
+                        >
+                          <FileText className="mr-2 h-3.5 w-3.5" /> Open Invoice
                         </Button>
                       </div>
                     </div>
@@ -570,44 +544,10 @@ const Suppliers = () => {
         </TabsContent>
 
         <TabsContent value="invoices">
-          <Card className="shadow-soft">
-            <CardHeader>
-              <CardTitle className="text-base font-display">Supply Invoices</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {supplyEntries.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  Keep invoices here for now. This works well inside the supplier tab because every invoice is tied directly to a stock-in or stock-out movement.
-                </p>
-              ) : supplyEntries.map((entry) => (
-                <div key={entry.id} className="flex flex-col gap-3 rounded-lg border border-border p-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm font-medium">{entry.invoiceNumber}</p>
-                      <Badge variant={entry.direction === "incoming" ? "default" : "secondary"}>
-                        {entry.direction === "incoming" ? "Purchase" : "Supply Sale"}
-                      </Badge>
-                      <Badge variant="outline">{paymentStatusLabel(entry.paymentStatus)}</Badge>
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">{entry.partnerName} - {entry.productName}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {formatSupplyDate(entry.movementDate)} {entry.movementTime} | Recorded {formatSupplyDateTime(entry.recordedAt)}
-                    </p>
-                  </div>
-                  <div className="text-left sm:text-right">
-                    <p className="font-display font-semibold">
-                      {symbolForCurrency(entry.currency)}{invoiceAmount(entry).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </p>
-                    <div className="mt-2 flex flex-wrap gap-2 sm:justify-end">
-                      <Button size="sm" variant="outline" onClick={() => openInvoice(entry.id)}>
-                        <FileText className="mr-2 h-3.5 w-3.5" /> Open
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+          <SupplyInvoiceWorkspace
+            title="Supply Invoices"
+            description="Use the same invoice tools here inside Suppliers: filter, search, update payment status, print, and download PDF invoices."
+          />
         </TabsContent>
       </Tabs>
 
@@ -658,108 +598,6 @@ const Suppliers = () => {
             </p>
             <Button onClick={createOrder} disabled={!orderForm.supplier || !orderForm.product} className="w-full">Create Order</Button>
           </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!selectedInvoice} onOpenChange={(open) => { if (!open) setSelectedInvoiceId(null); }}>
-        <DialogContent className="max-w-4xl">
-          <DialogHeader>
-            <DialogTitle className="font-display">Invoice Preview</DialogTitle>
-            <DialogDescription>
-              Print or download this invoice directly from the supplier workspace.
-            </DialogDescription>
-          </DialogHeader>
-
-          {selectedInvoice ? (
-            <div className="space-y-4">
-              <div className="overflow-hidden rounded-3xl border border-border bg-card shadow-soft">
-                <div className="bg-[linear-gradient(135deg,hsl(var(--primary)),hsl(var(--accent)))] p-6 text-primary-foreground">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.3em] text-primary-foreground/80">{invoiceTypeLabel(selectedInvoice.direction)}</p>
-                      <h3 className="mt-3 font-display text-3xl font-bold">{profile.name || "Verifin"}</h3>
-                      <p className="mt-2 max-w-xl text-sm text-primary-foreground/80">A styled invoice for supplier and inventory movements.</p>
-                    </div>
-                    <div className="rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur">
-                      <p className="text-xs uppercase tracking-[0.2em] text-primary-foreground/70">Invoice</p>
-                      <p className="mt-2 text-lg font-semibold">{selectedInvoice.invoiceNumber}</p>
-                      <Badge variant="secondary" className="mt-3 border-transparent bg-white/15 text-primary-foreground hover:bg-white/15">
-                        {paymentStatusLabel(selectedInvoice.paymentStatus)}
-                      </Badge>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-6 p-6">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="rounded-2xl border border-border bg-muted/30 p-4">
-                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Partner</p>
-                      <p className="mt-2 text-lg font-semibold">{selectedInvoice.partnerName}</p>
-                      <p className="mt-1 text-sm text-muted-foreground capitalize">{selectedInvoice.partnerCategory}</p>
-                    </div>
-                    <div className="rounded-2xl border border-border bg-muted/30 p-4">
-                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Timeline</p>
-                      <p className="mt-2 text-lg font-semibold">{formatSupplyDate(selectedInvoice.movementDate)} at {selectedInvoice.movementTime}</p>
-                      <p className="mt-1 text-sm text-muted-foreground">Recorded {formatSupplyDateTime(selectedInvoice.recordedAt)}</p>
-                    </div>
-                  </div>
-
-                  <div className="overflow-hidden rounded-2xl border border-border">
-                    <table className="w-full text-sm">
-                      <thead className="bg-muted/40">
-                        <tr>
-                          <th className="p-3 text-left font-medium text-muted-foreground">Product</th>
-                          <th className="p-3 text-left font-medium text-muted-foreground">Qty</th>
-                          <th className="p-3 text-left font-medium text-muted-foreground">Unit Price</th>
-                          <th className="p-3 text-left font-medium text-muted-foreground">Unit Cost</th>
-                          <th className="p-3 text-right font-medium text-muted-foreground">Line Total</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr className="border-t border-border">
-                          <td className="p-3 font-medium">{selectedInvoice.productName}</td>
-                          <td className="p-3">{selectedInvoice.quantity}</td>
-                          <td className="p-3">{symbolForCurrency(selectedInvoice.currency)}{selectedInvoice.unitPrice.toFixed(2)}</td>
-                          <td className="p-3">{symbolForCurrency(selectedInvoice.currency)}{selectedInvoice.unitCost.toFixed(2)}</td>
-                          <td className="p-3 text-right font-semibold">{symbolForCurrency(selectedInvoice.currency)}{invoiceAmount(selectedInvoice).toFixed(2)}</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-[1.1fr_0.9fr]">
-                    <div className="rounded-2xl border border-border bg-muted/20 p-4">
-                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Notes</p>
-                      <p className="mt-3 text-sm leading-6 text-foreground/90">{selectedInvoice.notes?.trim() || "No extra notes recorded for this invoice."}</p>
-                    </div>
-                    <div className="rounded-2xl border border-border bg-card p-4">
-                      <div className="flex items-center justify-between border-b border-border pb-3 text-sm">
-                        <span className="text-muted-foreground">Subtotal</span>
-                        <span className="font-semibold">{symbolForCurrency(selectedInvoice.currency)}{invoiceAmount(selectedInvoice).toFixed(2)}</span>
-                      </div>
-                      <div className="flex items-center justify-between border-b border-border py-3 text-sm">
-                        <span className="text-muted-foreground">Total Cost</span>
-                        <span className="font-semibold">{symbolForCurrency(selectedInvoice.currency)}{invoiceCostAmount(selectedInvoice).toFixed(2)}</span>
-                      </div>
-                      <div className="flex items-center justify-between pt-4">
-                        <span className="font-medium">Invoice Total</span>
-                        <span className="font-display text-2xl font-bold">{symbolForCurrency(selectedInvoice.currency)}{invoiceAmount(selectedInvoice).toFixed(2)}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap justify-end gap-2">
-                <Button variant="outline" onClick={runInvoicePrint}>
-                  <Printer className="mr-2 h-4 w-4" /> Print
-                </Button>
-                <Button variant="outline" onClick={runInvoiceDownload}>
-                  <Download className="mr-2 h-4 w-4" /> Download
-                </Button>
-              </div>
-            </div>
-          ) : null}
         </DialogContent>
       </Dialog>
     </div>

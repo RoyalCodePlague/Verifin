@@ -1,6 +1,5 @@
 import type { BusinessProfile, SupplyEntry } from "@/lib/store";
 import { symbolForCurrency } from "@/lib/currency";
-import { jsPDF } from "jspdf";
 
 export function formatSupplyDate(date: string) {
   if (!date) return "Not set";
@@ -292,7 +291,8 @@ export function buildInvoiceHtml(entry: SupplyEntry, profile: BusinessProfile) {
 </html>`;
 }
 
-export function downloadSupplyInvoicePdf(entry: SupplyEntry, profile: BusinessProfile) {
+export async function downloadSupplyInvoicePdf(entry: SupplyEntry, profile: BusinessProfile) {
+  const { jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -302,100 +302,113 @@ export function downloadSupplyInvoicePdf(entry: SupplyEntry, profile: BusinessPr
   const currencySymbol = symbolForCurrency(entry.currency);
   const total = invoiceAmount(entry);
   const totalCost = invoiceCostAmount(entry);
+  const pageBottom = pageHeight - 44;
+
+  const drawWrappedText = (text: string, x: number, y: number, width: number, options?: { bold?: boolean; size?: number; color?: [number, number, number] }) => {
+    doc.setFont("helvetica", options?.bold ? "bold" : "normal");
+    doc.setFontSize(options?.size || 11);
+    if (options?.color) doc.setTextColor(...options.color);
+    const lines = doc.splitTextToSize(text, width);
+    doc.text(lines, x, y);
+    return lines.length;
+  };
 
   doc.setFillColor(20, 33, 61);
   doc.rect(0, 0, pageWidth, 180, "F");
   doc.setFillColor(217, 119, 6);
   doc.circle(pageWidth - 76, 56, 58, "F");
   doc.setFillColor(255, 255, 255);
-  doc.roundedRect(pageWidth - 210, 40, 150, 82, 18, 18, "F");
+  doc.roundedRect(pageWidth - 220, 34, 160, 94, 18, 18, "F");
 
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
   doc.text(invoiceTypeLabel(entry.direction).toUpperCase(), margin, 40);
   doc.setFontSize(28);
-  doc.text(brand, margin, 76);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(11);
-  doc.text("Supply invoice for inventory movement and stock tracking", margin, 98);
+  const titleLines = doc.splitTextToSize(brand, contentWidth - 190);
+  doc.text(titleLines, margin, 76);
+  drawWrappedText("Supply invoice for inventory movement and stock tracking", margin, 102, contentWidth - 200, { size: 11, color: [255, 255, 255] });
 
   doc.setTextColor(20, 33, 61);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
-  doc.text("INVOICE", pageWidth - 190, 64);
-  doc.setFontSize(16);
-  doc.text(entry.invoiceNumber, pageWidth - 190, 88);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  doc.text(`Status: ${paymentStatusLabel(entry.paymentStatus)}`, pageWidth - 190, 108);
+  doc.text("INVOICE", pageWidth - 202, 60);
+  drawWrappedText(entry.invoiceNumber, pageWidth - 202, 82, 124, { bold: true, size: 13, color: [20, 33, 61] });
+  drawWrappedText(`Status: ${paymentStatusLabel(entry.paymentStatus)}`, pageWidth - 202, 110, 124, { size: 10, color: [20, 33, 61] });
 
   let y = 210;
   const boxGap = 16;
   const boxWidth = (contentWidth - boxGap) / 2;
 
   const drawInfoBox = (x: number, title: string, lines: string[]) => {
+    const primaryLines = doc.splitTextToSize(lines[0] || "", boxWidth - 32);
+    const secondaryLines = lines.slice(1).flatMap((line) => doc.splitTextToSize(line, boxWidth - 32));
+    const height = Math.max(88, 36 + (primaryLines.length * 18) + (secondaryLines.length * 13));
     doc.setDrawColor(216, 222, 233);
     doc.setFillColor(247, 243, 235);
-    doc.roundedRect(x, y, boxWidth, 78, 18, 18, "FD");
+    doc.roundedRect(x, y, boxWidth, height, 18, 18, "FD");
     doc.setTextColor(92, 103, 125);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
     doc.text(title.toUpperCase(), x + 16, y + 20);
-    doc.setTextColor(20, 33, 61);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(15);
-    doc.text(lines[0] || "", x + 16, y + 42);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(10);
-    lines.slice(1).forEach((line, index) => {
-      doc.text(line, x + 16, y + 60 + index * 14);
-    });
+    drawWrappedText(lines[0] || "", x + 16, y + 42, boxWidth - 32, { bold: true, size: 14, color: [20, 33, 61] });
+    drawWrappedText(lines.slice(1).join("\n"), x + 16, y + 42 + primaryLines.length * 18, boxWidth - 32, { size: 10, color: [20, 33, 61] });
+    return height;
   };
 
-  drawInfoBox(margin, "Partner", [
+  const leftBoxHeight = drawInfoBox(margin, "Partner", [
     entry.partnerName,
     entry.partnerCategory.charAt(0).toUpperCase() + entry.partnerCategory.slice(1),
   ]);
-  drawInfoBox(margin + boxWidth + boxGap, "Dates", [
+  const rightBoxHeight = drawInfoBox(margin + boxWidth + boxGap, "Dates", [
     `${formatSupplyDate(entry.movementDate)} ${entry.movementTime}`,
     `Recorded ${formatSupplyDateTime(entry.recordedAt)}`,
   ]);
 
-  y += 108;
+  y += Math.max(leftBoxHeight, rightBoxHeight) + 24;
+
+  const tableX = margin;
+  const tableY = y;
+  const col1 = 250;
+  const col2 = 50;
+  const col3 = 90;
+  const col4 = 90;
+  const col5 = contentWidth - (col1 + col2 + col3 + col4);
+  const productLines = doc.splitTextToSize(entry.productName, col1 - 18);
+  const rowHeight = Math.max(34, productLines.length * 14 + 18);
+  const tableHeight = 36 + rowHeight + 20;
   doc.setDrawColor(216, 222, 233);
-  doc.roundedRect(margin, y, contentWidth, 98, 18, 18, "S");
-
-  const columns = [
-    { label: "Product", x: margin + 16 },
-    { label: "Qty", x: margin + 240 },
-    { label: "Unit Price", x: margin + 300 },
-    { label: "Unit Cost", x: margin + 390 },
-    { label: "Line Total", x: margin + 490 },
-  ];
-
+  doc.roundedRect(tableX, tableY, contentWidth, tableHeight, 18, 18, "S");
   doc.setTextColor(92, 103, 125);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
-  columns.forEach((column) => doc.text(column.label.toUpperCase(), column.x, y + 22));
-  doc.setDrawColor(216, 222, 233);
-  doc.line(margin, y + 34, margin + contentWidth, y + 34);
-
+  let cursorX = tableX + 16;
+  [["Product", col1], ["Qty", col2], ["Unit Price", col3], ["Unit Cost", col4], ["Line Total", col5]].forEach(([label, width]) => {
+    doc.text(String(label).toUpperCase(), cursorX, tableY + 22);
+    cursorX += Number(width);
+  });
+  doc.line(tableX, tableY + 34, tableX + contentWidth, tableY + 34);
   doc.setTextColor(20, 33, 61);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.text(entry.productName, columns[0].x, y + 58);
+  doc.setFontSize(11);
+  doc.text(productLines, tableX + 16, tableY + 54);
   doc.setFont("helvetica", "normal");
-  doc.text(String(entry.quantity), columns[1].x, y + 58);
-  doc.text(`${currencySymbol}${entry.unitPrice.toFixed(2)}`, columns[2].x, y + 58);
-  doc.text(`${currencySymbol}${entry.unitCost.toFixed(2)}`, columns[3].x, y + 58);
+  doc.text(String(entry.quantity), tableX + 16 + col1, tableY + 54);
+  doc.text(`${currencySymbol}${entry.unitPrice.toFixed(2)}`, tableX + 16 + col1 + col2, tableY + 54);
+  doc.text(`${currencySymbol}${entry.unitCost.toFixed(2)}`, tableX + 16 + col1 + col2 + col3, tableY + 54);
   doc.setFont("helvetica", "bold");
-  doc.text(`${currencySymbol}${total.toFixed(2)}`, columns[4].x, y + 58);
+  doc.text(`${currencySymbol}${total.toFixed(2)}`, tableX + contentWidth - 16, tableY + 54, { align: "right" });
 
-  y += 126;
+  y += tableHeight + 24;
   const notesWidth = contentWidth * 0.57;
   const totalsWidth = contentWidth - notesWidth - boxGap;
-  const notesHeight = 132;
+  const noteLines = doc.splitTextToSize(entry.notes?.trim() || "No extra notes recorded for this invoice.", notesWidth - 32);
+  const notesHeight = Math.max(132, 44 + noteLines.length * 14);
+
+  if (y + notesHeight > pageBottom) {
+    doc.addPage();
+    y = 56;
+  }
 
   doc.setFillColor(247, 243, 235);
   doc.setDrawColor(216, 222, 233);
@@ -404,11 +417,7 @@ export function downloadSupplyInvoicePdf(entry: SupplyEntry, profile: BusinessPr
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
   doc.text("NOTES", margin + 16, y + 20);
-  doc.setTextColor(20, 33, 61);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(11);
-  const noteLines = doc.splitTextToSize(entry.notes?.trim() || "No extra notes recorded for this invoice.", notesWidth - 32);
-  doc.text(noteLines, margin + 16, y + 42);
+  drawWrappedText(entry.notes?.trim() || "No extra notes recorded for this invoice.", margin + 16, y + 42, notesWidth - 32, { size: 11, color: [20, 33, 61] });
 
   const totalsX = margin + notesWidth + boxGap;
   doc.roundedRect(totalsX, y, totalsWidth, notesHeight, 18, 18, "S");
