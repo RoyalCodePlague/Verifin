@@ -100,12 +100,17 @@ const Customers = () => {
     if (!svg) return;
     const serializer = new XMLSerializer();
     const source = serializer.serializeToString(svg);
-    const printWindow = window.open("", "_blank", "width=600,height=700");
+    const encodedSvg = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(source)}`;
+    const html = `<!DOCTYPE html><html><head><title>Print QR Code</title><style>body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;}img{width:100%;height:auto;max-width:420px;}</style></head><body><img alt="Customer QR Code" src="${encodedSvg}" /></body></html>`;
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const printWindow = window.open(url, "_blank", "width=600,height=700");
     if (!printWindow) return;
-    printWindow.document.write(`<!DOCTYPE html><html><head><title>Print QR Code</title><style>body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;}svg{width:100%;height:auto;}</style></head><body>${source}</body></html>`);
-    printWindow.document.close();
     printWindow.focus();
-    printWindow.print();
+    printWindow.onload = () => {
+      printWindow.print();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
   };
 
   const shareQRCode = async () => {

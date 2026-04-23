@@ -26,17 +26,18 @@ type SupplyInvoiceWorkspaceProps = {
 };
 
 function printInvoice(html: string) {
-  const printWindow = window.open("", "_blank", "width=960,height=720");
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const printWindow = window.open(url, "_blank", "width=960,height=720");
   if (!printWindow) {
+    URL.revokeObjectURL(url);
     toast.error("Could not open print window");
     return;
   }
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
   printWindow.focus();
   printWindow.onload = () => {
     printWindow.print();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 }
 

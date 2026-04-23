@@ -86,6 +86,12 @@ function saveJson(key: string, value: unknown) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+function clearVerifinStorage() {
+  Object.keys(localStorage)
+    .filter((key) => key.startsWith("sp_"))
+    .forEach((key) => localStorage.removeItem(key));
+}
+
 function formatRelativeSync(timestamp: string | null) {
   if (!timestamp) return "No sync yet";
   const date = new Date(timestamp);
@@ -364,7 +370,7 @@ const SettingsPage = () => {
   };
 
   const handleReset = () => {
-    localStorage.clear();
+    clearVerifinStorage();
     window.location.reload();
   };
 
