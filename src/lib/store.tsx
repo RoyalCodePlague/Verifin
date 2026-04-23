@@ -210,6 +210,8 @@ interface StoreState {
 const uid = () => Math.random().toString(36).slice(2, 10);
 const today = () => new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 const nowTime = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const STORE_MIGRATION_VERSION = 1;
+const STORE_MIGRATION_KEY = "sp_store_migration_version";
 
 function formatInvoiceNumber(direction: SupplyEntry["direction"]) {
   const now = new Date();
@@ -242,6 +244,43 @@ function saveState(key: string, value: unknown) {
   localStorage.setItem(`sp_${key}`, JSON.stringify(value));
 }
 
+function normalizeStoredDate(value?: string) {
+  if (!value) return value || "";
+  if (value === "Today") return today();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const parsed = new Date(`${value}T12:00:00`);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    }
+  }
+  return value;
+}
+
+function migratePersistedStore() {
+  try {
+    const currentVersion = Number(localStorage.getItem(STORE_MIGRATION_KEY) || "0");
+    if (currentVersion >= STORE_MIGRATION_VERSION) return;
+
+    const storedSales = loadState<Sale[]>("sales", []);
+    const storedExpenses = loadState<Expense[]>("expenses", []);
+
+    const nextSales = storedSales.map((sale) => ({
+      ...sale,
+      date: normalizeStoredDate(sale.date),
+    }));
+    const nextExpenses = storedExpenses.map((expense) => ({
+      ...expense,
+      date: normalizeStoredDate(expense.date),
+    }));
+
+    saveState("sales", nextSales);
+    saveState("expenses", nextExpenses);
+    localStorage.setItem(STORE_MIGRATION_KEY, String(STORE_MIGRATION_VERSION));
+  } catch {
+    // Ignore local migration failures and continue with best-effort loading.
+  }
+}
+
 function computeStatus(stock: number, reorder: number): "ok" | "low" | "out" {
   if (stock <= 0) return "out";
   if (stock <= reorder) return "low";
@@ -251,10 +290,21 @@ function computeStatus(stock: number, reorder: number): "ok" | "low" | "out" {
 const StoreContext = createContext<StoreState | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
+  migratePersistedStore();
   const [profile, setProfileState] = useState<BusinessProfile>(() => loadState("profile", defaultProfile));
   const [products, setProducts] = useState<Product[]>(() => loadState("products", []));
-  const [sales, setSales] = useState<Sale[]>(() => loadState("sales", []));
-  const [expenses, setExpenses] = useState<Expense[]>(() => loadState("expenses", []));
+  const [sales, setSales] = useState<Sale[]>(() =>
+    loadState<Sale[]>("sales", []).map((sale) => ({
+      ...sale,
+      date: normalizeStoredDate(sale.date),
+    }))
+  );
+  const [expenses, setExpenses] = useState<Expense[]>(() =>
+    loadState<Expense[]>("expenses", []).map((expense) => ({
+      ...expense,
+      date: normalizeStoredDate(expense.date),
+    }))
+  );
   const [audits, setAudits] = useState<AuditRecord[]>(() => loadState("audits", []));
   const [discrepancies, setDiscrepancies] = useState<Discrepancy[]>(() => loadState("discrepancies", []));
   const [customers, setCustomers] = useState<Customer[]>(() => loadState("customers", []));
@@ -609,6 +659,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     ["profile", "products", "sales", "expenses", "audits", "discrepancies", "customers", "staff", "branches", "activities", "supplyEntries"].forEach((key) => {
       localStorage.removeItem(`sp_${key}`);
     });
+    localStorage.removeItem(STORE_MIGRATION_KEY);
   }, []);
 
   return (
