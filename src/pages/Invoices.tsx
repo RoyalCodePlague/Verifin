@@ -9,6 +9,7 @@ import { useStore } from "@/lib/store";
 import { symbolForCurrency } from "@/lib/currency";
 import {
   buildInvoiceHtml,
+  downloadSupplyInvoicePdf,
   formatSupplyDate,
   formatSupplyDateTime,
   invoiceAmount,
@@ -17,18 +18,6 @@ import {
   paymentStatusLabel,
 } from "@/lib/supplyInvoices";
 import { toast } from "sonner";
-
-function downloadInvoiceFile(filename: string, html: string) {
-  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
 
 function printInvoice(html: string) {
   const printWindow = window.open("", "_blank", "width=960,height=720");
@@ -83,7 +72,7 @@ const Invoices = () => {
 
   const runInvoiceDownload = () => {
     if (!selectedInvoice) return;
-    downloadInvoiceFile(`${selectedInvoice.invoiceNumber}.html`, buildInvoiceHtml(selectedInvoice, profile));
+    downloadSupplyInvoicePdf(selectedInvoice, profile);
   };
 
   const runInvoicePrint = () => {

@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import { symbolForCurrency } from "@/lib/currency";
 import {
   buildInvoiceHtml,
+  downloadSupplyInvoicePdf,
   formatSupplyDate,
   formatSupplyDateTime,
   invoiceAmount,
@@ -42,18 +43,6 @@ function todayIso() {
 
 function timeNow() {
   return new Date().toTimeString().slice(0, 5);
-}
-
-function downloadInvoiceFile(filename: string, html: string) {
-  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  document.body.removeChild(anchor);
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function printInvoice(html: string) {
@@ -152,7 +141,7 @@ const Suppliers = () => {
 
   const runInvoiceDownload = () => {
     if (!selectedInvoice) return;
-    downloadInvoiceFile(`${selectedInvoice.invoiceNumber}.html`, buildInvoiceHtml(selectedInvoice, profile));
+    downloadSupplyInvoicePdf(selectedInvoice, profile);
   };
 
   const runInvoicePrint = () => {

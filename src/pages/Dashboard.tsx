@@ -17,7 +17,7 @@ import { useQuery } from "@tanstack/react-query";
 import { symbolForCurrency } from "@/lib/currency";
 
 const Dashboard = () => {
-  const { products, sales, expenses, discrepancies, activities, profile, generateWhatsAppSummary } = useStore();
+  const { products, sales, expenses, discrepancies, activities, profile, generateWhatsAppSummary, supplyEntries } = useStore();
   const navigate = useNavigate();
   const { canUse } = useFeatureAccess();
   const promptUpgrade = useUpgradePrompt();
@@ -49,11 +49,23 @@ const Dashboard = () => {
 
   const todaySales = sales.filter((sale) => isSameCalendarDay(sale.date, new Date()));
   const todayTotal = todaySales.reduce((sum, s) => sum + s.total, 0);
+  const todaySupplyEntries = supplyEntries.filter((entry) => isSameCalendarDay(entry.movementDate, new Date()));
+  const todayPaidSupply = todaySupplyEntries
+    .filter((entry) => entry.direction === "outgoing" && entry.paymentStatus === "paid")
+    .reduce((sum, entry) => sum + (entry.quantity * entry.unitPrice), 0);
+  const openSupplyInvoiceValue = supplyEntries
+    .filter((entry) => entry.direction === "outgoing" && entry.paymentStatus !== "paid")
+    .reduce((sum, entry) => sum + (entry.quantity * entry.unitPrice), 0);
+  const outstandingSupplyCount = supplyEntries.filter((entry) => entry.direction === "outgoing" && entry.paymentStatus !== "paid").length;
   
   const yesterdayTotal = sales
     .filter((sale) => isSameCalendarDay(sale.date, previousDay))
     .reduce((sum, s) => sum + s.total, 0);
+  const yesterdayPaidSupply = supplyEntries
+    .filter((entry) => isSameCalendarDay(entry.movementDate, previousDay) && entry.direction === "outgoing" && entry.paymentStatus === "paid")
+    .reduce((sum, entry) => sum + (entry.quantity * entry.unitPrice), 0);
   const salesChange = yesterdayTotal > 0 ? Math.round(((todayTotal - yesterdayTotal) / yesterdayTotal) * 100) : null;
+  const supplyRevenueChange = yesterdayPaidSupply > 0 ? Math.round(((todayPaidSupply - yesterdayPaidSupply) / yesterdayPaidSupply) * 100) : null;
   
   const inventoryValue = products.reduce((sum, p) => sum + p.stock * p.costPrice, 0);
   const lowStockCount = products.filter(p => p.status === "low" || p.status === "out").length;
@@ -90,8 +102,10 @@ const Dashboard = () => {
 
   const metrics = [
     { label: "Today's Sales", value: formatMoney(todayTotal, sym), secondaryValue: formatSecondaryMoney(todayTotal), change: changeLabel(salesChange, todayTotal, yesterdayTotal), up: changeTrendUp(salesChange, todayTotal, yesterdayTotal), icon: ShoppingCart },
+    { label: "Paid Supply Today", value: formatMoney(todayPaidSupply, sym), secondaryValue: formatSecondaryMoney(todayPaidSupply), change: changeLabel(supplyRevenueChange, todayPaidSupply, yesterdayPaidSupply), up: changeTrendUp(supplyRevenueChange, todayPaidSupply, yesterdayPaidSupply), icon: TrendingUp },
     { label: "This Week", value: formatMoney(weeklySalesTotal, sym), secondaryValue: formatSecondaryMoney(weeklySalesTotal), change: `${weeklySalesTotal >= todayTotal ? 'Up' : 'Down'}`, up: weeklySalesTotal >= todayTotal, icon: TrendingUp },
     { label: "Inventory Value", value: formatMoney(inventoryValue, sym), secondaryValue: formatSecondaryMoney(inventoryValue), change: `${lowStockCount} low`, up: lowStockCount === 0, icon: Package },
+    { label: "Open Supply Invoices", value: formatMoney(openSupplyInvoiceValue, sym), secondaryValue: outstandingSupplyCount > 0 ? `${outstandingSupplyCount} open` : null, change: outstandingSupplyCount > 0 ? `${outstandingSupplyCount} pending` : "0 pending", up: outstandingSupplyCount === 0, icon: Receipt },
     { label: "Low Stock Items", value: String(lowStockCount), secondaryValue: null, change: `${lowStockCount}`, up: false, icon: AlertTriangle },
     { label: "Today's Expenses", value: formatMoney(todayExpenses, sym), secondaryValue: formatSecondaryMoney(todayExpenses), change: changeLabel(expensesChange, todayExpenses, yesterdayExpenses), up: expensesChange == null ? todayExpenses <= yesterdayExpenses : expensesChange <= 0, icon: Receipt },
   ];
@@ -125,6 +139,9 @@ const Dashboard = () => {
 
   const insights = [
     ...(lowStockCount > 0 ? [{ text: `You are running low on ${lowStockCount} key items`, type: "alert" }] : []),
+    ...(todayPaidSupply > 0 ? [{ text: `Paid supply invoices brought in ${formatMoney(todayPaidSupply, sym)} today`, type: "insight" }] : []),
+    ...(outstandingSupplyCount > 0 ? [{ text: `${outstandingSupplyCount} supply invoice${outstandingSupplyCount === 1 ? "" : "s"} still need payment follow-up`, type: "warning" }] : []),
+    ...(todaySupplyEntries.length > 0 ? [{ text: `${todaySupplyEntries.length} supplier movement${todaySupplyEntries.length === 1 ? "" : "s"} recorded today`, type: "insight" }] : []),
     ...(topProduct ? [{ text: `Top selling product this week: ${topProduct}`, type: "insight" }] : []),
     { text: salesChange == null ? (todayTotal > 0 ? "Sales started coming in today." : "No sales recorded for today yet.") : salesChange >= 0 ? `Sales are ${salesChange}% above yesterday` : `Sales are ${Math.abs(salesChange)}% below yesterday`, type: salesChange == null ? "insight" : salesChange >= 0 ? "insight" : "warning" },
     ...(expenseAlert ? [{ text: expenseAlert, type: "alert" }] : []),
@@ -159,7 +176,7 @@ const Dashboard = () => {
         </Button>
       </motion.div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 2xl:grid-cols-6">
         {metrics.map((m, i) => (
           <motion.div key={m.label} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
             <Card className="shadow-soft">
@@ -173,9 +190,9 @@ const Dashboard = () => {
                     {m.change}
                   </span>
                 </div>
-                <p className="text-2xl font-display font-bold">{m.value}</p>
-                {m.secondaryValue ? <p className="mt-1 text-xs text-muted-foreground">{m.secondaryValue}</p> : null}
-                <p className="text-xs text-muted-foreground mt-1">{m.label}</p>
+                <p className="text-lg font-display font-bold leading-tight break-words sm:text-2xl">{m.value}</p>
+                {m.secondaryValue ? <p className="mt-1 text-[11px] leading-tight text-muted-foreground break-words">{m.secondaryValue}</p> : null}
+                <p className="mt-1 text-xs leading-tight text-muted-foreground">{m.label}</p>
               </CardContent>
             </Card>
           </motion.div>

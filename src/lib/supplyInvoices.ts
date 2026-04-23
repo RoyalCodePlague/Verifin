@@ -1,5 +1,6 @@
 import type { BusinessProfile, SupplyEntry } from "@/lib/store";
 import { symbolForCurrency } from "@/lib/currency";
+import { jsPDF } from "jspdf";
 
 export function formatSupplyDate(date: string) {
   if (!date) return "Not set";
@@ -289,4 +290,153 @@ export function buildInvoiceHtml(entry: SupplyEntry, profile: BusinessProfile) {
     </div>
   </body>
 </html>`;
+}
+
+export function downloadSupplyInvoicePdf(entry: SupplyEntry, profile: BusinessProfile) {
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 42;
+  const contentWidth = pageWidth - margin * 2;
+  const brand = profile.name || "Verifin";
+  const currencySymbol = symbolForCurrency(entry.currency);
+  const total = invoiceAmount(entry);
+  const totalCost = invoiceCostAmount(entry);
+
+  doc.setFillColor(20, 33, 61);
+  doc.rect(0, 0, pageWidth, 180, "F");
+  doc.setFillColor(217, 119, 6);
+  doc.circle(pageWidth - 76, 56, 58, "F");
+  doc.setFillColor(255, 255, 255);
+  doc.roundedRect(pageWidth - 210, 40, 150, 82, 18, 18, "F");
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.text(invoiceTypeLabel(entry.direction).toUpperCase(), margin, 40);
+  doc.setFontSize(28);
+  doc.text(brand, margin, 76);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(11);
+  doc.text("Supply invoice for inventory movement and stock tracking", margin, 98);
+
+  doc.setTextColor(20, 33, 61);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.text("INVOICE", pageWidth - 190, 64);
+  doc.setFontSize(16);
+  doc.text(entry.invoiceNumber, pageWidth - 190, 88);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text(`Status: ${paymentStatusLabel(entry.paymentStatus)}`, pageWidth - 190, 108);
+
+  let y = 210;
+  const boxGap = 16;
+  const boxWidth = (contentWidth - boxGap) / 2;
+
+  const drawInfoBox = (x: number, title: string, lines: string[]) => {
+    doc.setDrawColor(216, 222, 233);
+    doc.setFillColor(247, 243, 235);
+    doc.roundedRect(x, y, boxWidth, 78, 18, 18, "FD");
+    doc.setTextColor(92, 103, 125);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text(title.toUpperCase(), x + 16, y + 20);
+    doc.setTextColor(20, 33, 61);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(15);
+    doc.text(lines[0] || "", x + 16, y + 42);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    lines.slice(1).forEach((line, index) => {
+      doc.text(line, x + 16, y + 60 + index * 14);
+    });
+  };
+
+  drawInfoBox(margin, "Partner", [
+    entry.partnerName,
+    entry.partnerCategory.charAt(0).toUpperCase() + entry.partnerCategory.slice(1),
+  ]);
+  drawInfoBox(margin + boxWidth + boxGap, "Dates", [
+    `${formatSupplyDate(entry.movementDate)} ${entry.movementTime}`,
+    `Recorded ${formatSupplyDateTime(entry.recordedAt)}`,
+  ]);
+
+  y += 108;
+  doc.setDrawColor(216, 222, 233);
+  doc.roundedRect(margin, y, contentWidth, 98, 18, 18, "S");
+
+  const columns = [
+    { label: "Product", x: margin + 16 },
+    { label: "Qty", x: margin + 240 },
+    { label: "Unit Price", x: margin + 300 },
+    { label: "Unit Cost", x: margin + 390 },
+    { label: "Line Total", x: margin + 490 },
+  ];
+
+  doc.setTextColor(92, 103, 125);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  columns.forEach((column) => doc.text(column.label.toUpperCase(), column.x, y + 22));
+  doc.setDrawColor(216, 222, 233);
+  doc.line(margin, y + 34, margin + contentWidth, y + 34);
+
+  doc.setTextColor(20, 33, 61);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(12);
+  doc.text(entry.productName, columns[0].x, y + 58);
+  doc.setFont("helvetica", "normal");
+  doc.text(String(entry.quantity), columns[1].x, y + 58);
+  doc.text(`${currencySymbol}${entry.unitPrice.toFixed(2)}`, columns[2].x, y + 58);
+  doc.text(`${currencySymbol}${entry.unitCost.toFixed(2)}`, columns[3].x, y + 58);
+  doc.setFont("helvetica", "bold");
+  doc.text(`${currencySymbol}${total.toFixed(2)}`, columns[4].x, y + 58);
+
+  y += 126;
+  const notesWidth = contentWidth * 0.57;
+  const totalsWidth = contentWidth - notesWidth - boxGap;
+  const notesHeight = 132;
+
+  doc.setFillColor(247, 243, 235);
+  doc.setDrawColor(216, 222, 233);
+  doc.roundedRect(margin, y, notesWidth, notesHeight, 18, 18, "FD");
+  doc.setTextColor(92, 103, 125);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.text("NOTES", margin + 16, y + 20);
+  doc.setTextColor(20, 33, 61);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(11);
+  const noteLines = doc.splitTextToSize(entry.notes?.trim() || "No extra notes recorded for this invoice.", notesWidth - 32);
+  doc.text(noteLines, margin + 16, y + 42);
+
+  const totalsX = margin + notesWidth + boxGap;
+  doc.roundedRect(totalsX, y, totalsWidth, notesHeight, 18, 18, "S");
+  const totalRows = [
+    ["Subtotal", `${currencySymbol}${total.toFixed(2)}`],
+    ["Total Cost", `${currencySymbol}${totalCost.toFixed(2)}`],
+    ["Invoice Total", `${currencySymbol}${total.toFixed(2)}`],
+  ];
+  totalRows.forEach((row, index) => {
+    const rowY = y + index * 38;
+    if (index === 2) {
+      doc.setFillColor(255, 244, 221);
+      doc.roundedRect(totalsX + 1, rowY + 1, totalsWidth - 2, 36, 0, 0, "F");
+    }
+    if (index > 0) doc.line(totalsX, rowY, totalsX + totalsWidth, rowY);
+    doc.setTextColor(92, 103, 125);
+    doc.setFont("helvetica", index === 2 ? "bold" : "normal");
+    doc.setFontSize(index === 2 ? 12 : 10);
+    doc.text(row[0], totalsX + 16, rowY + 24);
+    doc.setTextColor(20, 33, 61);
+    doc.text(row[1], totalsX + totalsWidth - 16, rowY + 24, { align: "right" });
+  });
+
+  doc.setTextColor(92, 103, 125);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text("Generated by Verifin invoice workspace", margin, pageHeight - 28);
+  doc.text(`${profile.currency} base currency`, pageWidth - margin, pageHeight - 28, { align: "right" });
+
+  doc.save(`${entry.invoiceNumber}.pdf`);
 }
