@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { useFeatureAccess, useUpgradePrompt } from "@/lib/features";
 import { symbolForCurrency } from "@/lib/currency";
 import { cacheBarcodeEntry, getCachedBarcodeEntry } from "@/lib/barcodeCache";
+import { barcodeMatches, normalizeBarcode } from "@/lib/barcodes";
 
 const allCategories = [
   "Groceries", "Beverages", "Hardware", "Personal Care", "Electronics",
@@ -327,10 +328,11 @@ const Inventory = () => {
   };
 
   const handleBarcodeDetected = async (code: string) => {
-    const found = products.find(p => p.barcode === code);
+    const normalizedCode = normalizeBarcode(code);
+    const found = products.find((product) => barcodeMatches(product.barcode, normalizedCode));
     if (found) {
       cacheBarcodeEntry({
-        barcode: code,
+        barcode: normalizedCode,
         name: found.name,
         category: found.category,
         source: "inventory",
@@ -341,7 +343,7 @@ const Inventory = () => {
       return;
     }
 
-    const cached = getCachedBarcodeEntry(code);
+    const cached = getCachedBarcodeEntry(normalizedCode);
     if (cached) {
       setForm({
         name: cached.name,
@@ -352,7 +354,7 @@ const Inventory = () => {
         reorder: "5",
         costPrice: "",
         price: "",
-        barcode: code,
+        barcode: normalizedCode,
       });
       setAddOpen(true);
       toast.success(`Loaded cached barcode match: ${cached.name}`);
@@ -361,10 +363,10 @@ const Inventory = () => {
     }
 
     try {
-      const identified = await identifyBarcodeProductApi(code);
+      const identified = await identifyBarcodeProductApi(normalizedCode);
       const identifiedName = [identified.brand, identified.name].filter(Boolean).join(" ");
       cacheBarcodeEntry({
-        barcode: code,
+        barcode: normalizedCode,
         name: identifiedName || identified.name,
         brand: identified.brand,
         category: identified.category,
@@ -379,14 +381,14 @@ const Inventory = () => {
         reorder: "5",
         costPrice: "",
         price: "",
-        barcode: code,
+        barcode: normalizedCode,
       });
       setAddOpen(true);
-      toast.success(identified.name ? `Identified: ${identified.name}` : `Barcode found: ${code}`);
+      toast.success(identified.name ? `Identified: ${identified.name}` : `Barcode found: ${normalizedCode}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not identify this barcode.";
       toast.info(`${message} Fill in the product details and save.`);
-      setForm({ name: "", category: mergedCategories[0] || "", branchId: "", supplierId: "", stock: "", reorder: "5", costPrice: "", price: "", barcode: code });
+      setForm({ name: "", category: mergedCategories[0] || "", branchId: "", supplierId: "", stock: "", reorder: "5", costPrice: "", price: "", barcode: normalizedCode });
       setAddOpen(true);
     }
     setScanOpen(false);

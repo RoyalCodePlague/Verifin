@@ -16,6 +16,7 @@ import { BarcodeScanner } from "@/components/BarcodeScanner";
 import { toast } from "sonner";
 import { symbolForCurrency } from "@/lib/currency";
 import { useFeatureAccess, useUpgradePrompt } from "@/lib/features";
+import { barcodeMatches, normalizeBarcode } from "@/lib/barcodes";
 
 interface SaleLineItem {
   productId: string;
@@ -151,11 +152,11 @@ const Sales = () => {
   };
 
   const handleBarcodeLookup = (rawCode: string) => {
-    const code = rawCode.trim();
+    const code = normalizeBarcode(rawCode);
     if (!code) return;
     const quantity = parseInt(qty, 10) || 1;
 
-    const matchedProduct = products.find((product) => product.barcode?.trim() === code);
+    const matchedProduct = products.find((product) => barcodeMatches(product.barcode, code));
     if (!matchedProduct) {
       toast.error(`No product found for barcode ${code}`);
       return;

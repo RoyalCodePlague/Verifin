@@ -1,3 +1,5 @@
+import { normalizeBarcode } from "@/lib/barcodes";
+
 const BARCODE_CACHE_KEY = "sp_barcode_lookup_cache";
 
 export type BarcodeCacheEntry = {
@@ -22,13 +24,13 @@ function writeCache(cache: Record<string, BarcodeCacheEntry>) {
 }
 
 export function getCachedBarcodeEntry(barcode: string): BarcodeCacheEntry | null {
-  const normalized = barcode.trim();
+  const normalized = normalizeBarcode(barcode);
   if (!normalized) return null;
   return readCache()[normalized] || null;
 }
 
 export function cacheBarcodeEntry(entry: Omit<BarcodeCacheEntry, "cachedAt">) {
-  const normalized = entry.barcode.trim();
+  const normalized = normalizeBarcode(entry.barcode);
   if (!normalized || !entry.name.trim()) return;
   const cache = readCache();
   cache[normalized] = {
