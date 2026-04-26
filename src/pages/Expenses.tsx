@@ -10,7 +10,7 @@ import { useStore } from "@/lib/store";
 import { createExpenseApi, deleteExpenseApi } from "@/lib/api";
 import { addToOfflineQueue, canQueueOfflineAction } from "@/lib/offlineQueue";
 import { toast } from "sonner";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { symbolForCurrency } from "@/lib/currency";
@@ -207,7 +207,10 @@ const Expenses = () => {
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle className="font-display">Add Expense</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle className="font-display">Add Expense</DialogTitle>
+            <DialogDescription>Record an operating expense and optionally convert it into your base reporting currency.</DialogDescription>
+          </DialogHeader>
           <div className="space-y-3">
             <div><Label>Description</Label><Input placeholder="e.g. Supplier delivery" value={form.desc} onChange={e => setForm({ ...form, desc: e.target.value })} className="mt-1" /></div>
             <div>

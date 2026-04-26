@@ -94,7 +94,15 @@ class PurchaseOrderItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = PurchaseOrderItem
         fields = "__all__"
-        read_only_fields = ["line_total", "created_at", "updated_at"]
+        read_only_fields = [
+            "purchase_order",
+            "quantity_received",
+            "unit_cost_base",
+            "line_total",
+            "line_total_base",
+            "created_at",
+            "updated_at",
+        ]
 
     def validate(self, attrs):
         request = self.context.get("request")

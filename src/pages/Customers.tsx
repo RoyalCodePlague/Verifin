@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useStore, CustomerBadge } from "@/lib/store";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { QRCodeSVG } from "qrcode.react";
@@ -129,7 +129,12 @@ const Customers = () => {
 
   const formDialog = (
     <DialogContent>
-      <DialogHeader><DialogTitle className="font-display">{editId ? "Edit Customer" : "Add Customer"}</DialogTitle></DialogHeader>
+      <DialogHeader>
+        <DialogTitle className="font-display">{editId ? "Edit Customer" : "Add Customer"}</DialogTitle>
+        <DialogDescription>
+          {editId ? "Update the customer's details and loyalty badge." : "Add a customer profile and generate a QR code for future visits."}
+        </DialogDescription>
+      </DialogHeader>
       <div className="space-y-3">
         <div><Label>Customer Name</Label><Input placeholder="e.g. John's Hardware" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="mt-1" /></div>
         <div><Label>Phone Number</Label><Input placeholder="+27 82 555 0101" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="mt-1" /></div>
@@ -205,7 +210,10 @@ const Customers = () => {
       {/* QR Code View */}
       <Dialog open={!!viewQR} onOpenChange={() => setViewQR(null)}>
         <DialogContent>
-          <DialogHeader><DialogTitle className="font-display">Customer QR Code</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle className="font-display">Customer QR Code</DialogTitle>
+            <DialogDescription>View, print, or share this customer's QR code and loyalty summary.</DialogDescription>
+          </DialogHeader>
           {viewingCustomer && (
             <div className="text-center space-y-4">
               <div ref={qrWrapperRef} className="bg-card p-6 rounded-xl inline-block mx-auto border border-border">
@@ -234,7 +242,10 @@ const Customers = () => {
       {/* Add Credit Dialog */}
       <Dialog open={!!creditModal} onOpenChange={() => setCreditModal(null)}>
         <DialogContent>
-          <DialogHeader><DialogTitle className="font-display">Add Credit / Reward</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle className="font-display">Add Credit / Reward</DialogTitle>
+            <DialogDescription>Add store credit to the selected customer account.</DialogDescription>
+          </DialogHeader>
           {creditCustomer && (
             <div className="space-y-4">
               <div className="p-3 rounded-lg bg-muted/50">

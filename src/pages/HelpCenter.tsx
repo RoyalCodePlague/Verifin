@@ -5,7 +5,7 @@ import Footer from "@/components/landing/Footer";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const categories = [
   { icon: BookOpen, label: "Getting Started", articles: [
@@ -145,6 +145,7 @@ const HelpCenter = () => {
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="font-display">{selectedArticle?.title}</DialogTitle>
+            <DialogDescription>Read the selected help article in full.</DialogDescription>
           </DialogHeader>
           <p className="text-sm text-muted-foreground leading-relaxed">{selectedArticle?.content}</p>
         </DialogContent>
