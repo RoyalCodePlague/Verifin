@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useStore } from "@/lib/store";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getRegionalCurrencyDefaults } from "@/lib/currency";
 
 const currencies = [
@@ -547,6 +547,7 @@ const Onboarding = () => {
             <DialogTitle className="font-display flex items-center gap-2">
               <Building2 className="h-5 w-5 text-warning" /> Finish later?
             </DialogTitle>
+            <DialogDescription>Choose whether to finish onboarding now or skip directly to the workspace.</DialogDescription>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
             You can skip onboarding, but your dashboard, categories, and starter products will feel much more complete if you finish this now.

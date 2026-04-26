@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { SupplyInvoiceWorkspace } from "@/components/invoices/SupplyInvoiceWorkspace";
@@ -627,6 +627,7 @@ const Suppliers = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="font-display">Add Supplier</DialogTitle>
+            <DialogDescription>Save supplier details so you can reuse them in supply logs and purchase orders.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div><Label>Name</Label><Input value={supplierForm.name} onChange={(e) => setSupplierForm({ ...supplierForm, name: e.target.value })} className="mt-1" /></div>
@@ -644,6 +645,7 @@ const Suppliers = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="font-display">Create Purchase Order</DialogTitle>
+            <DialogDescription>Create a purchase order for a saved supplier and track its expected stock delivery.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div><Label>Supplier</Label><select value={orderForm.supplier} onChange={(e) => setOrderForm({ ...orderForm, supplier: e.target.value })} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="">Select supplier</option>{suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>

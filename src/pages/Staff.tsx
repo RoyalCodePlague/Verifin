@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus, Trash2, UserCog, Search } from "lucide-react";
 import { useStore } from "@/lib/store";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { EmptyState } from "@/components/ui/empty-state";
 
@@ -71,7 +71,10 @@ const Staff = () => {
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle className="font-display">Add Staff Member</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle className="font-display">Add Staff Member</DialogTitle>
+            <DialogDescription>Add a team member and assign their primary role.</DialogDescription>
+          </DialogHeader>
           <div className="space-y-3">
             <div><Label>Full Name</Label><Input placeholder="e.g. Grace Chikumba" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="mt-1" /></div>
             <div>
