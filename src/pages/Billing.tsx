@@ -104,8 +104,9 @@ const Billing = () => {
   const [period, setPeriod] = useState<BillingPeriod>("monthly");
   const [checkoutPlan, setCheckoutPlan] = useState<BillingPlan | null>(null);
   const queryClient = useQueryClient();
-  const billingQuery = useQuery({ queryKey: ["billing-overview"], queryFn: getBillingOverviewApi, staleTime: 60_000 });
-  const pricingQuery = useQuery({ queryKey: ["pricing-context"], queryFn: () => getPricingContextApi(), staleTime: 5 * 60_000 });
+  const online = typeof navigator === "undefined" || navigator.onLine;
+  const billingQuery = useQuery({ queryKey: ["billing-overview"], queryFn: getBillingOverviewApi, staleTime: 60_000, enabled: online });
+  const pricingQuery = useQuery({ queryKey: ["pricing-context"], queryFn: () => getPricingContextApi(), staleTime: 5 * 60_000, enabled: online });
 
   const billing = billingQuery.data;
   const currentCode = billing?.plan.code;
@@ -139,6 +140,11 @@ const Billing = () => {
 
   return (
     <div className="space-y-8">
+      {!online && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200">
+          Billing needs an internet connection. Your cached business data still works offline, but plan changes and usage checks will resume when you reconnect.
+        </div>
+      )}
       <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <div className="rounded-lg border border-border bg-background p-6 dark:bg-card">
           <div className="flex flex-wrap items-start justify-between gap-4">

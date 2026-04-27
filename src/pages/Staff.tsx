@@ -9,6 +9,7 @@ import { useStore } from "@/lib/store";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { EmptyState } from "@/components/ui/empty-state";
+import { addToOfflineQueue, canQueueOfflineAction, hasQueuedLocalCreate, removeQueuedLocalCreate } from "@/lib/offlineQueue";
 
 const Staff = () => {
   const { staff, addStaff, updateStaff, deleteStaff } = useStore();
@@ -20,13 +21,20 @@ const Staff = () => {
   const filtered = staff.filter(s => s.name.toLowerCase().includes(search.toLowerCase()) || s.role.toLowerCase().includes(search.toLowerCase()));
 
   const handleAdd = () => {
-    addStaff({ name: form.name, role: form.role, status: "Active", lastActive: "Just added" });
+    const localId = addStaff({ name: form.name, role: form.role, status: "Active", lastActive: "Just added" });
+    if (canQueueOfflineAction()) {
+      addToOfflineQueue({ type: "staff_create", payload: { local_id: localId, name: form.name, role: form.role, status: "Active" } });
+    }
     setForm({ name: "", role: "Cashier" });
     setAddOpen(false);
   };
 
   const toggleStatus = (id: string, current: string) => {
-    updateStaff(id, { status: current === "Active" ? "Inactive" : "Active" });
+    const status = current === "Active" ? "Inactive" : "Active";
+    updateStaff(id, { status });
+    if (canQueueOfflineAction() && /^\d+$/.test(id)) {
+      addToOfflineQueue({ type: "staff_update", payload: { id: Number(id), status } });
+    }
   };
 
   return (
@@ -89,7 +97,7 @@ const Staff = () => {
           </div>
         </DialogContent>
       </Dialog>
-      <ConfirmationModal open={!!deleteId} onOpenChange={() => setDeleteId(null)} title="Remove Staff" description="Remove this team member?" confirmLabel="Remove" variant="destructive" onConfirm={() => { if (deleteId) deleteStaff(deleteId); setDeleteId(null); }} />
+      <ConfirmationModal open={!!deleteId} onOpenChange={() => setDeleteId(null)} title="Remove Staff" description="Remove this team member?" confirmLabel="Remove" variant="destructive" onConfirm={() => { if (deleteId) { if (canQueueOfflineAction()) { if (hasQueuedLocalCreate("staff_create", deleteId)) removeQueuedLocalCreate("staff_create", deleteId); else if (/^\d+$/.test(deleteId)) addToOfflineQueue({ type: "staff_delete", payload: { id: Number(deleteId) } }); } deleteStaff(deleteId); } setDeleteId(null); }} />
     </div>
   );
 };

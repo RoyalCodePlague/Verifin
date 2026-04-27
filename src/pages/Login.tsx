@@ -49,6 +49,14 @@ const Login = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.email || !form.password) return;
+    if (!navigator.onLine) {
+      toast.error(
+        isSignUp
+          ? "Creating an account needs an internet connection."
+          : "Sign in needs an internet connection. Offline mode starts after you are logged in and inside the dashboard."
+      );
+      return;
+    }
     setLoading(true);
     try {
       if (isSignUp) {

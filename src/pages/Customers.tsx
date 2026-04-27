@@ -11,6 +11,7 @@ import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
+import { addToOfflineQueue, canQueueOfflineAction, hasQueuedLocalCreate, removeQueuedLocalCreate } from "@/lib/offlineQueue";
 
 const badgeConfig: Record<CustomerBadge, { label: string; color: string; icon: typeof Award }> = {
   bronze: { label: "Bronze", color: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400", icon: Award },
@@ -51,13 +52,32 @@ const Customers = () => {
   const handleSave = () => {
     if (editId) {
       updateCustomer(editId, { name: form.name, phone: form.phone, badge: form.badge });
+      if (canQueueOfflineAction() && /^\d+$/.test(editId)) {
+        addToOfflineQueue({ type: "customer_update", payload: { id: Number(editId), name: form.name, phone: form.phone, badge: form.badge } });
+      }
       setEditId(null);
-      toast.success("Customer updated!");
+      toast.success(canQueueOfflineAction() ? "Customer update saved locally." : "Customer updated!");
     } else {
       const qrCode = `VRF-CUST-${Date.now().toString(36).toUpperCase()}`;
-      addCustomer({ name: form.name, phone: form.phone, totalSpent: 0, visits: 0, loyaltyPoints: 0, qrCode, credits: 0, lastVisit: "Never", badge: form.badge });
+      const localId = addCustomer({ name: form.name, phone: form.phone, totalSpent: 0, visits: 0, loyaltyPoints: 0, qrCode, credits: 0, lastVisit: "Never", badge: form.badge });
+      if (canQueueOfflineAction()) {
+        addToOfflineQueue({
+          type: "customer_create",
+          payload: {
+            local_id: localId,
+            name: form.name,
+            phone: form.phone,
+            total_spent: "0.00",
+            visits: 0,
+            loyalty_points: 0,
+            qr_code: qrCode,
+            credits: "0.00",
+            badge: form.badge,
+          },
+        });
+      }
       setAddOpen(false);
-      toast.success("Customer added with QR code!");
+      toast.success(canQueueOfflineAction() ? "Customer saved locally with QR code." : "Customer added with QR code!");
     }
     setForm({ name: "", phone: "", badge: "bronze" });
   };
@@ -69,6 +89,9 @@ const Customers = () => {
         const c = customers.find(x => x.id === creditModal);
         if (c) {
           updateCustomer(creditModal, { credits: (c.credits || 0) + amount });
+          if (canQueueOfflineAction() && /^\d+$/.test(creditModal)) {
+            addToOfflineQueue({ type: "customer_update", payload: { id: Number(creditModal), credits: ((c.credits || 0) + amount).toFixed(2) } });
+          }
           toast.success(`${sym}${amount} credit added to ${c.name}!`);
         }
       }
@@ -262,7 +285,7 @@ const Customers = () => {
         </DialogContent>
       </Dialog>
 
-      <ConfirmationModal open={!!deleteId} onOpenChange={() => setDeleteId(null)} title="Delete Customer" description="Remove this customer?" confirmLabel="Delete" variant="destructive" onConfirm={() => { if (deleteId) deleteCustomer(deleteId); setDeleteId(null); }} />
+      <ConfirmationModal open={!!deleteId} onOpenChange={() => setDeleteId(null)} title="Delete Customer" description="Remove this customer?" confirmLabel="Delete" variant="destructive" onConfirm={() => { if (deleteId) { if (canQueueOfflineAction()) { if (hasQueuedLocalCreate("customer_create", deleteId)) removeQueuedLocalCreate("customer_create", deleteId); else if (/^\d+$/.test(deleteId)) addToOfflineQueue({ type: "customer_delete", payload: { id: Number(deleteId) } }); } deleteCustomer(deleteId); } setDeleteId(null); }} />
     </div>
   );
 };

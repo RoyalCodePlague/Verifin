@@ -22,10 +22,14 @@ import {
 import { useStore } from "@/lib/store";
 import { toast } from "sonner";
 import { symbolForCurrency } from "@/lib/currency";
+import { addToOfflineQueue, canQueueOfflineAction } from "@/lib/offlineQueue";
 
 type Suggestion = Awaited<ReturnType<typeof fetchPurchaseSuggestions>>["items"][number];
 
 const emptySupplier = { name: "", contact_name: "", phone: "", email: "", address: "", notes: "" };
+const SUPPLIERS_CACHE_KEY = "sp_suppliers_cache";
+const PURCHASE_ORDERS_CACHE_KEY = "sp_purchase_orders_cache";
+const PURCHASE_SUGGESTIONS_CACHE_KEY = "sp_purchase_suggestions_cache";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -48,6 +52,19 @@ function prettyDateTime(iso: string) {
   return Number.isNaN(parsed.getTime())
     ? iso
     : parsed.toLocaleString([], { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function readCache<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeCache(key: string, value: unknown) {
+  localStorage.setItem(key, JSON.stringify(value));
 }
 
 const Suppliers = () => {
@@ -87,6 +104,12 @@ const Suppliers = () => {
   const enabledCurrencies = profile.enabledCurrencies?.length ? profile.enabledCurrencies : [profile.currency];
 
   const loadData = async () => {
+    if (!navigator.onLine) {
+      setSuppliers(readCache<ApiSupplier[]>(SUPPLIERS_CACHE_KEY, []));
+      setOrders(readCache<ApiPurchaseOrder[]>(PURCHASE_ORDERS_CACHE_KEY, []));
+      setSuggestions(readCache<Suggestion[]>(PURCHASE_SUGGESTIONS_CACHE_KEY, []));
+      return;
+    }
     const [nextSuppliers, nextOrders, nextSuggestions] = await Promise.all([
       listSuppliersApi(),
       listPurchaseOrdersApi(),
@@ -95,13 +118,16 @@ const Suppliers = () => {
     setSuppliers(nextSuppliers);
     setOrders(nextOrders);
     setSuggestions(nextSuggestions.items);
+    writeCache(SUPPLIERS_CACHE_KEY, nextSuppliers);
+    writeCache(PURCHASE_ORDERS_CACHE_KEY, nextOrders);
+    writeCache(PURCHASE_SUGGESTIONS_CACHE_KEY, nextSuggestions.items);
   };
 
   useEffect(() => {
     loadData().catch(() => {
-      setSuppliers([]);
-      setOrders([]);
-      setSuggestions([]);
+      setSuppliers(readCache<ApiSupplier[]>(SUPPLIERS_CACHE_KEY, []));
+      setOrders(readCache<ApiPurchaseOrder[]>(PURCHASE_ORDERS_CACHE_KEY, []));
+      setSuggestions(readCache<Suggestion[]>(PURCHASE_SUGGESTIONS_CACHE_KEY, []));
     });
   }, []);
 
@@ -139,9 +165,26 @@ const Suppliers = () => {
   const entryTotalBaseValue = entryTotalValue * entryFxRate;
 
   const saveSupplier = async () => {
+    if (canQueueOfflineAction()) {
+      const localSupplier = { ...supplierForm, id: -Date.now() } as ApiSupplier;
+      setSuppliers((prev) => {
+        const next = [localSupplier, ...prev];
+        writeCache(SUPPLIERS_CACHE_KEY, next);
+        return next;
+      });
+      addToOfflineQueue({ type: "supplier_create", payload: supplierForm });
+      setSupplierForm(emptySupplier);
+      setSupplierOpen(false);
+      toast.success("Supplier saved locally. It will sync when you are back online.");
+      return;
+    }
     try {
       const created = await createSupplierApi(supplierForm);
-      setSuppliers((prev) => [created, ...prev]);
+      setSuppliers((prev) => {
+        const next = [created, ...prev];
+        writeCache(SUPPLIERS_CACHE_KEY, next);
+        return next;
+      });
       setSupplierForm(emptySupplier);
       setSupplierOpen(false);
       toast.success("Supplier added");

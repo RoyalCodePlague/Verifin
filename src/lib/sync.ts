@@ -146,6 +146,27 @@ type ApiNotificationPreference = {
   push_enabled: boolean;
 };
 
+function readCachedArray<T>(key: string): T[] {
+  if (typeof localStorage === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(`sp_${key}`);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function readCachedProfile(): Partial<BusinessProfile> {
+  if (typeof localStorage === "undefined") return {};
+  try {
+    const raw = localStorage.getItem("sp_profile");
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
 export async function loadServerData(user: {
   business_name: string;
   currency: string;
@@ -165,13 +186,17 @@ export async function loadServerData(user: {
   audits: AuditRecord[];
   discrepancies: Discrepancy[];
 }> {
-  // Helper function to safely fetch with fallback to empty array
-  const safeFetch = async <T,>(url: string): Promise<T[]> => {
+  const cachedProfile = readCachedProfile();
+
+  // Helper function to safely fetch with fallback to the last local snapshot.
+  const safeFetch = async <T,>(url: string, cacheKey: string): Promise<T[]> => {
+    const cached = readCachedArray<T>(cacheKey);
+    if (typeof navigator !== "undefined" && !navigator.onLine) return cached;
     try {
       return await fetchAllPages<T>(url);
     } catch (error) {
       console.warn(`Failed to fetch ${url}:`, error);
-      return [];
+      return cached;
     }
   };
 
@@ -186,14 +211,14 @@ export async function loadServerData(user: {
 
   const [rawBranches, rawProducts, rawSales, rawExpenses, rawCustomers, rawStaff, rawAudits, rawDiscrepancies, rawNotificationPreferences] =
     await Promise.all([
-      safeFetch<ApiBranch>("/api/v1/inventory/branches/"),
-      safeFetch<ApiProduct>("/api/v1/inventory/products/"),
-      safeFetch<ApiSale>("/api/v1/sales/"),
-      safeFetch<ApiExpense>("/api/v1/expenses/"),
-      safeFetch<ApiCustomer>("/api/v1/customers/"),
-      safeFetch<ApiStaff>("/api/v1/accounts/staff/"),
-      safeFetch<ApiAudit>("/api/v1/audits/"),
-      safeFetch<ApiDiscrepancy>("/api/v1/audits/discrepancies/"),
+      safeFetch<ApiBranch>("/api/v1/inventory/branches/", "branches"),
+      safeFetch<ApiProduct>("/api/v1/inventory/products/", "products"),
+      safeFetch<ApiSale>("/api/v1/sales/", "sales"),
+      safeFetch<ApiExpense>("/api/v1/expenses/", "expenses"),
+      safeFetch<ApiCustomer>("/api/v1/customers/", "customers"),
+      safeFetch<ApiStaff>("/api/v1/accounts/staff/", "staff"),
+      safeFetch<ApiAudit>("/api/v1/audits/", "audits"),
+      safeFetch<ApiDiscrepancy>("/api/v1/audits/discrepancies/", "discrepancies"),
       safeFetchNotificationPreferences(),
     ]);
 
@@ -213,37 +238,37 @@ export async function loadServerData(user: {
     id: String(p.id),
     name: p.name,
     sku: p.sku,
-    category: p.category_name || "",
-    branchId: p.branch ? String(p.branch) : undefined,
-    branchName: p.branch_name || "",
-    supplierId: p.preferred_supplier ? String(p.preferred_supplier) : undefined,
-    supplierName: p.supplier_name || "",
+    category: p.category_name || (p as ApiProduct & Partial<Product>).category || "",
+    branchId: p.branch ? String(p.branch) : (p as ApiProduct & Partial<Product>).branchId,
+    branchName: p.branch_name || (p as ApiProduct & Partial<Product>).branchName || "",
+    supplierId: p.preferred_supplier ? String(p.preferred_supplier) : (p as ApiProduct & Partial<Product>).supplierId,
+    supplierName: p.supplier_name || (p as ApiProduct & Partial<Product>).supplierName || "",
     stock: p.stock,
-    reorder: p.reorder_level,
-    costPrice: parseFloat(p.cost_price || "0"),
-    costCurrency: p.cost_currency || user.currency || "ZAR",
-    costFxRateToBase: p.cost_fx_rate_to_base ? parseFloat(p.cost_fx_rate_to_base) : 1,
-    price: parseFloat(p.price),
+    reorder: p.reorder_level ?? (p as ApiProduct & Partial<Product>).reorder ?? 0,
+    costPrice: parseFloat(String(p.cost_price ?? (p as ApiProduct & Partial<Product>).costPrice ?? "0")),
+    costCurrency: p.cost_currency || (p as ApiProduct & Partial<Product>).costCurrency || user.currency || "ZAR",
+    costFxRateToBase: p.cost_fx_rate_to_base ? parseFloat(p.cost_fx_rate_to_base) : (p as ApiProduct & Partial<Product>).costFxRateToBase ?? 1,
+    price: parseFloat(String(p.price ?? 0)),
     status: p.status,
     barcode: p.barcode || undefined,
-    addedDate: fmtDate(p.created_at),
-    lastRestocked: fmtDate(p.updated_at),
+    addedDate: fmtDate(p.created_at) || (p as ApiProduct & Partial<Product>).addedDate,
+    lastRestocked: fmtDate(p.updated_at) || (p as ApiProduct & Partial<Product>).lastRestocked,
   }));
 
   const sales: Sale[] = rawSales.map((s) => ({
     id: String(s.id),
     items: s.items || "",
-    total: parseFloat(s.total),
-    totalCost: parseFloat(s.total_cost || "0"),
-    grossProfit: parseFloat(s.gross_profit || "0"),
-    time: saleTime(s.time, s.created_at),
-    date: saleDisplayDate(s.date, s.created_at),
-    method: s.payment_method,
-    paymentCurrency: s.payment_currency || user.currency || "ZAR",
-    paymentAllocations: (s.payment_allocations || []).map((row) => ({
+    total: parseFloat(String(s.total ?? 0)),
+    totalCost: parseFloat(String(s.total_cost ?? (s as ApiSale & Partial<Sale>).totalCost ?? "0")),
+    grossProfit: parseFloat(String(s.gross_profit ?? (s as ApiSale & Partial<Sale>).grossProfit ?? "0")),
+    time: saleTime(s.time, s.created_at) || (s as ApiSale & Partial<Sale>).time || "",
+    date: saleDisplayDate(s.date, s.created_at) || (s as ApiSale & Partial<Sale>).date || "",
+    method: s.payment_method || (s as ApiSale & Partial<Sale>).method || "Cash",
+    paymentCurrency: s.payment_currency || (s as ApiSale & Partial<Sale>).paymentCurrency || user.currency || "ZAR",
+    paymentAllocations: (s.payment_allocations || (s as ApiSale & Partial<Sale>).paymentAllocations || []).map((row) => ({
       currency: row.currency,
-      amount: parseFloat(row.amount),
-      amountBase: parseFloat(row.amount_base || "0"),
+      amount: parseFloat(String(row.amount)),
+      amountBase: parseFloat(String(row.amount_base || (row as { amountBase?: number }).amountBase || "0")),
     })),
     branchId: s.branch ? String(s.branch) : undefined,
   }));
@@ -251,29 +276,29 @@ export async function loadServerData(user: {
   const todayStr = new Date().toISOString().slice(0, 10);
   const expenses: Expense[] = rawExpenses.map((e) => ({
     id: String(e.id),
-    desc: e.description,
-    amount: parseFloat(e.amount),
-    currency: e.currency || user.currency || "ZAR",
-    amountBase: parseFloat(e.amount_base || e.amount || "0"),
-    paymentAllocations: (e.payment_allocations || []).map((row) => ({
+    desc: e.description || (e as ApiExpense & Partial<Expense>).desc || "",
+    amount: parseFloat(String(e.amount ?? 0)),
+    currency: e.currency || (e as ApiExpense & Partial<Expense>).currency || user.currency || "ZAR",
+    amountBase: parseFloat(String(e.amount_base || (e as ApiExpense & Partial<Expense>).amountBase || e.amount || "0")),
+    paymentAllocations: (e.payment_allocations || (e as ApiExpense & Partial<Expense>).paymentAllocations || []).map((row) => ({
       currency: row.currency,
-      amount: parseFloat(row.amount),
-      amountBase: parseFloat(row.amount_base || "0"),
+      amount: parseFloat(String(row.amount)),
+      amountBase: parseFloat(String(row.amount_base || (row as { amountBase?: number }).amountBase || "0")),
     })),
     date: e.date === todayStr ? "Today" : e.date,
-    category: e.category_name || "Other",
+    category: e.category_name || (e as ApiExpense & Partial<Expense>).category || "Other",
   }));
 
   const customers: Customer[] = rawCustomers.map((c) => ({
     id: String(c.id),
     name: c.name,
     phone: c.phone,
-    totalSpent: parseFloat(c.total_spent),
+    totalSpent: parseFloat(String(c.total_spent ?? (c as ApiCustomer & Partial<Customer>).totalSpent ?? 0)),
     visits: c.visits,
-    loyaltyPoints: c.loyalty_points,
-    qrCode: String(c.qr_code),
-    credits: parseFloat(c.credits),
-    lastVisit: c.last_visit ? fmtDate(c.last_visit) : "",
+    loyaltyPoints: c.loyalty_points ?? (c as ApiCustomer & Partial<Customer>).loyaltyPoints ?? 0,
+    qrCode: String(c.qr_code || (c as ApiCustomer & Partial<Customer>).qrCode || ""),
+    credits: parseFloat(String(c.credits ?? 0)),
+    lastVisit: c.last_visit ? fmtDate(c.last_visit) : (c as ApiCustomer & Partial<Customer>).lastVisit || "",
     badge: c.badge,
   }));
 
@@ -282,7 +307,7 @@ export async function loadServerData(user: {
     name: s.name,
     role: s.role,
     status: s.status,
-    lastActive: s.last_active ? fmtDate(s.last_active) : "",
+    lastActive: s.last_active ? fmtDate(s.last_active) : (s as ApiStaff & Partial<StaffMember>).lastActive || "",
     branchId: s.branch ? String(s.branch) : undefined,
     branchName: s.branch_name || "",
   }));
@@ -291,19 +316,19 @@ export async function loadServerData(user: {
     id: String(a.id),
     date: fmtDate(a.date) || a.date,
     status: a.status,
-    items: a.items_counted,
-    discrepancies: a.discrepancies_found,
-    conductor: "",
-    autoFindings: [],
+    items: a.items_counted ?? (a as ApiAudit & Partial<AuditRecord>).items ?? 0,
+    discrepancies: a.discrepancies_found ?? (a as ApiAudit & Partial<AuditRecord>).discrepancies ?? 0,
+    conductor: (a as ApiAudit & Partial<AuditRecord>).conductor || "",
+    autoFindings: (a as ApiAudit & Partial<AuditRecord>).autoFindings || [],
   }));
 
   const discrepancies: Discrepancy[] = rawDiscrepancies.map((d) => ({
     id: String(d.id),
-    auditId: String(d.audit),
-    product: d.product_name || productNameById.get(d.product) || `Product #${d.product}`,
-    expected: d.expected_stock,
-    actual: d.actual_stock,
-    diff: d.difference,
+    auditId: d.audit ? String(d.audit) : (d as ApiDiscrepancy & Partial<Discrepancy>).auditId,
+    product: d.product_name || productNameById.get(d.product) || (d as ApiDiscrepancy & Partial<Discrepancy>).product || `Product #${d.product}`,
+    expected: d.expected_stock ?? (d as ApiDiscrepancy & Partial<Discrepancy>).expected ?? 0,
+    actual: d.actual_stock ?? (d as ApiDiscrepancy & Partial<Discrepancy>).actual ?? 0,
+    diff: d.difference ?? (d as ApiDiscrepancy & Partial<Discrepancy>).diff ?? 0,
     status: d.status,
   }));
 
@@ -316,10 +341,10 @@ export async function loadServerData(user: {
     currencySymbol: user.currency_symbol || "R",
     enabledCurrencies: user.enabled_currencies?.length ? user.enabled_currencies : [user.currency || "ZAR"],
     exchangeRates: user.exchange_rates || {},
-    categories: categoryNames.length ? categoryNames : ["Groceries", "Beverages", "Hardware", "Personal Care"],
-    whatsappDaily: notificationPreference?.whatsapp_daily ?? true,
-    lowStockAlerts: notificationPreference?.low_stock_alerts ?? true,
-    discrepancyAlerts: notificationPreference?.discrepancy_alerts ?? true,
+    categories: categoryNames.length ? categoryNames : cachedProfile.categories || ["Groceries", "Beverages", "Hardware", "Personal Care"],
+    whatsappDaily: notificationPreference?.whatsapp_daily ?? cachedProfile.whatsappDaily ?? true,
+    lowStockAlerts: notificationPreference?.low_stock_alerts ?? cachedProfile.lowStockAlerts ?? true,
+    discrepancyAlerts: notificationPreference?.discrepancy_alerts ?? cachedProfile.discrepancyAlerts ?? true,
     onboardingComplete: user.onboarding_complete,
     darkMode: user.dark_mode,
   };

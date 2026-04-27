@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { useStore } from "@/lib/store";
 import { createProductApi, deleteProductApi, fetchInventoryForecast, identifyBarcodeProductApi, mapProductResponse, updateProductApi, type ApiForecastItem } from "@/lib/api";
-import { addToOfflineQueue, canQueueOfflineAction } from "@/lib/offlineQueue";
+import { addToOfflineQueue, canQueueOfflineAction, hasQueuedProductCreate, removeQueuedProductCreate } from "@/lib/offlineQueue";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -639,7 +639,9 @@ const Inventory = () => {
           if (!deleteId) return;
           try {
             if (canQueueOfflineAction()) {
-              if (/^\d+$/.test(deleteId)) {
+              if (hasQueuedProductCreate(deleteId)) {
+                removeQueuedProductCreate(deleteId);
+              } else if (/^\d+$/.test(deleteId)) {
                 addToOfflineQueue({ type: "product_delete", payload: { id: parseInt(deleteId, 10) } });
               }
             } else {
