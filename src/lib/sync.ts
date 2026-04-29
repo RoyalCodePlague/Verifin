@@ -95,6 +95,10 @@ type ApiCustomer = {
   loyalty_points: number;
   qr_code: string;
   credits: string;
+  debt_amount?: string;
+  debt_started_at?: string | null;
+  debt_updated_at?: string | null;
+  debt_notes?: string | null;
   last_visit: string | null;
   badge: Customer["badge"];
 };
@@ -298,6 +302,10 @@ export async function loadServerData(user: {
     loyaltyPoints: c.loyalty_points ?? (c as ApiCustomer & Partial<Customer>).loyaltyPoints ?? 0,
     qrCode: String(c.qr_code || (c as ApiCustomer & Partial<Customer>).qrCode || ""),
     credits: parseFloat(String(c.credits ?? 0)),
+    debtAmount: parseFloat(String(c.debt_amount ?? (c as ApiCustomer & Partial<Customer>).debtAmount ?? 0)),
+    debtStartedAt: c.debt_started_at || (c as ApiCustomer & Partial<Customer>).debtStartedAt || undefined,
+    debtUpdatedAt: c.debt_updated_at || (c as ApiCustomer & Partial<Customer>).debtUpdatedAt || undefined,
+    debtNotes: c.debt_notes || (c as ApiCustomer & Partial<Customer>).debtNotes || "",
     lastVisit: c.last_visit ? fmtDate(c.last_visit) : (c as ApiCustomer & Partial<Customer>).lastVisit || "",
     badge: c.badge,
   }));

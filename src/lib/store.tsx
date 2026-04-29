@@ -86,6 +86,10 @@ export interface Customer {
   loyaltyPoints: number;
   qrCode: string;
   credits: number;
+  debtAmount?: number;
+  debtStartedAt?: string;
+  debtUpdatedAt?: string;
+  debtNotes?: string;
   lastVisit: string;
   badge: CustomerBadge;
 }

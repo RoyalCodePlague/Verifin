@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Search, Plus, Trash2, Users, QrCode, Gift, Edit2, Award, Star, Trophy, Crown } from "lucide-react";
+import { Search, Plus, Trash2, Users, QrCode, Gift, Edit2, Award, Star, Trophy, Crown, HandCoins, ReceiptText, AlertTriangle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -20,6 +20,13 @@ const badgeConfig: Record<CustomerBadge, { label: string; color: string; icon: t
   platinum: { label: "Platinum", color: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400", icon: Crown },
 };
 
+const debtAgeInDays = (startedAt?: string) => {
+  if (!startedAt) return 0;
+  const started = new Date(startedAt);
+  if (Number.isNaN(started.getTime())) return 0;
+  return Math.max(0, Math.floor((Date.now() - started.getTime()) / 86400000));
+};
+
 const Customers = () => {
   const { customers, addCustomer, updateCustomer, deleteCustomer, profile } = useStore();
   const [search, setSearch] = useState("");
@@ -29,6 +36,9 @@ const Customers = () => {
   const [viewQR, setViewQR] = useState<string | null>(null);
   const [creditModal, setCreditModal] = useState<string | null>(null);
   const [creditAmount, setCreditAmount] = useState("");
+  const [debtModal, setDebtModal] = useState<{ id: string; mode: "add" | "payment" } | null>(null);
+  const [debtAmount, setDebtAmount] = useState("");
+  const [debtNotes, setDebtNotes] = useState("");
   const [form, setForm] = useState({ name: "", phone: "", badge: "bronze" as CustomerBadge });
   const qrWrapperRef = useRef<HTMLDivElement | null>(null);
   const sym = profile.currencySymbol || "R";
@@ -36,6 +46,10 @@ const Customers = () => {
   const filtered = customers.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.phone.includes(search));
   const viewingCustomer = customers.find(c => c.id === viewQR);
   const creditCustomer = customers.find(c => c.id === creditModal);
+  const debtCustomer = customers.find(c => c.id === debtModal?.id);
+  const debtors = customers.filter(c => (c.debtAmount || 0) > 0);
+  const totalDebt = debtors.reduce((sum, c) => sum + (c.debtAmount || 0), 0);
+  const overdueDebtCount = debtors.filter(c => debtAgeInDays(c.debtStartedAt) >= 30).length;
 
   const openAdd = () => {
     setForm({ name: "", phone: "", badge: "bronze" });
@@ -59,7 +73,7 @@ const Customers = () => {
       toast.success(canQueueOfflineAction() ? "Customer update saved locally." : "Customer updated!");
     } else {
       const qrCode = `VRF-CUST-${Date.now().toString(36).toUpperCase()}`;
-      const localId = addCustomer({ name: form.name, phone: form.phone, totalSpent: 0, visits: 0, loyaltyPoints: 0, qrCode, credits: 0, lastVisit: "Never", badge: form.badge });
+      const localId = addCustomer({ name: form.name, phone: form.phone, totalSpent: 0, visits: 0, loyaltyPoints: 0, qrCode, credits: 0, debtAmount: 0, debtNotes: "", lastVisit: "Never", badge: form.badge });
       if (canQueueOfflineAction()) {
         addToOfflineQueue({
           type: "customer_create",
@@ -72,6 +86,8 @@ const Customers = () => {
             loyalty_points: 0,
             qr_code: qrCode,
             credits: "0.00",
+            debt_amount: "0.00",
+            debt_notes: "",
             badge: form.badge,
           },
         });
@@ -98,6 +114,60 @@ const Customers = () => {
     }
     setCreditAmount("");
     setCreditModal(null);
+  };
+
+  const openDebtModal = (id: string, mode: "add" | "payment") => {
+    const customer = customers.find(c => c.id === id);
+    setDebtModal({ id, mode });
+    setDebtAmount("");
+    setDebtNotes(mode === "add" ? customer?.debtNotes || "" : "");
+  };
+
+  const closeDebtModal = () => {
+    setDebtModal(null);
+    setDebtAmount("");
+    setDebtNotes("");
+  };
+
+  const queueDebtUpdate = (id: string, updates: Record<string, unknown>) => {
+    if (canQueueOfflineAction() && /^\d+$/.test(id)) {
+      addToOfflineQueue({ type: "customer_update", payload: { id: Number(id), ...updates } });
+    }
+  };
+
+  const handleDebtSave = () => {
+    if (!debtModal || !debtCustomer) return;
+    const amount = parseFloat(debtAmount);
+    if (isNaN(amount) || amount <= 0) {
+      toast.error("Enter a valid amount.");
+      return;
+    }
+
+    const currentDebt = debtCustomer.debtAmount || 0;
+    const now = new Date().toISOString();
+    const nextDebt = debtModal.mode === "add" ? currentDebt + amount : Math.max(0, currentDebt - amount);
+    const nextStartedAt = nextDebt > 0 ? (currentDebt > 0 ? debtCustomer.debtStartedAt : now) : undefined;
+    const updates = {
+      debtAmount: nextDebt,
+      debtStartedAt: nextStartedAt,
+      debtUpdatedAt: now,
+      debtNotes: debtModal.mode === "add" ? debtNotes.trim() : debtCustomer.debtNotes || "",
+    };
+
+    updateCustomer(debtModal.id, updates);
+    queueDebtUpdate(debtModal.id, {
+      debt_amount: nextDebt.toFixed(2),
+      debt_started_at: nextStartedAt || null,
+      debt_updated_at: now,
+      debt_notes: updates.debtNotes,
+    });
+
+    toast.success(
+      debtModal.mode === "add"
+        ? `${sym}${amount.toFixed(2)} debt added to ${debtCustomer.name}.`
+        : `${sym}${amount.toFixed(2)} payment recorded. Balance: ${sym}${nextDebt.toFixed(2)}.`
+    );
+    closeDebtModal();
   };
 
   const downloadQRCode = () => {
@@ -186,6 +256,21 @@ const Customers = () => {
         <Button onClick={openAdd} className="bg-gradient-hero text-primary-foreground"><Plus className="h-4 w-4 mr-2" /> Add Customer</Button>
       </div>
 
+      <div className="grid sm:grid-cols-3 gap-3">
+        <div className="rounded-lg border border-border bg-card p-4">
+          <p className="text-xs text-muted-foreground">Debtors</p>
+          <p className="font-display text-xl font-bold">{debtors.length}</p>
+        </div>
+        <div className="rounded-lg border border-border bg-card p-4">
+          <p className="text-xs text-muted-foreground">Total Owed</p>
+          <p className="font-display text-xl font-bold">{sym}{totalDebt.toFixed(2)}</p>
+        </div>
+        <div className={`rounded-lg border p-4 ${overdueDebtCount > 0 ? "border-destructive/40 bg-destructive/10" : "border-border bg-card"}`}>
+          <p className="text-xs text-muted-foreground">30+ Days Old</p>
+          <p className={`font-display text-xl font-bold ${overdueDebtCount > 0 ? "text-destructive" : ""}`}>{overdueDebtCount}</p>
+        </div>
+      </div>
+
       {filtered.length === 0 ? (
         <EmptyState icon={Users} title="No customers yet" description="Add your first customer to start tracking" actionLabel="Add Customer" onAction={openAdd} />
       ) : (
@@ -193,8 +278,11 @@ const Customers = () => {
           {filtered.map((c) => {
             const badge = badgeConfig[c.badge || "bronze"];
             const BadgeIcon = badge.icon;
+            const debtAmount = c.debtAmount || 0;
+            const debtAge = debtAgeInDays(c.debtStartedAt);
+            const isOverdueDebt = debtAmount > 0 && debtAge >= 30;
             return (
-              <Card key={c.id} className="shadow-soft group cursor-pointer hover:shadow-elevated transition-shadow" onClick={() => openEdit(c.id)}>
+              <Card key={c.id} className={`shadow-soft group cursor-pointer hover:shadow-elevated transition-shadow ${isOverdueDebt ? "border-destructive/50" : ""}`} onClick={() => openEdit(c.id)}>
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between">
                     <div>
@@ -211,6 +299,8 @@ const Customers = () => {
                       <button aria-label="Edit customer" onClick={() => openEdit(c.id)} className="p-1.5 rounded hover:bg-muted"><Edit2 className="h-3.5 w-3.5 text-muted-foreground" /></button>
                       <button aria-label="View customer QR code" onClick={() => setViewQR(c.id)} className="p-1.5 rounded hover:bg-muted"><QrCode className="h-3.5 w-3.5 text-primary" /></button>
                       <button aria-label="Add credit to customer" onClick={() => setCreditModal(c.id)} className="p-1.5 rounded hover:bg-muted"><Gift className="h-3.5 w-3.5 text-accent" /></button>
+                      <button aria-label="Add customer debt" onClick={() => openDebtModal(c.id, "add")} className="p-1.5 rounded hover:bg-muted"><HandCoins className="h-3.5 w-3.5 text-amber-600" /></button>
+                      {debtAmount > 0 && <button aria-label="Record partial payment" onClick={() => openDebtModal(c.id, "payment")} className="p-1.5 rounded hover:bg-muted"><ReceiptText className="h-3.5 w-3.5 text-success" /></button>}
                       <button aria-label="Delete customer" onClick={() => setDeleteId(c.id)} className="p-1.5 rounded hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="h-3.5 w-3.5 text-destructive" /></button>
                     </div>
                   </div>
@@ -220,6 +310,18 @@ const Customers = () => {
                     <div><strong className="font-display">{c.loyaltyPoints}</strong><br /><span className="text-muted-foreground">points</span></div>
                     <div><strong className="font-display text-success">{sym}{(c.credits || 0).toFixed(2)}</strong><br /><span className="text-muted-foreground">credits</span></div>
                   </div>
+                  {debtAmount > 0 && (
+                    <div className={`mt-3 rounded-lg border px-3 py-2 text-xs ${isOverdueDebt ? "border-destructive/40 bg-destructive/10 text-destructive" : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300"}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="inline-flex items-center gap-1 font-medium">
+                          {isOverdueDebt && <AlertTriangle className="h-3.5 w-3.5" />}
+                          Owes {sym}{debtAmount.toFixed(2)}
+                        </span>
+                        <span>{debtAge} day{debtAge === 1 ? "" : "s"}</span>
+                      </div>
+                      {c.debtNotes && <p className="mt-1 text-muted-foreground">{c.debtNotes}</p>}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             );
@@ -256,6 +358,12 @@ const Customers = () => {
                 <div className="p-3 rounded-lg bg-muted/50"><p className="font-display font-bold">{viewingCustomer.loyaltyPoints}</p><p className="text-xs text-muted-foreground">Points</p></div>
                 <div className="p-3 rounded-lg bg-success/10"><p className="font-display font-bold text-success">{sym}{(viewingCustomer.credits || 0).toFixed(2)}</p><p className="text-xs text-muted-foreground">Credits</p></div>
               </div>
+              {(viewingCustomer.debtAmount || 0) > 0 && (
+                <div className={`p-3 rounded-lg text-left ${(debtAgeInDays(viewingCustomer.debtStartedAt) >= 30) ? "bg-destructive/10 text-destructive" : "bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300"}`}>
+                  <p className="font-display font-bold">Owes {sym}{(viewingCustomer.debtAmount || 0).toFixed(2)}</p>
+                  <p className="text-xs">Age: {debtAgeInDays(viewingCustomer.debtStartedAt)} days</p>
+                </div>
+              )}
               <p className="text-xs text-muted-foreground">Print or share this QR code with the customer.</p>
             </div>
           )}
@@ -280,6 +388,39 @@ const Customers = () => {
                 <Input type="number" placeholder="e.g. 20" value={creditAmount} onChange={e => setCreditAmount(e.target.value)} className="mt-1" />
               </div>
               <Button onClick={handleAddCredit} disabled={!creditAmount} className="w-full bg-gradient-accent text-accent-foreground">Add Credit</Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Debt Dialog */}
+      <Dialog open={!!debtModal} onOpenChange={closeDebtModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-display">{debtModal?.mode === "payment" ? "Record Partial Payment" : "Add Customer Debt"}</DialogTitle>
+            <DialogDescription>
+              {debtModal?.mode === "payment" ? "Reduce the outstanding balance after a customer pays part of what they owe." : "Track goods taken now and paid later."}
+            </DialogDescription>
+          </DialogHeader>
+          {debtCustomer && (
+            <div className="space-y-4">
+              <div className="p-3 rounded-lg bg-muted/50">
+                <p className="font-medium text-sm">{debtCustomer.name}</p>
+                <p className="text-xs text-muted-foreground">Current balance: {sym}{(debtCustomer.debtAmount || 0).toFixed(2)}</p>
+              </div>
+              <div>
+                <Label>{debtModal?.mode === "payment" ? "Payment Amount" : "Debt Amount"} ({sym})</Label>
+                <Input type="number" min="0" step="0.01" placeholder={debtModal?.mode === "payment" ? "e.g. 2" : "e.g. 5"} value={debtAmount} onChange={e => setDebtAmount(e.target.value)} className="mt-1" />
+              </div>
+              {debtModal?.mode === "add" && (
+                <div>
+                  <Label>Note</Label>
+                  <Input placeholder="e.g. bread and sugar" value={debtNotes} onChange={e => setDebtNotes(e.target.value)} className="mt-1" />
+                </div>
+              )}
+              <Button onClick={handleDebtSave} disabled={!debtAmount} className="w-full">
+                {debtModal?.mode === "payment" ? "Record Payment" : "Add Debt"}
+              </Button>
             </div>
           )}
         </DialogContent>

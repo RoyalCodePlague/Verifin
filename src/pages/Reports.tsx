@@ -37,6 +37,7 @@ const Reports = () => {
   const weeklySalesTotal = weeklyData.reduce((sum, d) => sum + d.sales, 0);
   const weeklyExpensesTotal = weeklyData.reduce((sum, d) => sum + d.expenses, 0);
   const paymentBreakdown = salePaymentBreakdown(sales, profile.currency);
+  const customerDebtTotal = customers.reduce((sum, c) => sum + (c.debtAmount || 0), 0);
 
   const categoryData = Array.from(
     products.reduce((acc, product) => {
@@ -60,7 +61,7 @@ const Reports = () => {
     { title: "Weekly Performance", desc: `Sales: ${formatMoney(weeklySalesTotal, sym)} - Expenses: ${formatMoney(weeklyExpensesTotal, sym)} - Net: ${formatMoney(weeklySalesTotal - weeklyExpensesTotal, sym)}`, icon: BarChart3, feature: "advanced_reports" },
     { title: "Stock Movement Report", desc: `${products.length} products tracked - ${products.filter(p => p.status !== "ok").length} need attention`, icon: Package, feature: "advanced_reports" },
     { title: "Discrepancy Report", desc: `${discrepancies.filter(d => d.status !== "resolved").length} open issues`, icon: AlertTriangle, feature: "discrepancy_tracking" },
-    { title: "Customer Report", desc: `${customers.length} customers - ${formatMoney(customers.reduce((s, c) => s + c.totalSpent, 0), sym)} total revenue`, icon: Users, feature: "advanced_reports" },
+    { title: "Customer Report", desc: `${customers.length} customers - ${formatMoney(customers.reduce((s, c) => s + c.totalSpent, 0), sym)} revenue - ${formatMoney(customerDebtTotal, sym)} owed`, icon: Users, feature: "advanced_reports" },
     { title: "Expense Analysis", desc: `${expenses.length} expenses across ${Object.keys(expenseByCat).length} categories`, icon: Receipt },
     { title: "Profit & Loss", desc: `Revenue: ${formatMoney(totalSales, sym)} - COGS: ${formatMoney(totalCostOfGoods, sym)} - Gross profit: ${formatMoney(grossProfit, sym)}`, icon: TrendingUp, feature: "advanced_analytics" },
     { title: "Monthly Overview", desc: "Full month breakdown of sales, expenses, and stock", icon: Calendar, feature: "advanced_reports" },
@@ -120,8 +121,8 @@ const Reports = () => {
       ];
     } else if (title.includes("Customer")) {
       csvRows = [
-        "Currency,Name,Phone,Total Spent,Visits,Loyalty Points,Credits,Last Visit",
-        ...customers.map(c => row([profile.currency, c.name, c.phone, formatMoney(c.totalSpent, sym), c.visits, c.loyaltyPoints, formatMoney(c.credits || 0, sym), c.lastVisit])),
+        "Currency,Name,Phone,Total Spent,Visits,Loyalty Points,Credits,Debt Balance,Debt Started,Debt Notes,Last Visit",
+        ...customers.map(c => row([profile.currency, c.name, c.phone, formatMoney(c.totalSpent, sym), c.visits, c.loyaltyPoints, formatMoney(c.credits || 0, sym), formatMoney(c.debtAmount || 0, sym), c.debtStartedAt || "", c.debtNotes || "", c.lastVisit])),
       ];
     } else if (title.includes("Expense")) {
       csvRows = [

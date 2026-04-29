@@ -2,6 +2,7 @@
 const QUEUE_KEY = "sp_offline_queue";
 const SESSION_KEY = "sp_offline_logged_in";
 const AUTHENTICATED_SESSION_KEY = "sp_offline_authenticated";
+const DASHBOARD_SESSION_KEY = "sp_offline_dashboard_session";
 const OFFLINE_ACCESS_ENABLED_KEY = "sp_offline_access_enabled";
 const ACCESS_KEY = "sp_access_token";
 const CACHED_USER_KEY = "sp_cached_user";
@@ -14,7 +15,13 @@ export type OfflineActionType =
   | "product_update"
   | "product_delete"
   | "restock"
+  | "customer_create"
   | "customer_update"
+  | "customer_delete"
+  | "staff_create"
+  | "staff_update"
+  | "staff_delete"
+  | "supplier_create"
   | "audit_create"
   | "audit_update"
   | "discrepancy_create"
@@ -49,6 +56,35 @@ export function clearOfflineQueue() {
   localStorage.removeItem(QUEUE_KEY);
 }
 
+export function setOfflineQueue(actions: OfflineAction[]) {
+  if (actions.length === 0) {
+    clearOfflineQueue();
+    return;
+  }
+  localStorage.setItem(QUEUE_KEY, JSON.stringify(actions));
+}
+
+export function removeQueuedProductCreate(localId: string) {
+  removeQueuedLocalCreate("product_create", localId);
+}
+
+export function hasQueuedProductCreate(localId: string) {
+  return hasQueuedLocalCreate("product_create", localId);
+}
+
+export function removeQueuedLocalCreate(type: OfflineActionType, localId: string) {
+  const next = getOfflineQueue().filter(
+    (action) => !(action.type === type && String(action.payload.local_id || "") === localId)
+  );
+  setOfflineQueue(next);
+}
+
+export function hasQueuedLocalCreate(type: OfflineActionType, localId: string) {
+  return getOfflineQueue().some(
+    (action) => action.type === type && String(action.payload.local_id || "") === localId
+  );
+}
+
 export function markOfflineSession() {
   localStorage.setItem(SESSION_KEY, "1");
 }
@@ -67,6 +103,7 @@ export function markAuthenticatedOfflineSession() {
 
 export function clearAuthenticatedOfflineSession() {
   localStorage.removeItem(AUTHENTICATED_SESSION_KEY);
+  clearDashboardOfflineSession();
 }
 
 export function hasAuthenticatedOfflineSession() {
@@ -78,8 +115,20 @@ export function hasAuthenticatedOfflineSession() {
   );
 }
 
+export function markDashboardOfflineSession() {
+  localStorage.setItem(DASHBOARD_SESSION_KEY, "1");
+}
+
+export function clearDashboardOfflineSession() {
+  localStorage.removeItem(DASHBOARD_SESSION_KEY);
+}
+
+export function hasDashboardOfflineSession() {
+  return localStorage.getItem(DASHBOARD_SESSION_KEY) === "1";
+}
+
 export function canQueueOfflineAction() {
-  return hasAuthenticatedOfflineSession() && !isOnline();
+  return hasAuthenticatedOfflineSession() && hasDashboardOfflineSession() && !isOnline();
 }
 
 export function isOnline(): boolean {

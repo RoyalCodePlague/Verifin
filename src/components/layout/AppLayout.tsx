@@ -14,6 +14,7 @@ import {
   setLastSuccessfulSync,
   getOfflineQueue,
   hasAuthenticatedOfflineSession,
+  markDashboardOfflineSession,
   markOfflineSession,
   setupOfflineSync,
 } from "@/lib/offlineQueue";
@@ -52,6 +53,10 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const toggleDark = () => setProfile({ ...profile, darkMode: !profile.darkMode });
+
+  useEffect(() => {
+    markDashboardOfflineSession();
+  }, []);
 
   useEffect(() => {
     const handleOffline = () => {
