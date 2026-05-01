@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useStore } from "@/lib/store";
-import { createExpenseApi, createExpenseWithReceiptApi, deleteExpenseApi, scanReceiptApi } from "@/lib/api";
+import { createExpenseApi, deleteExpenseApi, scanReceiptApi } from "@/lib/api";
 import { addToOfflineQueue, canQueueOfflineAction } from "@/lib/offlineQueue";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -174,9 +174,7 @@ const Expenses = () => {
     }
 
     try {
-      const created = receiptFile
-        ? await createExpenseWithReceiptApi(payload, receiptFile)
-        : await createExpenseApi(payload);
+      const created = await createExpenseApi(payload);
       upsertExpense({
         id: String(created.id),
         desc: created.description,

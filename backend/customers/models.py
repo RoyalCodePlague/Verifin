@@ -14,6 +14,10 @@ class Customer(TimeStampedSoftDeleteModel):
     loyalty_points = models.IntegerField(default=0)
     qr_code = models.CharField(max_length=64, unique=True, default=uuid.uuid4)
     credits = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    debt_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    debt_started_at = models.DateTimeField(blank=True, null=True)
+    debt_updated_at = models.DateTimeField(blank=True, null=True)
+    debt_notes = models.TextField(blank=True)
     last_visit = models.DateTimeField(blank=True, null=True)
     badge = models.CharField(max_length=20, choices=BADGE_CHOICES, default="bronze")
 

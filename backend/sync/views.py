@@ -12,7 +12,11 @@ from sales.serializers import SaleSerializer
 from expenses.serializers import ExpenseSerializer
 from expenses.models import ExpenseCategory
 from inventory.models import Category, Product
-from inventory.serializers import ProductSerializer
+from inventory.serializers import ProductSerializer, SupplierSerializer
+from customers.models import Customer
+from customers.serializers import CustomerSerializer
+from accounts.models import Staff
+from accounts.serializers import StaffSerializer
 from billing.services import enforce_feature
 
 
@@ -194,6 +198,72 @@ class SyncPushView(APIView):
                 else:
                     errors.append({"action": action, "detail": "Product not found"})
                     conflicts.append(record_conflict(request.user, action, "Product delete target missing").id)
+            elif action_type == "customer_create":
+                serializer = CustomerSerializer(data=payload, context={"request": request})
+                if serializer.is_valid():
+                    serializer.save(user=request.user)
+                    processed += 1
+                else:
+                    errors.append({"action": action, "errors": serializer.errors})
+                    conflicts.append(record_conflict(request.user, action, "Customer create sync failed").id)
+            elif action_type == "customer_update":
+                try:
+                    customer = Customer.objects.get(id=payload.get("id"), user=request.user, is_deleted=False)
+                except Customer.DoesNotExist:
+                    errors.append({"action": action, "detail": "Customer not found"})
+                    conflicts.append(record_conflict(request.user, action, "Customer update target missing").id)
+                    continue
+                serializer = CustomerSerializer(customer, data=payload, partial=True, context={"request": request})
+                if serializer.is_valid():
+                    serializer.save()
+                    processed += 1
+                else:
+                    errors.append({"action": action, "errors": serializer.errors})
+                    conflicts.append(record_conflict(request.user, action, "Customer update sync failed").id)
+            elif action_type == "customer_delete":
+                updated = Customer.objects.filter(id=payload.get("id"), user=request.user, is_deleted=False).update(is_deleted=True)
+                if updated:
+                    processed += 1
+                else:
+                    errors.append({"action": action, "detail": "Customer not found"})
+                    conflicts.append(record_conflict(request.user, action, "Customer delete target missing").id)
+            elif action_type == "staff_create":
+                serializer = StaffSerializer(data=payload, context={"request": request})
+                if serializer.is_valid():
+                    serializer.save(user=request.user)
+                    processed += 1
+                else:
+                    errors.append({"action": action, "errors": serializer.errors})
+                    conflicts.append(record_conflict(request.user, action, "Staff create sync failed").id)
+            elif action_type == "staff_update":
+                try:
+                    staff = Staff.objects.get(id=payload.get("id"), user=request.user, is_deleted=False)
+                except Staff.DoesNotExist:
+                    errors.append({"action": action, "detail": "Staff member not found"})
+                    conflicts.append(record_conflict(request.user, action, "Staff update target missing").id)
+                    continue
+                serializer = StaffSerializer(staff, data=payload, partial=True, context={"request": request})
+                if serializer.is_valid():
+                    serializer.save()
+                    processed += 1
+                else:
+                    errors.append({"action": action, "errors": serializer.errors})
+                    conflicts.append(record_conflict(request.user, action, "Staff update sync failed").id)
+            elif action_type == "staff_delete":
+                updated = Staff.objects.filter(id=payload.get("id"), user=request.user, is_deleted=False).update(is_deleted=True)
+                if updated:
+                    processed += 1
+                else:
+                    errors.append({"action": action, "detail": "Staff member not found"})
+                    conflicts.append(record_conflict(request.user, action, "Staff delete target missing").id)
+            elif action_type == "supplier_create":
+                serializer = SupplierSerializer(data=payload, context={"request": request})
+                if serializer.is_valid():
+                    serializer.save(user=request.user)
+                    processed += 1
+                else:
+                    errors.append({"action": action, "errors": serializer.errors})
+                    conflicts.append(record_conflict(request.user, action, "Supplier create sync failed").id)
             elif action_type == "audit_create":
                 audit = Audit.objects.create(
                     conductor=request.user,
