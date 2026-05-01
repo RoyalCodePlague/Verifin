@@ -53,6 +53,8 @@ export interface Expense {
   paymentAllocations?: Array<{ currency: string; amount: number; amountBase?: number }>;
   date: string;
   category: string;
+  receiptImage?: string;
+  receiptFileName?: string;
 }
 
 export interface AuditRecord {

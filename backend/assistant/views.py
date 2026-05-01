@@ -91,17 +91,13 @@ def whatsapp_summary_endpoint(request):
 @csrf_exempt
 @permission_classes([IsAuthenticated])
 def receipt_scan_endpoint(request):
-    enforce_feature(request.user, "receipt_scan_simulator")
+    enforce_feature(request.user, "receipt_ocr")
     upload = request.FILES.get("receipt")
-    return Response(
-        services.simulate_receipt_scan(
-            upload_name=upload.name if upload else "",
-            merchant=request.data.get("merchant", ""),
-            amount=request.data.get("amount"),
-            category=request.data.get("category", "General"),
-            note=request.data.get("note", ""),
-        )
-    )
+    try:
+        return Response(services.scan_receipt_image(upload))
+    except services.ReceiptScanError as exc:
+        status_code = status.HTTP_503_SERVICE_UNAVAILABLE if "not configured" in str(exc).lower() else status.HTTP_400_BAD_REQUEST
+        return Response({"detail": str(exc)}, status=status_code)
 
 
 @api_view(["GET"])

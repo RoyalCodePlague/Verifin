@@ -84,6 +84,7 @@ type ApiExpense = {
   payment_allocations?: Array<{ currency: string; amount: string; amount_base?: string }>;
   date: string;
   category_name?: string | null;
+  receipt_image?: string | null;
 };
 
 type ApiCustomer = {
@@ -291,6 +292,7 @@ export async function loadServerData(user: {
     })),
     date: e.date === todayStr ? "Today" : e.date,
     category: e.category_name || (e as ApiExpense & Partial<Expense>).category || "Other",
+    receiptImage: e.receipt_image || (e as ApiExpense & Partial<Expense>).receiptImage || undefined,
   }));
 
   const customers: Customer[] = rawCustomers.map((c) => ({

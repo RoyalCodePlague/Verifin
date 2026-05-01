@@ -2,7 +2,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from billing.services import enforce_feature
-from assistant.services import simulate_receipt_scan
+from assistant.services import ReceiptScanError, scan_receipt_image
 from .models import Expense, ExpenseCategory
 from .serializers import ExpenseCategorySerializer, ExpenseSerializer
 
@@ -38,12 +38,10 @@ class ExpenseViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["post"], url_path="ocr-receipt")
     def ocr_receipt(self, request):
-        enforce_feature(request.user, "receipt_scan_simulator")
+        enforce_feature(request.user, "receipt_ocr")
         upload = request.FILES.get("receipt")
-        return Response(simulate_receipt_scan(
-            upload_name=upload.name if upload else "",
-            merchant=request.data.get("merchant", ""),
-            amount=request.data.get("amount"),
-            category=request.data.get("category", "General"),
-            note=request.data.get("note", ""),
-        ))
+        try:
+            return Response(scan_receipt_image(upload))
+        except ReceiptScanError as exc:
+            status_code = 503 if "not configured" in str(exc).lower() else 400
+            return Response({"detail": str(exc)}, status=status_code)

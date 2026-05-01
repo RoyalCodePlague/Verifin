@@ -615,6 +615,7 @@ export type ApiExpense = {
   date: string;
   category?: number | null;
   category_name?: string | null;
+  receipt_image?: string | null;
 };
 
 export type ReceiptScanResult = {

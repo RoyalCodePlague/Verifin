@@ -1,3 +1,4 @@
+import io
 import json
 import logging
 import re
@@ -9,9 +10,15 @@ from django.db import models
 from django.db.models import Sum
 from django.db.models.functions import TruncDay
 from django.utils import timezone as django_timezone
+from PIL import Image, ImageFilter, ImageOps
 from inventory.models import Product, Category
 
 logger = logging.getLogger(__name__)
+
+
+class ReceiptScanError(Exception):
+    pass
+
 
 # Initialize Groq client
 try:
@@ -328,6 +335,150 @@ def simulate_receipt_scan(upload_name="", merchant="", amount=None, category="Ge
         },
         "message": "Receipt captured for manual review. No external OCR provider was used.",
     }
+
+
+EXPENSE_CATEGORY_KEYWORDS = {
+    "Transport": ("fuel", "taxi", "uber", "bolt", "bus", "transport", "parking", "petrol", "diesel"),
+    "Utilities": ("electric", "water", "utility", "utilities", "zesa", "airtime", "internet"),
+    "Stock Purchase": ("wholesale", "supplier", "cash carry", "stock", "goods", "invoice"),
+    "Communication": ("phone", "mobile", "data", "sim", "vodacom", "mtn", "econet", "telecel"),
+    "Rent": ("rent", "lease", "landlord"),
+    "Salary": ("salary", "wage", "payroll", "staff"),
+}
+
+
+def _manual_receipt_result(upload_name="", message="OCR could not read enough detail. Enter the expense manually."):
+    result = simulate_receipt_scan(upload_name=upload_name, category="Other")
+    result["status"] = "manual_review"
+    result["message"] = message
+    return result
+
+
+def _receipt_image_to_text(content):
+    try:
+        import pytesseract
+    except ImportError as exc:
+        raise ReceiptScanError("Tesseract OCR is not installed in the Python environment.") from exc
+
+    image = Image.open(io.BytesIO(content))
+    image = ImageOps.exif_transpose(image).convert("L")
+    image = ImageOps.autocontrast(image)
+    image = image.filter(ImageFilter.SHARPEN)
+    if image.width < 1200:
+        scale = 1200 / max(image.width, 1)
+        image = image.resize((1200, int(image.height * scale)))
+
+    return pytesseract.image_to_string(image, config="--oem 3 --psm 6")
+
+
+def _parse_receipt_amount(text):
+    money_pattern = re.compile(r"(?<!\d)(?:[A-Z]{1,3}\$?|R|\$)?\s*(\d{1,6}(?:[,\s]\d{3})*(?:[.,]\d{2})|\d{1,6})(?!\d)")
+    priority_lines = [line for line in text.splitlines() if re.search(r"\b(total|amount due|balance|grand total)\b", line, re.I)]
+    candidates = []
+    for line in priority_lines or text.splitlines():
+        for match in money_pattern.findall(line):
+            normalized = match.replace(" ", "").replace(",", "")
+            try:
+                value = float(normalized)
+            except ValueError:
+                continue
+            if 0 < value < 1_000_000:
+                candidates.append(value)
+    return max(candidates) if candidates else None
+
+
+def _parse_receipt_date(text):
+    patterns = [
+        r"\b(\d{4}[-/]\d{1,2}[-/]\d{1,2})\b",
+        r"\b(\d{1,2}[-/]\d{1,2}[-/]\d{2,4})\b",
+        r"\b(\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{2,4})\b",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, re.I)
+        if not match:
+            continue
+        raw = match.group(1).replace("/", "-")
+        for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%m-%d-%Y", "%d-%m-%y", "%m-%d-%y", "%d %b %Y", "%d %B %Y", "%d %b %y", "%d %B %y"):
+            try:
+                return datetime.strptime(raw, fmt).date().isoformat()
+            except ValueError:
+                continue
+    return ""
+
+
+def _parse_receipt_merchant(text):
+    skip = re.compile(r"(receipt|invoice|tax|vat|date|time|total|amount|cash|card|change|tel|phone)", re.I)
+    for line in text.splitlines()[:10]:
+        cleaned = re.sub(r"[^A-Za-z0-9 '&.-]", " ", line).strip()
+        cleaned = re.sub(r"\s+", " ", cleaned)
+        if len(cleaned) >= 3 and not skip.search(cleaned) and not re.search(r"\d{4,}", cleaned):
+            return cleaned[:80]
+    return "Unknown merchant"
+
+
+def _parse_receipt_category(text):
+    lowered = text.lower()
+    for category, keywords in EXPENSE_CATEGORY_KEYWORDS.items():
+        if any(keyword in lowered for keyword in keywords):
+            return category
+    return "Other"
+
+
+def parse_receipt_ocr_text(text, upload_name=""):
+    cleaned_text = (text or "").strip()
+    if len(cleaned_text) < 8:
+        return _manual_receipt_result(upload_name)
+
+    parsed = {
+        "merchant": _parse_receipt_merchant(cleaned_text),
+        "amount": _parse_receipt_amount(cleaned_text),
+        "date": _parse_receipt_date(cleaned_text),
+        "category": _parse_receipt_category(cleaned_text),
+        "note": cleaned_text[:500],
+    }
+    if parsed["amount"] is None:
+        return _manual_receipt_result(upload_name, "OCR read the receipt text, but could not find an amount. Enter it manually.")
+    result = _normalize_receipt_scan(parsed, upload_name=upload_name)
+    result["status"] = "ocr_parsed"
+    result["message"] = "Receipt OCR read the image. Review the extracted details before saving."
+    return result
+
+
+def _normalize_receipt_scan(parsed, upload_name=""):
+    amount = parsed.get("amount")
+    try:
+        amount = float(amount) if amount not in [None, ""] else None
+    except (TypeError, ValueError):
+        amount = None
+
+    return {
+        "status": "parsed",
+        "source_file": upload_name,
+        "parsed": {
+            "merchant": (parsed.get("merchant") or parsed.get("description") or "").strip() or "Unknown merchant",
+            "amount": amount,
+            "date": (parsed.get("date") or "").strip(),
+            "category": (parsed.get("category") or "Other").strip() or "Other",
+            "note": (parsed.get("note") or "").strip(),
+        },
+        "message": "Receipt read. Review the extracted details before saving.",
+    }
+
+
+def scan_receipt_image(upload):
+    if not upload:
+        return _manual_receipt_result(message="Upload a receipt image to scan, or enter the expense manually.")
+
+    upload_name = getattr(upload, "name", "")
+    try:
+        content = upload.read()
+        if not content:
+            return _manual_receipt_result(upload_name, "The uploaded receipt image is empty. Enter the expense manually.")
+        text = _receipt_image_to_text(content)
+        return parse_receipt_ocr_text(text, upload_name=upload_name)
+    except Exception as exc:
+        logger.exception("Receipt image scan failed: %s", exc)
+        return _manual_receipt_result(upload_name, "OCR could not read this image. Try a clearer photo or enter the expense manually.")
 
 
 def command_assistant(command, user=None):

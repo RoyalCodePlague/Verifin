@@ -39,6 +39,8 @@ const Expenses = () => {
   const [scanning, setScanning] = useState(false);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(null);
+  const [receiptDataUrl, setReceiptDataUrl] = useState<string | null>(null);
+  const [selectedExpenseId, setSelectedExpenseId] = useState<string | null>(null);
   const [form, setForm] = useState({
     desc: "",
     amount: "",
@@ -60,6 +62,7 @@ const Expenses = () => {
   const categoryOptions = useMemo(() => Array.from(new Set([...expenseCategories, form.category || "Other"])), [form.category]);
 
   const filtered = expenses.filter(e => e.desc.toLowerCase().includes(search.toLowerCase()));
+  const selectedExpense = expenses.find((expense) => expense.id === selectedExpenseId) || null;
   const monthTotal = useMemo(() => expenses.reduce((sum, e) => sum + (e.amountBase ?? e.amount), 0), [expenses]);
   const todayTotal = useMemo(
     () => expenses.filter(e => isSameBusinessDay(e.date)).reduce((sum, e) => sum + (e.amountBase ?? e.amount), 0),
@@ -76,6 +79,7 @@ const Expenses = () => {
       date: todayIso(),
     });
     setReceiptFile(null);
+    setReceiptDataUrl(null);
   };
 
   useEffect(() => {
@@ -88,6 +92,14 @@ const Expenses = () => {
     return () => URL.revokeObjectURL(url);
   }, [receiptFile]);
 
+  const readFileDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(reader.error || new Error("Could not read receipt image"));
+      reader.readAsDataURL(file);
+    });
+
   const handleScanFile = async (file: File | null) => {
     if (!file) return;
     if (!navigator.onLine) {
@@ -96,6 +108,7 @@ const Expenses = () => {
     }
     setScanning(true);
     try {
+      const dataUrl = await readFileDataUrl(file);
       const result = await scanReceiptApi({ receipt: file });
       const parsed = result.parsed || {};
       const parsedAmount = typeof parsed.amount === "number" && Number.isFinite(parsed.amount) && parsed.amount > 0
@@ -109,6 +122,7 @@ const Expenses = () => {
         category: parsed.category || prev.category,
         date: parsed.date || prev.date || todayIso(),
       }));
+      setReceiptDataUrl(dataUrl);
       setScanOpen(false);
       setAddOpen(true);
       toast.success(result.message || "Receipt scanned. Review the expense before saving.");
@@ -154,6 +168,8 @@ const Expenses = () => {
         amountBase,
         category: form.category,
         date: payload.date,
+        receiptImage: receiptDataUrl || undefined,
+        receiptFileName: receiptFile?.name,
       });
       addToOfflineQueue({ type: "expense", payload });
       toast.success("Expense saved locally while offline. It will sync when you are back online.");
@@ -188,6 +204,8 @@ const Expenses = () => {
         })),
         category: created.category_name || form.category,
         date: created.date || payload.date,
+        receiptImage: created.receipt_image || receiptDataUrl || undefined,
+        receiptFileName: receiptFile?.name,
       });
       resetForm();
       setAddOpen(false);
@@ -218,7 +236,7 @@ const Expenses = () => {
         <Button
           variant="outline"
           onClick={() => {
-            if (!canUse("receipt_ocr") && !canUse("receipt_scan_simulator")) {
+            if (!canUse("receipt_ocr")) {
               promptUpgrade("receipt_ocr", "Receipt OCR");
               return;
             }
@@ -242,13 +260,29 @@ const Expenses = () => {
                 const usesAltCurrency = (e.currency || baseCurrency) !== baseCurrency;
 
                 return (
-                  <motion.div key={e.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }} className="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors group">
+                  <motion.div
+                    key={e.id}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: i * 0.03 }}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setSelectedExpenseId(e.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedExpenseId(e.id);
+                      }
+                    }}
+                    className="flex cursor-pointer items-center justify-between p-4 hover:bg-muted/30 transition-colors group"
+                  >
                     <div>
                       <p className="font-medium text-sm">{e.desc}</p>
                       <div className="flex items-center gap-2 mt-1 flex-wrap">
                         <span className="text-xs text-muted-foreground">{displayBusinessDate(e.date)}</span>
                         <Badge variant="secondary" className="text-xs">{e.category}</Badge>
                         <Badge variant="outline" className="text-xs">{e.currency || baseCurrency}</Badge>
+                        {e.receiptImage ? <Badge variant="outline" className="text-xs">Receipt</Badge> : null}
                       </div>
                       {e.paymentAllocations?.length && e.paymentAllocations.length > 1 ? (
                         <p className="mt-1 text-xs text-muted-foreground">
@@ -263,7 +297,15 @@ const Expenses = () => {
                           <p className="text-xs text-muted-foreground">Base {baseSymbol}{baseAmount.toLocaleString()}</p>
                         ) : null}
                       </div>
-                      <button onClick={() => setDeleteId(e.id)} className="p-1.5 rounded hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="h-3.5 w-3.5 text-destructive" /></button>
+                      <button
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setDeleteId(e.id);
+                        }}
+                        className="p-1.5 rounded hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                      </button>
                     </div>
                   </motion.div>
                 );
@@ -366,6 +408,54 @@ const Expenses = () => {
               }}
             />
           </label>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!selectedExpense} onOpenChange={(open) => !open && setSelectedExpenseId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-display">Expense Details</DialogTitle>
+            <DialogDescription>Review the saved expense and receipt image.</DialogDescription>
+          </DialogHeader>
+          {selectedExpense && (
+            <div className="space-y-4">
+              {selectedExpense.receiptImage ? (
+                <img
+                  src={selectedExpense.receiptImage}
+                  alt={selectedExpense.receiptFileName || "Receipt"}
+                  className="max-h-72 w-full rounded-md border border-border object-contain bg-muted/30"
+                />
+              ) : (
+                <div className="flex h-40 flex-col items-center justify-center rounded-md border border-dashed border-border bg-muted/30 text-muted-foreground">
+                  <Receipt className="h-8 w-8" />
+                  <p className="mt-2 text-sm">No receipt image saved</p>
+                </div>
+              )}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-md bg-muted/40 p-3">
+                  <p className="text-xs text-muted-foreground">Description</p>
+                  <p className="mt-1 font-medium">{selectedExpense.desc}</p>
+                </div>
+                <div className="rounded-md bg-muted/40 p-3">
+                  <p className="text-xs text-muted-foreground">Amount</p>
+                  <p className="mt-1 font-medium">{symbolForCurrency(selectedExpense.currency || baseCurrency)}{selectedExpense.amount.toLocaleString()} {selectedExpense.currency || baseCurrency}</p>
+                </div>
+                <div className="rounded-md bg-muted/40 p-3">
+                  <p className="text-xs text-muted-foreground">Date</p>
+                  <p className="mt-1 font-medium">{displayBusinessDate(selectedExpense.date)}</p>
+                </div>
+                <div className="rounded-md bg-muted/40 p-3">
+                  <p className="text-xs text-muted-foreground">Category</p>
+                  <p className="mt-1 font-medium">{selectedExpense.category}</p>
+                </div>
+              </div>
+              {selectedExpense.amountBase != null && (selectedExpense.currency || baseCurrency) !== baseCurrency ? (
+                <div className="rounded-md bg-muted/40 p-3">
+                  <p className="text-xs text-muted-foreground">Base Amount</p>
+                  <p className="mt-1 font-medium">{baseSymbol}{selectedExpense.amountBase.toLocaleString()} {baseCurrency}</p>
+                </div>
+              ) : null}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
       <ConfirmationModal
