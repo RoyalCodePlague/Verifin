@@ -44,8 +44,9 @@ async function refreshAccessToken(): Promise<string | null> {
     clearTokens();
     return null;
   }
-  const data = (await res.json()) as { access: string };
+  const data = (await res.json()) as { access: string; refresh?: string };
   localStorage.setItem(ACCESS_KEY, data.access);
+  if (data.refresh) localStorage.setItem(REFRESH_KEY, data.refresh);
   return data.access;
 }
 
@@ -616,6 +617,19 @@ export type ApiExpense = {
   category_name?: string | null;
 };
 
+export type ReceiptScanResult = {
+  status: string;
+  source_file: string;
+  parsed: {
+    merchant?: string;
+    amount?: number | null;
+    date?: string;
+    category?: string;
+    note?: string;
+  };
+  message?: string;
+};
+
 export async function listExpenseCategories(): Promise<ApiExpenseCategory[]> {
   return fetchAllPages<ApiExpenseCategory>("/api/v1/expenses/categories/");
 }
@@ -657,6 +671,53 @@ export async function createExpenseApi(payload: {
       category: categoryId,
       date: payload.date,
     }),
+  });
+}
+
+export async function createExpenseWithReceiptApi(
+  payload: {
+    description: string;
+    amount: number;
+    currency?: string;
+    fx_rate_to_base?: number;
+    categoryName: string;
+    date: string;
+  },
+  receipt: File
+) {
+  const categoryId = await ensureExpenseCategoryId(payload.categoryName);
+  const body = new FormData();
+  body.append("description", payload.description);
+  body.append("amount", payload.amount.toFixed(2));
+  body.append("currency", payload.currency || "");
+  if (payload.fx_rate_to_base != null) body.append("fx_rate_to_base", String(payload.fx_rate_to_base));
+  if (categoryId != null) body.append("category", String(categoryId));
+  body.append("date", payload.date);
+  body.append("receipt_image", receipt);
+
+  return apiFetch<ApiExpense>("/api/v1/expenses/", {
+    method: "POST",
+    body,
+  });
+}
+
+export async function scanReceiptApi(payload: {
+  receipt: File;
+  merchant?: string;
+  amount?: string;
+  category?: string;
+  note?: string;
+}) {
+  const body = new FormData();
+  body.append("receipt", payload.receipt);
+  if (payload.merchant) body.append("merchant", payload.merchant);
+  if (payload.amount) body.append("amount", payload.amount);
+  if (payload.category) body.append("category", payload.category);
+  if (payload.note) body.append("note", payload.note);
+
+  return apiFetch<ReceiptScanResult>("/api/v1/expenses/ocr-receipt/", {
+    method: "POST",
+    body,
   });
 }
 

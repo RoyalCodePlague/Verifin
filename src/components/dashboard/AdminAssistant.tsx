@@ -138,6 +138,17 @@ export function AdminAssistant({ autoExpand = false, onDismissAutoExpand }: Admi
     setLoading(true);
 
     try {
+      if (!navigator.onLine) {
+        const localAnswer = input.toLowerCase().includes("low stock")
+          ? `Offline: ${products.filter((product) => product.status === "low" || product.status === "out").length} products need attention.`
+          : "Offline: I can show cached dashboard data, but AI commands need internet to reach the assistant service.";
+        setMessages(prev => [...prev, {
+          id: (Date.now() + 1).toString(),
+          text: localAnswer,
+          from: "assistant"
+        }]);
+        return;
+      }
       const response = await apiFetch("/api/v1/assistant/command/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

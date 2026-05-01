@@ -13,6 +13,8 @@ export const FEATURE_LABELS: Record<string, string> = {
   forecasting: "Forecasting",
   whatsapp_reports: "WhatsApp summaries",
   command_assistant: "Command assistant",
+  receipt_ocr: "Receipt OCR",
+  receipt_scan_simulator: "Receipt scan simulator",
   offline_sync: "Offline sync",
   role_based_access: "Role-based access",
   multi_branch: "Multi-branch",

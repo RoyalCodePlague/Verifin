@@ -1,13 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Plus, Search, Trash2, Receipt } from "lucide-react";
+import { Camera, Plus, Search, Trash2, Receipt, Upload } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useStore } from "@/lib/store";
-import { createExpenseApi, deleteExpenseApi } from "@/lib/api";
+import { createExpenseApi, createExpenseWithReceiptApi, deleteExpenseApi, scanReceiptApi } from "@/lib/api";
 import { addToOfflineQueue, canQueueOfflineAction } from "@/lib/offlineQueue";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -15,6 +15,7 @@ import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { symbolForCurrency } from "@/lib/currency";
 import { displayBusinessDate, isSameBusinessDay } from "@/lib/reporting";
+import { useFeatureAccess, useUpgradePrompt } from "@/lib/features";
 
 const expenseCategories = ["Transport", "Utilities", "Stock Purchase", "Communication", "Rent", "Salary", "Other"];
 
@@ -22,18 +23,29 @@ function roundMoney(value: number) {
   return Math.round(value * 100) / 100;
 }
 
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 const Expenses = () => {
   const { expenses, deleteExpense, profile, addExpense, upsertExpense } = useStore();
+  const { canUse } = useFeatureAccess();
+  const promptUpgrade = useUpgradePrompt();
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(null);
   const [form, setForm] = useState({
     desc: "",
     amount: "",
     category: "Transport",
     currency: profile.currency,
     fxRate: "",
+    date: todayIso(),
   });
 
   const baseCurrency = profile.currency || "ZAR";
@@ -45,6 +57,7 @@ const Expenses = () => {
     : parseFloat(form.fxRate) || profile.exchangeRates?.[selectedCurrency] || 0;
   const enteredAmount = parseFloat(form.amount) || 0;
   const amountBasePreview = roundMoney(enteredAmount * selectedRate);
+  const categoryOptions = useMemo(() => Array.from(new Set([...expenseCategories, form.category || "Other"])), [form.category]);
 
   const filtered = expenses.filter(e => e.desc.toLowerCase().includes(search.toLowerCase()));
   const monthTotal = useMemo(() => expenses.reduce((sum, e) => sum + (e.amountBase ?? e.amount), 0), [expenses]);
@@ -60,7 +73,50 @@ const Expenses = () => {
       category: "Transport",
       currency: baseCurrency,
       fxRate: "",
+      date: todayIso(),
     });
+    setReceiptFile(null);
+  };
+
+  useEffect(() => {
+    if (!receiptFile) {
+      setReceiptPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(receiptFile);
+    setReceiptPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [receiptFile]);
+
+  const handleScanFile = async (file: File | null) => {
+    if (!file) return;
+    if (!navigator.onLine) {
+      toast.error("Receipt scanning needs internet. You can still add the expense manually.");
+      return;
+    }
+    setScanning(true);
+    try {
+      const result = await scanReceiptApi({ receipt: file });
+      const parsed = result.parsed || {};
+      const parsedAmount = typeof parsed.amount === "number" && Number.isFinite(parsed.amount) && parsed.amount > 0
+        ? String(parsed.amount)
+        : "";
+      setReceiptFile(file);
+      setForm((prev) => ({
+        ...prev,
+        desc: parsed.merchant && parsed.merchant !== "Unknown merchant" ? parsed.merchant : prev.desc,
+        amount: parsedAmount || prev.amount,
+        category: parsed.category || prev.category,
+        date: parsed.date || prev.date || todayIso(),
+      }));
+      setScanOpen(false);
+      setAddOpen(true);
+      toast.success(result.message || "Receipt scanned. Review the expense before saving.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not scan receipt");
+    } finally {
+      setScanning(false);
+    }
   };
 
   const handleAdd = async () => {
@@ -87,7 +143,7 @@ const Expenses = () => {
       currency,
       fx_rate_to_base: currency === baseCurrency ? undefined : fxRate,
       categoryName: form.category,
-      date: new Date().toISOString().slice(0, 10),
+      date: form.date || todayIso(),
     };
 
     const saveOffline = () => {
@@ -97,7 +153,7 @@ const Expenses = () => {
         currency,
         amountBase,
         category: form.category,
-        date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+        date: payload.date,
       });
       addToOfflineQueue({ type: "expense", payload });
       toast.success("Expense saved locally while offline. It will sync when you are back online.");
@@ -118,7 +174,9 @@ const Expenses = () => {
     }
 
     try {
-      const created = await createExpenseApi(payload);
+      const created = receiptFile
+        ? await createExpenseWithReceiptApi(payload, receiptFile)
+        : await createExpenseApi(payload);
       upsertExpense({
         id: String(created.id),
         desc: created.description,
@@ -159,6 +217,18 @@ const Expenses = () => {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Search expenses..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
         </div>
+        <Button
+          variant="outline"
+          onClick={() => {
+            if (!canUse("receipt_ocr") && !canUse("receipt_scan_simulator")) {
+              promptUpgrade("receipt_ocr", "Receipt OCR");
+              return;
+            }
+            setScanOpen(true);
+          }}
+        >
+          <Camera className="h-4 w-4 mr-2" /> Scan Receipt
+        </Button>
         <Button onClick={() => setAddOpen(true)} className="bg-gradient-accent text-accent-foreground"><Plus className="h-4 w-4 mr-2" /> Add Expense</Button>
       </div>
 
@@ -212,6 +282,24 @@ const Expenses = () => {
             <DialogDescription>Record an operating expense and optionally convert it into your base reporting currency.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
+            {receiptFile && (
+              <div className="flex gap-3 rounded-md border border-border bg-muted/30 p-3">
+                {receiptPreviewUrl ? (
+                  <img src={receiptPreviewUrl} alt="Receipt preview" className="h-20 w-20 rounded-md object-cover" />
+                ) : (
+                  <div className="flex h-20 w-20 items-center justify-center rounded-md bg-muted">
+                    <Receipt className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{receiptFile.name}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Review the extracted fields before saving this expense.</p>
+                  <Button type="button" variant="ghost" size="sm" className="mt-2 h-8 px-2" onClick={() => setReceiptFile(null)}>
+                    Remove receipt
+                  </Button>
+                </div>
+              </div>
+            )}
             <div><Label>Description</Label><Input placeholder="e.g. Supplier delivery" value={form.desc} onChange={e => setForm({ ...form, desc: e.target.value })} className="mt-1" /></div>
             <div>
               <Label>Currency</Label>
@@ -226,6 +314,7 @@ const Expenses = () => {
               </select>
             </div>
             <div><Label>Amount ({symbolForCurrency(selectedCurrency)})</Label><Input type="number" placeholder="0.00" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} className="mt-1" /></div>
+            <div><Label>Date</Label><Input type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} className="mt-1" /></div>
             {selectedCurrency !== baseCurrency ? (
               <div>
                 <Label>Exchange Rate ({selectedCurrency} to {baseCurrency})</Label>
@@ -243,7 +332,7 @@ const Expenses = () => {
             <div>
               <Label>Category</Label>
               <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
-                {expenseCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                {categoryOptions.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div className="rounded-md bg-muted/50 px-3 py-2 text-sm space-y-1">
@@ -255,6 +344,30 @@ const Expenses = () => {
 
             <Button onClick={handleAdd} disabled={!form.desc.trim() || !form.amount || saving} className="w-full bg-gradient-accent text-accent-foreground">{saving ? "Saving..." : "Add Expense"}</Button>
           </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={scanOpen} onOpenChange={setScanOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-display">Scan Receipt</DialogTitle>
+            <DialogDescription>Upload or take a receipt photo, then review the extracted expense details before saving.</DialogDescription>
+          </DialogHeader>
+          <label className="flex min-h-48 cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-border bg-muted/30 px-4 py-8 text-center transition-colors hover:bg-muted/50">
+            <Upload className="h-8 w-8 text-muted-foreground" />
+            <span className="mt-3 text-sm font-medium">{scanning ? "Scanning receipt..." : "Choose receipt photo"}</span>
+            <span className="mt-1 text-xs text-muted-foreground">Camera opens on supported mobile browsers.</span>
+            <Input
+              type="file"
+              accept="image/*"
+              capture="environment"
+              disabled={scanning}
+              className="sr-only"
+              onChange={(e) => {
+                void handleScanFile(e.target.files?.[0] || null);
+                e.currentTarget.value = "";
+              }}
+            />
+          </label>
         </DialogContent>
       </Dialog>
       <ConfirmationModal
