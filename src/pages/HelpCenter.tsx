@@ -46,7 +46,7 @@ const categories = [
     { title: "Dark mode toggle", content: "Click the sun/moon icon in the navbar or toggle dark mode in Settings. The entire app switches between light and dark themes with consistent colors." },
   ]},
   { icon: Shield, label: "Security & Privacy", articles: [
-    { title: "Data encryption standards", content: "Verifin uses AES-256 encryption for data at rest and TLS 1.3 for data in transit. All connections are secured with HTTPS. Database backups are encrypted and stored in geographically distributed locations." },
+    { title: "Data protection standards", content: "Your data is protected with secure authentication, HTTPS in production, and access-controlled infrastructure. We are continuing to strengthen encryption, backup, and compliance controls." },
     { title: "Two-factor authentication", content: "Two-factor authentication (2FA) adds an extra layer of security to your account. When enabled, you'll need to enter a verification code from your phone in addition to your password." },
     { title: "Data export and deletion", content: "You can export all your data at any time from the Reports tab. To delete your account, contact support. All data is permanently removed within 30 days of account deletion." },
     { title: "POPIA compliance", content: "Verifin complies with the Protection of Personal Information Act (POPIA). We collect only necessary data, store it securely, never sell it, and give you full control over your information." },
@@ -65,7 +65,7 @@ const faqs = [
   { q: "How do I scan barcodes?", a: "Go to the Inventory tab and click the 'Scan' button. Grant camera access and point your device at a barcode. The system will recognize known products or let you save new ones with full product details." },
   { q: "Can I export my data?", a: "Yes. Go to the Reports tab and click 'Export' on any report type. Reports are downloaded as CSV files that open directly in Excel or Google Sheets with proper formatting." },
   { q: "How does the AI Assistant work?", a: "The Admin Assistant on the dashboard accepts natural language commands like 'Sold 3 bread for R54' or 'What's my inventory value?'. It automatically records transactions, updates stock, and answers business questions." },
-  { q: "Is my data secure?", a: "Absolutely. We use AES-256 encryption at rest, TLS 1.3 in transit, and follow POPIA compliance standards. Your business data is never shared with third parties." },
+  { q: "Is my data secure?", a: "Your data is protected with secure authentication, HTTPS in production, and access-controlled infrastructure. We are continuing to strengthen encryption, backup, and compliance controls. Your business data is never sold." },
 ];
 
 const HelpCenter = () => {

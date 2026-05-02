@@ -15,7 +15,7 @@ const sections = [
     "You may cancel your subscription at any time. Cancellation takes effect at the end of the current billing period.",
     "Prices are in South African Rand (ZAR) and are subject to change with 30 days' notice.",
   ]},
-  { icon: Lock, title: "5. Data Ownership & Privacy", content: 'You retain ownership of all business data entered into the Platform. We do not sell, rent, or share your data with third parties except as required to operate the service or comply with law. Data is encrypted in transit and at rest. For full details, see our Privacy Policy.' },
+  { icon: Lock, title: "5. Data Ownership & Privacy", content: 'You retain ownership of all business data entered into the Platform. We do not sell, rent, or share your data with third parties except as required to operate the service or comply with law. Your data is protected with secure authentication, HTTPS in production, and access-controlled infrastructure. For full details, see our Privacy Policy.' },
   { icon: AlertTriangle, title: "6. Acceptable Use", content: "You agree not to:", items: [
     "Use the Platform for any unlawful purpose or in violation of any applicable laws.",
     "Attempt to gain unauthorized access to the Platform or its related systems.",

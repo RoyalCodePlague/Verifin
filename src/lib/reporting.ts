@@ -8,6 +8,14 @@ export type WeeklyFinancePoint = {
   expenses: number;
 };
 
+export type FinancePeriod = "months" | "years";
+
+export type PeriodFinancePoint = {
+  period: string;
+  sales: number;
+  expenses: number;
+};
+
 export type WeeklyRevenueEntry = {
   date: string;
   total: number;
@@ -63,6 +71,13 @@ function startOfDay(date: Date) {
 function addDays(date: Date, amount: number) {
   const next = new Date(date);
   next.setDate(next.getDate() + amount);
+  return next;
+}
+
+function addMonths(date: Date, amount: number) {
+  const next = new Date(date);
+  next.setDate(1);
+  next.setMonth(next.getMonth() + amount);
   return next;
 }
 
@@ -123,6 +138,64 @@ export function buildWeeklyFinanceData(
     day,
     sales: totals[day].sales,
     expenses: totals[day].expenses,
+  }));
+}
+
+export function buildPeriodFinanceData(
+  sales: Sale[],
+  expenses: Expense[],
+  period: FinancePeriod,
+  reference = new Date(),
+  extraRevenue: WeeklyRevenueEntry[] = []
+): PeriodFinancePoint[] {
+  const points = period === "months"
+    ? Array.from({ length: 12 }, (_, index) => {
+        const date = addMonths(reference, index - 11);
+        return {
+          key: `${date.getFullYear()}-${String(date.getMonth()).padStart(2, "0")}`,
+          label: date.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+        };
+      })
+    : Array.from({ length: 5 }, (_, index) => {
+        const year = reference.getFullYear() - 4 + index;
+        return { key: String(year), label: String(year) };
+      });
+
+  const labels = new Map(points.map((point) => [point.key, point.label]));
+  const totals = Object.fromEntries(
+    points.map((point) => [point.key, { sales: 0, expenses: 0 }])
+  ) as Record<string, { sales: number; expenses: number }>;
+
+  const resolveKey = (value?: string) => {
+    const date = parseBusinessDate(value);
+    if (!date) return null;
+    return period === "months"
+      ? `${date.getFullYear()}-${String(date.getMonth()).padStart(2, "0")}`
+      : String(date.getFullYear());
+  };
+
+  sales.forEach((sale) => {
+    const key = resolveKey(sale.date);
+    if (!key || !totals[key]) return;
+    totals[key].sales += sale.total;
+  });
+
+  extraRevenue.forEach((entry) => {
+    const key = resolveKey(entry.date);
+    if (!key || !totals[key]) return;
+    totals[key].sales += entry.total;
+  });
+
+  expenses.forEach((expense) => {
+    const key = resolveKey(expense.date);
+    if (!key || !totals[key]) return;
+    totals[key].expenses += expenseBaseAmount(expense);
+  });
+
+  return points.map((point) => ({
+    period: labels.get(point.key) || point.key,
+    sales: totals[point.key].sales,
+    expenses: totals[point.key].expenses,
   }));
 }
 

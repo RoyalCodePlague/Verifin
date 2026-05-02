@@ -1,16 +1,18 @@
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Download, FileText, BarChart3, Package, AlertTriangle, Users, Receipt, TrendingUp, Calendar } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { toast } from "sonner";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { buildWeeklyFinanceData, csvCell, expenseBaseAmount, formatMoney, parseBusinessDate, salePaymentBreakdown, supplyInvoiceAmountBase } from "@/lib/reporting";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
+import { buildPeriodFinanceData, buildWeeklyFinanceData, csvCell, expenseBaseAmount, formatMoney, parseBusinessDate, salePaymentBreakdown, supplyInvoiceAmountBase, type FinancePeriod } from "@/lib/reporting";
 import { LockedBadge, useFeatureAccess, useUpgradePrompt } from "@/lib/features";
 import { symbolForCurrency } from "@/lib/currency";
 
 const COLORS = ["hsl(152 55% 28%)", "hsl(38 92% 50%)", "hsl(0 72% 51%)", "hsl(200 70% 50%)", "hsl(280 60% 50%)"];
 
 const Reports = () => {
+  const [financePeriod, setFinancePeriod] = useState<FinancePeriod>("months");
   const { sales, expenses, products, discrepancies, customers, profile, supplyEntries } = useStore();
   const { canUse } = useFeatureAccess();
   const promptUpgrade = useUpgradePrompt();
@@ -36,6 +38,10 @@ const Reports = () => {
   const weeklyData = buildWeeklyFinanceData(sales, expenses, new Date(), paidSupplyRevenue);
   const weeklySalesTotal = weeklyData.reduce((sum, d) => sum + d.sales, 0);
   const weeklyExpensesTotal = weeklyData.reduce((sum, d) => sum + d.expenses, 0);
+  const monthlyFinanceData = buildPeriodFinanceData(sales, expenses, "months", new Date(), paidSupplyRevenue);
+  const periodFinanceData = buildPeriodFinanceData(sales, expenses, financePeriod, new Date(), paidSupplyRevenue);
+  const monthlySalesTotal = monthlyFinanceData.reduce((sum, d) => sum + d.sales, 0);
+  const monthlyExpensesTotal = monthlyFinanceData.reduce((sum, d) => sum + d.expenses, 0);
   const paymentBreakdown = salePaymentBreakdown(sales, profile.currency);
   const customerDebtTotal = customers.reduce((sum, c) => sum + (c.debtAmount || 0), 0);
 
@@ -64,7 +70,7 @@ const Reports = () => {
     { title: "Customer Report", desc: `${customers.length} customers - ${formatMoney(customers.reduce((s, c) => s + c.totalSpent, 0), sym)} revenue - ${formatMoney(customerDebtTotal, sym)} owed`, icon: Users, feature: "advanced_reports" },
     { title: "Expense Analysis", desc: `${expenses.length} expenses across ${Object.keys(expenseByCat).length} categories`, icon: Receipt },
     { title: "Profit & Loss", desc: `Revenue: ${formatMoney(totalSales, sym)} - COGS: ${formatMoney(totalCostOfGoods, sym)} - Gross profit: ${formatMoney(grossProfit, sym)}`, icon: TrendingUp, feature: "advanced_analytics" },
-    { title: "Monthly Overview", desc: "Full month breakdown of sales, expenses, and stock", icon: Calendar, feature: "advanced_reports" },
+    { title: "Monthly Overview", desc: `12-month sales: ${formatMoney(monthlySalesTotal, sym)} - expenses: ${formatMoney(monthlyExpensesTotal, sym)}`, icon: Calendar, feature: "advanced_reports" },
   ];
 
   const row = (values: unknown[]) => values.map(csvCell).join(",");
@@ -99,6 +105,11 @@ const Reports = () => {
         "",
         "Currency,Day,Sales,Expenses,Net",
         ...weeklyData.map(d => row([profile.currency, d.day, formatMoney(d.sales, sym), formatMoney(d.expenses, sym), formatMoney(d.sales - d.expenses, sym)])),
+      ];
+    } else if (title.includes("Monthly")) {
+      csvRows = [
+        "Currency,Period,Sales,Expenses,Net",
+        ...monthlyFinanceData.map(d => row([profile.currency, d.period, formatMoney(d.sales, sym), formatMoney(d.expenses, sym), formatMoney(d.sales - d.expenses, sym)])),
       ];
     } else if (title.includes("Profit")) {
       csvRows = [
@@ -180,16 +191,33 @@ const Reports = () => {
         </Card>
 
         <Card className="shadow-soft">
-          <CardHeader className="pb-2"><CardTitle className="text-base font-display">Sales vs Expenses (Weekly)</CardTitle></CardHeader>
+          <CardHeader className="flex flex-col gap-3 pb-2 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle className="text-base font-display">Sales vs Expenses</CardTitle>
+            <div className="inline-flex w-fit rounded-lg border border-border bg-muted/40 p-1">
+              {(["months", "years"] as FinancePeriod[]).map((period) => (
+                <button
+                  key={period}
+                  type="button"
+                  onClick={() => setFinancePeriod(period)}
+                  className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                    financePeriod === period ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {period === "months" ? "Months" : "Years"}
+                </button>
+              ))}
+            </div>
+          </CardHeader>
           <CardContent>
             <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={weeklyData}>
+              <BarChart data={periodFinanceData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                <XAxis dataKey="day" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
+                <XAxis dataKey="period" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
                 <YAxis tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
                 <Tooltip formatter={(value) => formatMoney(Number(value), sym)} />
-                <Bar dataKey="sales" fill="hsl(152 55% 28%)" radius={[4, 4, 0, 0]} minPointSize={3} />
-                <Bar dataKey="expenses" fill="hsl(0 84% 60%)" radius={[4, 4, 0, 0]} minPointSize={3} />
+                <Legend />
+                <Bar dataKey="sales" fill="hsl(152 55% 28%)" name="Sales" radius={[4, 4, 0, 0]} minPointSize={3} />
+                <Bar dataKey="expenses" fill="hsl(0 84% 60%)" name="Expenses" radius={[4, 4, 0, 0]} minPointSize={3} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>

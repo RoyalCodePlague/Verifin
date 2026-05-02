@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { CheckCircle, Mail, Lock, Eye, EyeOff, User, ArrowLeft } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, User, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -89,10 +89,8 @@ const Login = () => {
             <button onClick={() => navigate("/")} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft className="h-4 w-4" /> Back
             </button>
-            <button onClick={() => navigate("/")} className="inline-flex items-center gap-2">
-              <div className="h-10 w-10 rounded-xl bg-gradient-hero flex items-center justify-center text-primary-foreground">
-                <CheckCircle className="h-6 w-6" />
-              </div>
+            <button onClick={() => navigate("/")} className="inline-flex items-center gap-2" aria-label="Go to Verifin home">
+              <img src="/verifin_logo.svg" alt="Verifin" className="h-12 w-12 object-contain" />
               <span className="font-display font-bold text-2xl">Verifin</span>
             </button>
             <div className="w-16" />

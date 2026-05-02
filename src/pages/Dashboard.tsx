@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   TrendingUp, TrendingDown, Package, ShoppingCart, AlertTriangle,
@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { useStore } from "@/lib/store";
-import { buildWeeklyFinanceData, expenseBaseAmount, formatMoney, parseBusinessDate, supplyInvoiceAmountBase } from "@/lib/reporting";
+import { buildPeriodFinanceData, buildWeeklyFinanceData, expenseBaseAmount, formatMoney, parseBusinessDate, supplyInvoiceAmountBase, type FinancePeriod } from "@/lib/reporting";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { fetchRuleInsightsApi, fetchWhatsAppSummaryApi } from "@/lib/api";
@@ -17,6 +17,7 @@ import { useQuery } from "@tanstack/react-query";
 import { symbolForCurrency } from "@/lib/currency";
 
 const Dashboard = () => {
+  const [financePeriod, setFinancePeriod] = useState<FinancePeriod>("months");
   const { products, sales, expenses, discrepancies, activities, profile, generateWhatsAppSummary, supplyEntries } = useStore();
   const navigate = useNavigate();
   const { canUse } = useFeatureAccess();
@@ -104,9 +105,9 @@ const Dashboard = () => {
 
   const weeklySalesTotal = useMemo(() => salesData.reduce((sum, item) => sum + item.sales, 0), [salesData]);
 
-  const salesVsExpensesData = useMemo(
-    () => buildWeeklyFinanceData(sales, expenses, new Date(), paidSupplyRevenue),
-    [expenses, paidSupplyRevenue, profile.currency, sales]
+  const periodSalesVsExpensesData = useMemo(
+    () => buildPeriodFinanceData(sales, expenses, financePeriod, new Date(), paidSupplyRevenue),
+    [expenses, financePeriod, paidSupplyRevenue, sales]
   );
 
   const metrics = [
@@ -274,12 +275,28 @@ const Dashboard = () => {
       </div>
 
       <Card className="shadow-soft">
-        <CardHeader className="pb-2"><CardTitle className="text-base font-display">Sales vs Expenses (Weekly)</CardTitle></CardHeader>
+        <CardHeader className="flex flex-col gap-3 pb-2 sm:flex-row sm:items-center sm:justify-between">
+          <CardTitle className="text-base font-display">Sales vs Expenses</CardTitle>
+          <div className="inline-flex w-fit rounded-lg border border-border bg-muted/40 p-1">
+            {(["months", "years"] as FinancePeriod[]).map((period) => (
+              <button
+                key={period}
+                type="button"
+                onClick={() => setFinancePeriod(period)}
+                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                  financePeriod === period ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {period === "months" ? "Months" : "Years"}
+              </button>
+            ))}
+          </div>
+        </CardHeader>
         <CardContent className="p-4 pt-0">
           <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={salesVsExpensesData} barCategoryGap={18}>
+            <BarChart data={periodSalesVsExpensesData} barCategoryGap={18}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              <XAxis dataKey="day" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
+              <XAxis dataKey="period" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
               <YAxis tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
               <Tooltip 
                 formatter={(value) => formatMoney(Number(value), sym)}

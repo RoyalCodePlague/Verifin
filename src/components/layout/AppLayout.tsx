@@ -3,7 +3,7 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Package, ShoppingCart, Receipt, ClipboardCheck,
   BarChart3, Users, UserCog, Settings, Menu, X, LogOut,
-  CheckCircle, Moon, Sun, Clock, Truck, CreditCard,
+  Moon, Sun, Clock, Truck, CreditCard,
   Lock,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
@@ -133,12 +133,18 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
         }`}
       >
         <div className="flex items-center justify-between h-16 px-5 border-b border-sidebar-border">
-          <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-sidebar-primary flex items-center justify-center text-sidebar-primary-foreground">
-              <CheckCircle className="h-5 w-5" />
-            </div>
+          <button
+            type="button"
+            onClick={() => {
+              setSidebarOpen(false);
+              navigate("/");
+            }}
+            className="flex items-center gap-2"
+            aria-label="Go to Verifin home"
+          >
+            <img src="/verifin_logo.svg" alt="Verifin" className="h-10 w-10 rounded-lg bg-white object-contain" />
             <span className="font-display font-bold text-sidebar-foreground">Verifin</span>
-          </div>
+          </button>
           <button className="lg:hidden text-sidebar-foreground" onClick={() => setSidebarOpen(false)} title="Close sidebar">
             <X className="h-5 w-5" />
           </button>

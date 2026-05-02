@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { ShieldCheck, Clock, Wifi, Lock } from "lucide-react";
 
 const items = [
-  { icon: ShieldCheck, title: "Bank-Level Security", desc: "Your data is encrypted end-to-end with AES-256 and stored securely in SOC 2 compliant infrastructure." },
+  { icon: ShieldCheck, title: "Security You Can Trust", desc: "Your data is protected with secure authentication, HTTPS in production, and access-controlled infrastructure. We are continuing to strengthen encryption, backup, and compliance controls." },
   { icon: Clock, title: "99.9% Uptime SLA", desc: "Built on reliable cloud infrastructure with automatic failover and real-time monitoring." },
   { icon: Wifi, title: "Works Offline", desc: "Record sales and stock counts without internet. Everything syncs automatically when you're back online." },
   { icon: Lock, title: "Your Data, Your Control", desc: "Export your data anytime. We never sell or share your business information with third parties." },
