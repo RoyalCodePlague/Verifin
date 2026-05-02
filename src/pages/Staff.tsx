@@ -4,9 +4,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Eye, EyeOff, Plus, Search, ShieldCheck, Trash2, UserCog } from "lucide-react";
+import { BadgeCheck, Copy, Eye, EyeOff, Plus, Search, ShieldCheck, Trash2, UserCog } from "lucide-react";
 import { useStore, type StaffMember } from "@/lib/store";
-import { ROLE_DEFAULT_PERMISSIONS } from "@/lib/auth-context";
+import { ROLE_DEFAULT_PERMISSIONS, useAuth } from "@/lib/auth-context";
 import { createStaffApi, deleteStaffApi, updateStaffApi, type ApiStaff } from "@/lib/api";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
@@ -64,6 +64,7 @@ function fromApiStaff(staff: ApiStaff): StaffMember {
 
 const Staff = () => {
   const { staff, addStaff, upsertStaff, updateStaff, deleteStaff } = useStore();
+  const { user } = useAuth();
   const [addOpen, setAddOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -83,6 +84,17 @@ const Staff = () => {
       ? selectedStaff.permissions
       : roleDefaults[selectedStaff.role as StaffRole] || []
     : [];
+  const businessCode = user?.business_code || (user?.id ? `VF-${user.id}` : "");
+
+  const copyBusinessCode = async () => {
+    if (!businessCode) return;
+    try {
+      await navigator.clipboard.writeText(businessCode);
+      toast.success("Business code copied.");
+    } catch {
+      toast.error("Could not copy business code.");
+    }
+  };
 
   const resetForm = () => setForm({ ...emptyForm, permissions: [...emptyForm.permissions] });
 
@@ -173,6 +185,28 @@ const Staff = () => {
 
   return (
     <div className="space-y-6">
+      <Card className="shadow-soft border-primary/15">
+        <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <BadgeCheck className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="text-sm font-medium">Business Code</p>
+              <p className="text-xs text-muted-foreground">Give this to staff with their username and password.</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="rounded-md border border-border bg-muted px-3 py-2 font-mono text-sm font-semibold">
+              {businessCode || "Loading..."}
+            </div>
+            <Button type="button" variant="outline" size="icon" onClick={() => void copyBusinessCode()} disabled={!businessCode} title="Copy business code">
+              <Copy className="h-4 w-4" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
         <div className="relative w-full sm:w-72">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
