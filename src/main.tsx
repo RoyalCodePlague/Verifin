@@ -1,6 +1,11 @@
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
+import { setupAdaptiveAppIcons } from "@/lib/app-icons";
+import { applySystemThemeClass } from "@/lib/store";
+
+applySystemThemeClass();
+setupAdaptiveAppIcons();
 
 // Register service worker for PWA
 if ('serviceWorker' in navigator) {

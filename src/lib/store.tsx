@@ -223,6 +223,18 @@ const nowTime = () => new Date().toLocaleTimeString([], { hour: "2-digit", minut
 const STORE_MIGRATION_VERSION = 1;
 const STORE_MIGRATION_KEY = "sp_store_migration_version";
 
+function getSystemDarkMode() {
+  return typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+export function applySystemThemeClass() {
+  if (getSystemDarkMode()) {
+    document.documentElement.classList.add("dark");
+  } else {
+    document.documentElement.classList.remove("dark");
+  }
+}
+
 function formatInvoiceNumber(direction: SupplyEntry["direction"]) {
   const now = new Date();
   const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}${String(now.getSeconds()).padStart(2, "0")}`;
@@ -240,7 +252,7 @@ const defaultProfile: BusinessProfile = {
   lowStockAlerts: true,
   discrepancyAlerts: true,
   onboardingComplete: false,
-  darkMode: false,
+  darkMode: getSystemDarkMode(),
 };
 
 function loadState<T>(key: string, fallback: T): T {
@@ -252,6 +264,11 @@ function loadState<T>(key: string, fallback: T): T {
 
 function saveState(key: string, value: unknown) {
   localStorage.setItem(`sp_${key}`, JSON.stringify(value));
+}
+
+function loadProfileState(): BusinessProfile {
+  const stored = loadState<BusinessProfile | null>("profile", null);
+  return { ...(stored || defaultProfile), darkMode: getSystemDarkMode() };
 }
 
 function normalizeStoredDate(value?: string) {
@@ -301,7 +318,7 @@ const StoreContext = createContext<StoreState | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   migratePersistedStore();
-  const [profile, setProfileState] = useState<BusinessProfile>(() => loadState("profile", defaultProfile));
+  const [profile, setProfileState] = useState<BusinessProfile>(() => loadProfileState());
   const [products, setProducts] = useState<Product[]>(() => loadState("products", []));
   const [sales, setSales] = useState<Sale[]>(() =>
     loadState<Sale[]>("sales", []).map((sale) => ({
@@ -337,6 +354,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       document.documentElement.classList.remove("dark");
     }
   }, [profile.darkMode]);
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleSystemThemeChange = (event: MediaQueryListEvent) => {
+      setProfileState(prev => ({ ...prev, darkMode: event.matches }));
+    };
+    media.addEventListener("change", handleSystemThemeChange);
+    return () => media.removeEventListener("change", handleSystemThemeChange);
+  }, []);
 
   useEffect(() => saveState("profile", profile), [profile]);
   useEffect(() => saveState("products", products), [products]);
