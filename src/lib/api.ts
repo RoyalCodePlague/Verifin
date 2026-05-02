@@ -2,6 +2,7 @@ import type { Product } from "@/lib/store";
 
 const ACCESS_KEY = "sp_access_token";
 const REFRESH_KEY = "sp_refresh_token";
+const AUTH_EXPIRED_EVENT = "verifin:auth-expired";
 
 export const apiBase = () => (import.meta.env.VITE_API_URL as string | undefined)?.trim() ?? "";
 
@@ -30,6 +31,15 @@ export function setTokens(access: string, refresh: string) {
 export function clearTokens() {
   localStorage.removeItem(ACCESS_KEY);
   localStorage.removeItem(REFRESH_KEY);
+}
+
+function notifyAuthExpired() {
+  window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT));
+}
+
+export function onAuthExpired(handler: () => void) {
+  window.addEventListener(AUTH_EXPIRED_EVENT, handler);
+  return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handler);
 }
 
 async function refreshAccessToken(): Promise<string | null> {
@@ -96,6 +106,10 @@ export async function apiFetch<T = unknown>(
   if (res.status === 401 && !options.skipAuth) {
     const newAccess = await refreshAccessToken();
     if (newAccess) res = await doFetch(newAccess);
+    if (!newAccess || res.status === 401) {
+      clearTokens();
+      notifyAuthExpired();
+    }
   }
 
   if (!res.ok) {

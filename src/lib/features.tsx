@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Lock } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { getBillingOverviewApi, type FeatureAccess } from "@/lib/api";
+import { getAccessToken, getBillingOverviewApi, type FeatureAccess } from "@/lib/api";
 
 export const FEATURE_LABELS: Record<string, string> = {
   barcode_scanning: "Barcode scanning",
@@ -21,7 +21,13 @@ export const FEATURE_LABELS: Record<string, string> = {
 };
 
 export function useFeatureAccess() {
-  const query = useQuery({ queryKey: ["billing-overview"], queryFn: getBillingOverviewApi, staleTime: 60_000 });
+  const query = useQuery({
+    queryKey: ["billing-overview"],
+    queryFn: getBillingOverviewApi,
+    staleTime: 60_000,
+    enabled: !!getAccessToken(),
+    retry: false,
+  });
   const features = query.data?.features ?? [];
   const byKey = useMemo(() => new Map(features.map((feature) => [feature.key, feature])), [features]);
 

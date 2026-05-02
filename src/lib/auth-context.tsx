@@ -14,6 +14,7 @@ import {
   getAccessToken,
   loginRequest,
   logoutRequest,
+  onAuthExpired,
   registerRequest,
   setTokens,
   staffLoginRequest,
@@ -45,6 +46,10 @@ function loadCachedUser(): ApiUser | null {
 
 function saveCachedUser(user: ApiUser) {
   localStorage.setItem(CACHED_USER_KEY, JSON.stringify(user));
+}
+
+function clearCachedUser() {
+  localStorage.removeItem(CACHED_USER_KEY);
 }
 
 function loadStaffSession(): StaffSession | null {
@@ -142,6 +147,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [applyServerData, resetForLogout]);
 
+  useEffect(() => {
+    return onAuthExpired(() => {
+      localStorage.removeItem(STAFF_SESSION_KEY);
+      clearCachedUser();
+      clearAuthenticatedOfflineSession();
+      setStaffSession(null);
+      setUser(null);
+      resetForLogout();
+    });
+  }, [resetForLogout]);
+
   const login = useCallback(
     async (email: string, password: string) => {
       const tokens = await loginRequest(email, password);
@@ -189,7 +205,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // ignore server logout failures and clear local auth state anyway
     } finally {
       clearTokens();
-      localStorage.removeItem(CACHED_USER_KEY);
+      clearCachedUser();
       localStorage.removeItem(STAFF_SESSION_KEY);
       clearOfflineQueue();
       clearOfflineSession();
