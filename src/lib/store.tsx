@@ -689,7 +689,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setAudits(data.audits);
       setDiscrepancies(data.discrepancies);
       setCustomers(data.customers);
-      setStaff(data.staff);
+      setStaff(prev => {
+        const tempPasswordById = new Map(prev.filter(s => s.tempPassword).map(s => [s.id, s.tempPassword]));
+        const tempPasswordByUsername = new Map(prev.filter(s => s.tempPassword && s.username).map(s => [s.username, s.tempPassword]));
+        return data.staff.map(member => ({
+          ...member,
+          tempPassword: member.tempPassword || tempPasswordById.get(member.id) || (member.username ? tempPasswordByUsername.get(member.username) : undefined),
+        }));
+      });
     setBranches(data.branches);
   },
   []

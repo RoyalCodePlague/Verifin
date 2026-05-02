@@ -45,6 +45,10 @@ const emptyForm = {
   permissions: roleDefaults.Cashier,
 };
 
+function maskPassword(password?: string) {
+  return password ? "•".repeat(Math.max(8, password.length)) : "Password hidden after sync";
+}
+
 function fromApiStaff(staff: ApiStaff): StaffMember {
   return {
     id: String(staff.id),
@@ -314,12 +318,11 @@ const Staff = () => {
                 <div>
                   <div className="mb-1 text-muted-foreground">Password</div>
                   <div className="flex items-center gap-2">
-                    <Input
-                      readOnly
-                      type={showStaffPassword ? "text" : "password"}
-                      value={selectedStaff.tempPassword || "Password hidden after sync"}
-                      className="h-9"
-                    />
+                    <div className="flex h-9 flex-1 items-center rounded-md border border-input bg-background px-3 text-sm font-medium">
+                      <span className={selectedStaff.tempPassword ? "font-mono" : "text-muted-foreground"}>
+                        {showStaffPassword && selectedStaff.tempPassword ? selectedStaff.tempPassword : maskPassword(selectedStaff.tempPassword)}
+                      </span>
+                    </div>
                     <Button
                       type="button"
                       variant="outline"
