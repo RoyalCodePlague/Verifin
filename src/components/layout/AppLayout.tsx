@@ -142,8 +142,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
             className="flex items-center gap-2"
             aria-label="Go to Verifin home"
           >
-            <img src="/WebIcons/favicon-96x96.png" alt="Verifin" className="h-8 w-8 rounded-lg bg-white object-contain sm:h-10 sm:w-10" />
-            <span className="font-display font-bold text-sidebar-foreground">Verifin</span>
+            <img src="/WebIcons/favicon-128.png" alt="Verifin" className="h-12 w-12 object-contain" />
           </button>
           <button className="lg:hidden text-sidebar-foreground" onClick={() => setSidebarOpen(false)} title="Close sidebar">
             <X className="h-5 w-5" />

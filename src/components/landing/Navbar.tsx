@@ -20,9 +20,8 @@ const Navbar = () => {
   return (
     <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
       <div className="container flex h-16 items-center justify-between">
-        <button onClick={() => navigate("/")} className="flex items-center gap-2" aria-label="Go to Verifin home">
-          <img src="/WebIcons/favicon-96x96.png" alt="Verifin" className="h-8 w-8 object-contain sm:h-10 sm:w-10" />
-          <span className="font-display font-bold text-lg">Verifin</span>
+        <button onClick={() => navigate("/")} className="flex items-center" aria-label="Go to Verifin home">
+          <img src="/WebIcons/favicon-128.png" alt="Verifin" className="h-12 w-12 object-contain sm:h-14 sm:w-14" />
         </button>
 
         <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-muted-foreground">

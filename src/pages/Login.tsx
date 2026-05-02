@@ -89,9 +89,8 @@ const Login = () => {
             <button onClick={() => navigate("/")} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft className="h-4 w-4" /> Back
             </button>
-            <button onClick={() => navigate("/")} className="inline-flex items-center gap-2" aria-label="Go to Verifin home">
-              <img src="/WebIcons/favicon-128.png" alt="Verifin" className="h-12 w-12 object-contain" />
-              <span className="font-display font-bold text-2xl">Verifin</span>
+            <button onClick={() => navigate("/")} className="inline-flex items-center" aria-label="Go to Verifin home">
+              <img src="/WebIcons/favicon-196x196.png" alt="Verifin" className="h-16 w-16 object-contain" />
             </button>
             <div className="w-16" />
           </div>
