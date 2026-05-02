@@ -139,10 +139,10 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
               setSidebarOpen(false);
               navigate("/");
             }}
-            className="flex items-center gap-2"
+            className="flex items-center rounded-2xl p-1 transition-colors dark:bg-white/95 dark:shadow-sm"
             aria-label="Go to Verifin home"
           >
-            <img src="/WebIcons/favicon-128.png" alt="Verifin" className="h-12 w-12 object-contain" />
+            <img src="/WebIcons/favicon-196x196.png" alt="Verifin" className="h-14 w-14 object-contain" />
           </button>
           <button className="lg:hidden text-sidebar-foreground" onClick={() => setSidebarOpen(false)} title="Close sidebar">
             <X className="h-5 w-5" />

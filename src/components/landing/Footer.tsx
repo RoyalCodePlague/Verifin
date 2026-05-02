@@ -8,8 +8,8 @@ const Footer = () => {
       <div className="container">
         <div className="grid md:grid-cols-4 gap-10 mb-12">
           <div className="md:col-span-1">
-            <button onClick={() => navigate("/")} className="mb-4 flex items-center" aria-label="Go to Verifin home">
-              <img src="/WebIcons/favicon-128.png" alt="Verifin" className="h-14 w-14 object-contain" />
+            <button onClick={() => navigate("/")} className="mb-4 flex items-center rounded-2xl bg-white/95 p-1 shadow-sm" aria-label="Go to Verifin home">
+              <img src="/WebIcons/favicon-196x196.png" alt="Verifin" className="h-16 w-16 object-contain" />
             </button>
             <p className="text-sm text-sidebar-foreground/60 leading-relaxed">
               The all-in-one business operating system built for African SMEs. Automate admin, control stock, stop losing money.
