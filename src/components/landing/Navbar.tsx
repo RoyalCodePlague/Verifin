@@ -21,7 +21,7 @@ const Navbar = () => {
     <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
       <div className="container flex h-16 items-center justify-between">
         <button onClick={() => navigate("/")} className="flex items-center gap-2" aria-label="Go to Verifin home">
-          <img src="/verifin_logo.svg" alt="Verifin" className="h-10 w-10 object-contain" />
+          <img src="/WebIcons/favicon-96x96.png" alt="Verifin" className="h-8 w-8 object-contain sm:h-10 sm:w-10" />
           <span className="font-display font-bold text-lg">Verifin</span>
         </button>
 

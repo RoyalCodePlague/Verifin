@@ -9,7 +9,7 @@ const Footer = () => {
         <div className="grid md:grid-cols-4 gap-10 mb-12">
           <div className="md:col-span-1">
             <button onClick={() => navigate("/")} className="flex items-center gap-2 mb-4" aria-label="Go to Verifin home">
-              <img src="/verifin_logo.svg" alt="Verifin" className="h-10 w-10 rounded-lg bg-white object-contain" />
+              <img src="/WebIcons/favicon-96x96.png" alt="Verifin" className="h-10 w-10 rounded-lg bg-white object-contain" />
               <span className="font-display font-bold text-lg">Verifin</span>
             </button>
             <p className="text-sm text-sidebar-foreground/60 leading-relaxed">

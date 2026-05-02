@@ -1,13 +1,19 @@
-const CACHE_NAME = 'verifin-cache-v7';
+const CACHE_NAME = 'verifin-cache-v8';
 const APP_SHELL = '/index.html';
 const OFFLINE_FALLBACK = '<!doctype html><title>Verifin</title><p>Verifin is offline. Reconnect and try again.</p>';
 const STATIC_ASSETS = [
   APP_SHELL,
   '/manifest.json',
-  '/verifin_app_icon.png',
-  '/verifin_favicon_16.png',
-  '/verifin_favicon_32.png',
-  '/verifin_logo.svg',
+  '/Appicons/favicon-128.png',
+  '/Appicons/favicon-196x196.png',
+  '/Appicons/mstile-310x310.png',
+  '/Appicons/apple-touch-icon-152x152.png',
+  '/WebIcons/favicon-16x16.png',
+  '/WebIcons/favicon-32x32.png',
+  '/WebIcons/favicon-96x96.png',
+  '/WebIcons/favicon-128.png',
+  '/WebIcons/favicon-196x196.png',
+  '/WebIcons/favicon.ico',
 ];
 
 self.addEventListener('install', event => {

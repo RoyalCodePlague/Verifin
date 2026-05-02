@@ -10,14 +10,20 @@
   "theme_color": "#1B5E3B",
   "icons": [
     {
-      "src": "/android-chrome-192x192.png",
-      "sizes": "192x192",
+      "src": "/Appicons/favicon-128.png",
+      "sizes": "128x128",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "/android-chrome-512x512.png",
-      "sizes": "512x512",
+      "src": "/Appicons/favicon-196x196.png",
+      "sizes": "196x196",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/Appicons/mstile-310x310.png",
+      "sizes": "558x558",
       "type": "image/png",
       "purpose": "any maskable"
     }

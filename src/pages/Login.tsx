@@ -90,7 +90,7 @@ const Login = () => {
               <ArrowLeft className="h-4 w-4" /> Back
             </button>
             <button onClick={() => navigate("/")} className="inline-flex items-center gap-2" aria-label="Go to Verifin home">
-              <img src="/verifin_logo.svg" alt="Verifin" className="h-12 w-12 object-contain" />
+              <img src="/WebIcons/favicon-128.png" alt="Verifin" className="h-12 w-12 object-contain" />
               <span className="font-display font-bold text-2xl">Verifin</span>
             </button>
             <div className="w-16" />
