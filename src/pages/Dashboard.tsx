@@ -3,12 +3,26 @@ import { motion } from "framer-motion";
 import {
   TrendingUp, TrendingDown, Package, ShoppingCart, AlertTriangle,
   Receipt, ScanBarcode, ClipboardCheck, Plus, MessageSquare, Share2, HelpCircle,
+  WalletCards, HandCoins, Truck, HeartPulse,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { useStore } from "@/lib/store";
-import { buildPeriodFinanceData, buildWeeklyFinanceData, expenseBaseAmount, formatMoney, parseBusinessDate, supplyInvoiceAmountBase, type FinancePeriod } from "@/lib/reporting";
+import {
+  buildBusinessHealthScore,
+  buildCashflowForecast,
+  buildDebtorFollowUps,
+  buildPeriodFinanceData,
+  buildProfitLeaks,
+  buildReorderSuggestions,
+  buildWeeklyFinanceData,
+  expenseBaseAmount,
+  formatMoney,
+  parseBusinessDate,
+  supplyInvoiceAmountBase,
+  type FinancePeriod,
+} from "@/lib/reporting";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { fetchRuleInsightsApi, fetchWhatsAppSummaryApi } from "@/lib/api";
@@ -18,7 +32,7 @@ import { symbolForCurrency } from "@/lib/currency";
 
 const Dashboard = () => {
   const [financePeriod, setFinancePeriod] = useState<FinancePeriod>("months");
-  const { products, sales, expenses, discrepancies, activities, profile, generateWhatsAppSummary, supplyEntries } = useStore();
+  const { products, sales, expenses, discrepancies, activities, profile, generateWhatsAppSummary, supplyEntries, customers } = useStore();
   const navigate = useNavigate();
   const { canUse } = useFeatureAccess();
   const promptUpgrade = useUpgradePrompt();
@@ -113,6 +127,20 @@ const Dashboard = () => {
   const periodSalesVsExpensesData = useMemo(
     () => buildPeriodFinanceData(sales, expenses, financePeriod, new Date(), paidSupplyRevenue),
     [expenses, financePeriod, paidSupplyRevenue, sales]
+  );
+  const cashflowForecast = useMemo(
+    () => buildCashflowForecast(sales, expenses, customers, supplyEntries, profile.currency),
+    [customers, expenses, profile.currency, sales, supplyEntries]
+  );
+  const debtorFollowUps = useMemo(() => buildDebtorFollowUps(customers, sym), [customers, sym]);
+  const reorderSuggestions = useMemo(() => buildReorderSuggestions(products, sales), [products, sales]);
+  const profitLeaks = useMemo(
+    () => buildProfitLeaks(products, sales, expenses, customers, discrepancies, sym),
+    [customers, discrepancies, expenses, products, sales, sym]
+  );
+  const businessHealth = useMemo(
+    () => buildBusinessHealthScore({ products, sales, expenses, customers, discrepancies, cashflow: cashflowForecast }),
+    [cashflowForecast, customers, discrepancies, expenses, products, sales]
   );
 
   const metrics = [
@@ -236,6 +264,105 @@ const Dashboard = () => {
           </div>
         </CardContent>
       </Card>
+
+      <div className="grid gap-6 xl:grid-cols-3">
+        <Card className="shadow-soft xl:col-span-2">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-display flex items-center gap-2">
+              <WalletCards className="h-4 w-4 text-primary" /> Cashflow Forecast
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-3">
+            {cashflowForecast.map((point) => (
+              <div key={point.label} className={`rounded-lg border p-4 ${point.projectedNet < 0 ? "border-destructive/40 bg-destructive/10" : "border-border bg-muted/30"}`}>
+                <p className="text-xs text-muted-foreground">{point.label}</p>
+                <p className={`mt-1 font-display text-lg font-bold ${point.projectedNet < 0 ? "text-destructive" : "text-success"}`}>{formatMoney(point.projectedNet, sym)}</p>
+                <p className="mt-1 text-[11px] text-muted-foreground">In {formatMoney(point.projectedIn, sym)} | Out {formatMoney(point.projectedOut, sym)}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-soft">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-display flex items-center gap-2">
+              <HeartPulse className="h-4 w-4 text-primary" /> Business Health
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="flex items-center gap-4">
+              <div className="flex h-20 w-20 items-center justify-center rounded-full border-8 border-primary/20 bg-primary/10">
+                <span className="font-display text-2xl font-bold">{businessHealth.score}</span>
+              </div>
+              <div>
+                <p className="font-display text-lg font-semibold">{businessHealth.label}</p>
+                <p className="text-sm text-muted-foreground">{businessHealth.summary}</p>
+              </div>
+            </div>
+            <div className="mt-4 space-y-2">
+              {businessHealth.drivers.slice(0, 3).map((driver) => (
+                <p key={driver} className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">{driver}</p>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <Card className="shadow-soft">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-display flex items-center gap-2">
+              <HandCoins className="h-4 w-4 text-amber-600" /> Debtor Follow-Up
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 p-4 pt-0">
+            {debtorFollowUps.length === 0 ? <p className="text-sm text-muted-foreground">No customer debt to follow up.</p> : debtorFollowUps.slice(0, 3).map((item) => (
+              <div key={`${item.customer}-${item.phone}`} className="rounded-lg border border-border p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium">{item.customer}</p>
+                  <span className="text-xs font-semibold text-amber-600">{formatMoney(item.amount, sym)}</span>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{item.ageDays} day{item.ageDays === 1 ? "" : "s"} old | {item.phone || "No phone"}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-soft">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-display flex items-center gap-2">
+              <Truck className="h-4 w-4 text-primary" /> Supplier Reorders
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 p-4 pt-0">
+            {reorderSuggestions.length === 0 ? <p className="text-sm text-muted-foreground">No urgent reorder suggestions.</p> : reorderSuggestions.slice(0, 3).map((item) => (
+              <div key={item.product} className="rounded-lg border border-border p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium">{item.product}</p>
+                  <span className="text-xs font-semibold text-primary">Order {item.suggestedOrder}</span>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{item.stock} in stock | {item.daysLeft == null ? "No velocity yet" : `${item.daysLeft} days left`} | {item.supplier}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-soft">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base font-display flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-destructive" /> Profit Leaks
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 p-4 pt-0">
+            {profitLeaks.length === 0 ? <p className="text-sm text-muted-foreground">No major leaks detected.</p> : profitLeaks.slice(0, 3).map((item) => (
+              <div key={item.title} className={`rounded-lg border p-3 ${item.severity === "high" ? "border-destructive/40 bg-destructive/10" : "border-amber-300/40 bg-amber-50 text-amber-900 dark:bg-amber-950/30 dark:text-amber-200"}`}>
+                <p className="text-sm font-medium">{item.title}</p>
+                <p className="mt-1 text-xs opacity-80">{item.detail}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2 shadow-soft">

@@ -16,7 +16,9 @@ import {
   logoutRequest,
   registerRequest,
   setTokens,
+  staffLoginRequest,
   type ApiUser,
+  type StaffSession,
 } from "@/lib/api";
 import { loadServerData } from "@/lib/sync";
 import { useStore } from "@/lib/store";
@@ -30,6 +32,7 @@ import {
 } from "@/lib/offlineQueue";
 
 const CACHED_USER_KEY = "sp_cached_user";
+const STAFF_SESSION_KEY = "sp_staff_session";
 
 function loadCachedUser(): ApiUser | null {
   try {
@@ -44,20 +47,45 @@ function saveCachedUser(user: ApiUser) {
   localStorage.setItem(CACHED_USER_KEY, JSON.stringify(user));
 }
 
+function loadStaffSession(): StaffSession | null {
+  try {
+    const stored = localStorage.getItem(STAFF_SESSION_KEY);
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveStaffSession(staff: StaffSession) {
+  localStorage.setItem(STAFF_SESSION_KEY, JSON.stringify(staff));
+}
+
+export const ROLE_DEFAULT_PERMISSIONS: Record<string, string[]> = {
+  Owner: ["*"],
+  Manager: ["dashboard", "inventory", "sales", "expenses", "customers", "reports", "audits", "suppliers"],
+  "Stock Manager": ["dashboard", "inventory", "audits", "suppliers"],
+  Cashier: ["dashboard", "sales", "customers", "inventory"],
+};
+
 type AuthContextValue = {
   user: ApiUser | null;
+  staffSession: StaffSession | null;
+  isStaffSession: boolean;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  staffLogin: (businessCode: string, username: string, password: string) => Promise<void>;
   register: (email: string, password: string, name?: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  canAccess: (permission: string) => boolean;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<ApiUser | null>(null);
+  const [staffSession, setStaffSession] = useState<StaffSession | null>(() => loadStaffSession());
   const [isLoading, setIsLoading] = useState(true);
   const { hydrateFromServer, resetForLogout } = useStore();
 
@@ -90,6 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const u = await fetchMe();
         if (cancelled) return;
         saveCachedUser(u);
+        setStaffSession(loadStaffSession());
         markAuthenticatedOfflineSession();
         setUser(u);
         if (getOfflineQueue().length > 0) return;
@@ -101,6 +130,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
         clearTokens();
+        localStorage.removeItem(STAFF_SESSION_KEY);
+        setStaffSession(null);
         setUser(null);
       } finally {
         if (!cancelled) setIsLoading(false);
@@ -114,10 +145,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(
     async (email: string, password: string) => {
       const tokens = await loginRequest(email, password);
+      localStorage.removeItem(STAFF_SESSION_KEY);
+      setStaffSession(null);
       setTokens(tokens.access, tokens.refresh);
       await refreshUser();
     },
     [refreshUser]
+  );
+
+  const staffLogin = useCallback(
+    async (businessCode: string, username: string, password: string) => {
+      const res = await staffLoginRequest({ business_code: businessCode, username, password });
+      setTokens(res.access, res.refresh);
+      saveCachedUser(res.user);
+      saveStaffSession(res.staff);
+      setStaffSession(res.staff);
+      setUser(res.user);
+      markAuthenticatedOfflineSession();
+      await applyServerData(res.user);
+    },
+    [applyServerData]
   );
 
   const register = useCallback(
@@ -128,6 +175,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         business_name: name || "",
       });
       setTokens(res.access, res.refresh);
+      localStorage.removeItem(STAFF_SESSION_KEY);
+      setStaffSession(null);
       await refreshUser();
     },
     [refreshUser]
@@ -141,25 +190,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       clearTokens();
       localStorage.removeItem(CACHED_USER_KEY);
+      localStorage.removeItem(STAFF_SESSION_KEY);
       clearOfflineQueue();
       clearOfflineSession();
       clearAuthenticatedOfflineSession();
       setUser(null);
+      setStaffSession(null);
       resetForLogout();
     }
   }, [resetForLogout]);
 
+  const canAccess = useCallback(
+    (permission: string) => {
+      if (!staffSession) return true;
+      const permissions = staffSession.permissions?.length ? staffSession.permissions : ROLE_DEFAULT_PERMISSIONS[staffSession.role] || [];
+      return permissions.includes("*") || permissions.includes(permission);
+    },
+    [staffSession]
+  );
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
+      staffSession,
+      isStaffSession: !!staffSession,
       isAuthenticated: !!user,
       isLoading,
       login,
+      staffLogin,
       register,
       logout,
       refreshUser,
+      canAccess,
     }),
-    [user, isLoading, login, register, logout, refreshUser]
+    [user, staffSession, isLoading, login, staffLogin, register, logout, refreshUser, canAccess]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

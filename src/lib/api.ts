@@ -62,6 +62,16 @@ export type ApiUser = {
   exchange_rates: Record<string, number>;
   dark_mode: boolean;
   onboarding_complete: boolean;
+  business_code?: string;
+};
+
+export type StaffSession = {
+  id: number;
+  name: string;
+  username: string;
+  role: "Cashier" | "Stock Manager" | "Manager" | "Owner";
+  permissions: string[];
+  business_code: string;
 };
 
 export async function apiFetch<T = unknown>(
@@ -129,6 +139,14 @@ export async function registerRequest(body: {
     method: "POST",
     skipAuth: true,
     body: JSON.stringify(body),
+  });
+}
+
+export async function staffLoginRequest(payload: { business_code: string; username: string; password: string }) {
+  return apiFetch<{ access: string; refresh: string; user: ApiUser; staff: StaffSession }>("/api/v1/accounts/staff-login/", {
+    method: "POST",
+    skipAuth: true,
+    body: JSON.stringify(payload),
   });
 }
 
@@ -370,6 +388,36 @@ export type ApiBranch = {
 
 export async function listBranchesApi(): Promise<ApiBranch[]> {
   return fetchAllPages<ApiBranch>("/api/v1/inventory/branches/");
+}
+
+export type ApiStaff = {
+  id: number;
+  name: string;
+  role: "Owner" | "Cashier" | "Stock Manager" | "Manager";
+  status: "Active" | "Inactive";
+  last_active?: string | null;
+  username?: string;
+  permissions?: string[];
+  login_enabled?: boolean;
+  temp_password?: string;
+};
+
+export async function createStaffApi(payload: Omit<ApiStaff, "id">) {
+  return apiFetch<ApiStaff>("/api/v1/accounts/staff/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateStaffApi(id: string, payload: Partial<Omit<ApiStaff, "id">>) {
+  return apiFetch<ApiStaff>(`/api/v1/accounts/staff/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteStaffApi(id: string) {
+  await apiFetch(`/api/v1/accounts/staff/${id}/`, { method: "DELETE" });
 }
 
 export async function createBranchApi(payload: Omit<ApiBranch, "id">) {

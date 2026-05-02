@@ -13,11 +13,12 @@ function AuthLoading() {
 }
 
 /** Dashboard and app areas: require login and completed onboarding. */
-export function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, user } = useAuth();
+export function ProtectedRoute({ children, permission }: { children: React.ReactNode; permission?: string }) {
+  const { isAuthenticated, isLoading, user, isStaffSession, canAccess } = useAuth();
   if (isLoading) return <AuthLoading />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  if (user && !user.onboarding_complete) return <Navigate to="/onboarding" replace />;
+  if (user && !isStaffSession && !user.onboarding_complete) return <Navigate to="/onboarding" replace />;
+  if (permission && !canAccess(permission)) return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
 }
 
@@ -32,10 +33,10 @@ export function OnboardingRoute({ children }: { children: React.ReactNode }) {
 
 /** Login page: redirect authenticated users away. */
 export function GuestRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, user } = useAuth();
+  const { isAuthenticated, isLoading, user, isStaffSession } = useAuth();
   if (isLoading) return <AuthLoading />;
   if (isAuthenticated && user) {
-    if (!user.onboarding_complete) return <Navigate to="/onboarding" replace />;
+    if (!isStaffSession && !user.onboarding_complete) return <Navigate to="/onboarding" replace />;
     return <Navigate to="/dashboard" replace />;
   }
   return <>{children}</>;

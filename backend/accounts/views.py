@@ -16,7 +16,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from billing.services import enforce_feature, enforce_limit
 from .models import Profile, Staff, StaffActivityLog
 from .permissions import IsOwnerOrManager
-from .serializers import ChangePasswordSerializer, CustomTokenObtainPairSerializer, ProfileSerializer, RegisterSerializer, StaffActivityLogSerializer, StaffSerializer, UserSerializer
+from .serializers import ChangePasswordSerializer, CustomTokenObtainPairSerializer, ProfileSerializer, RegisterSerializer, StaffActivityLogSerializer, StaffLoginSerializer, StaffSerializer, UserSerializer
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -95,6 +95,37 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                 raise
             # Convert other errors to validation errors
             raise exceptions.ValidationError({'detail': str(e)})
+
+
+class StaffLoginView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = StaffLoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        owner = serializer.validated_data["owner"]
+        staff = serializer.validated_data["staff"]
+        staff.last_active = timezone.now()
+        staff.save(update_fields=["last_active"])
+
+        refresh = RefreshToken.for_user(owner)
+        refresh["staff_id"] = staff.id
+        refresh["staff_role"] = staff.role
+        refresh["staff_permissions"] = staff.permissions or []
+
+        return Response({
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user": UserSerializer(owner).data,
+            "staff": {
+                "id": staff.id,
+                "name": staff.name,
+                "username": staff.username,
+                "role": staff.role,
+                "permissions": staff.permissions or [],
+                "business_code": f"VF-{owner.id}",
+            },
+        })
 
 
 class RegisterView(APIView):

@@ -19,6 +19,7 @@ import { useFeatureAccess, useUpgradePrompt } from "@/lib/features";
 import { symbolForCurrency } from "@/lib/currency";
 import { cacheBarcodeEntry, getCachedBarcodeEntry } from "@/lib/barcodeCache";
 import { barcodeMatches, normalizeBarcode } from "@/lib/barcodes";
+import { buildReorderSuggestions } from "@/lib/reporting";
 
 const allCategories = [
   "Groceries", "Beverages", "Hardware", "Personal Care", "Electronics",
@@ -51,7 +52,7 @@ function forecastRiskMeta(risk: ApiForecastItem["risk"], horizonDays: number, da
 }
 
 const Inventory = () => {
-  const { products, addProduct, upsertProduct, updateProduct, deleteProduct, profile, addActivity } = useStore();
+  const { products, sales, addProduct, upsertProduct, updateProduct, deleteProduct, profile, addActivity } = useStore();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { canUse } = useFeatureAccess();
@@ -72,6 +73,7 @@ const Inventory = () => {
   const sym = profile.currencySymbol || "R";
   const secondaryCurrency = profile.enabledCurrencies?.find((code) => code !== profile.currency) || "";
   const secondaryRate = secondaryCurrency ? profile.exchangeRates?.[secondaryCurrency] || 0 : 0;
+  const reorderSuggestions = buildReorderSuggestions(products, sales);
 
   const flaggedView = searchParams.get("view") === "flagged";
 
@@ -516,6 +518,34 @@ const Inventory = () => {
           </div>
         </Card>
       ) : null}
+
+      {reorderSuggestions.length > 0 && (
+        <Card className="shadow-soft p-4 dark:border-border dark:bg-card">
+          <div className="mb-3 flex items-center gap-2">
+            <Package className="h-4 w-4 text-primary" />
+            <div>
+              <p className="text-sm font-medium">Supplier Reorder Suggestions</p>
+              <p className="text-xs text-muted-foreground">Based on stock levels and the last 30 days of sales velocity.</p>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {reorderSuggestions.slice(0, 6).map((item) => (
+              <div key={item.product} className="rounded-lg border border-border bg-background/80 p-3 dark:bg-muted/10">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium">{item.product}</p>
+                    <p className="text-xs text-muted-foreground">{item.supplier}</p>
+                  </div>
+                  <Badge className="bg-primary/10 text-primary hover:bg-primary/10">Order {item.suggestedOrder}</Badge>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {item.stock} in stock | Sold {item.soldLast30} in 30 days | {item.daysLeft == null ? "No run-out estimate" : `${item.daysLeft} day${item.daysLeft === 1 ? "" : "s"} left`}
+                </p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {forecast.length > 0 && (
         <Card className="shadow-soft p-4 dark:border-border dark:bg-card">

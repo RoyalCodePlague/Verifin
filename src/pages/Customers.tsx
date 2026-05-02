@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import { addToOfflineQueue, canQueueOfflineAction, hasQueuedLocalCreate, removeQueuedLocalCreate } from "@/lib/offlineQueue";
+import { buildDebtorFollowUps } from "@/lib/reporting";
 
 const badgeConfig: Record<CustomerBadge, { label: string; color: string; icon: typeof Award }> = {
   bronze: { label: "Bronze", color: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400", icon: Award },
@@ -50,6 +51,7 @@ const Customers = () => {
   const debtors = customers.filter(c => (c.debtAmount || 0) > 0);
   const totalDebt = debtors.reduce((sum, c) => sum + (c.debtAmount || 0), 0);
   const overdueDebtCount = debtors.filter(c => debtAgeInDays(c.debtStartedAt) >= 30).length;
+  const debtorFollowUps = buildDebtorFollowUps(customers, sym);
 
   const openAdd = () => {
     setForm({ name: "", phone: "", badge: "bronze" });
@@ -220,6 +222,15 @@ const Customers = () => {
     window.open(`mailto:?subject=Customer QR Code&body=${encodeURIComponent(message)}`);
   };
 
+  const copyFollowUpMessage = async (message: string) => {
+    try {
+      await navigator.clipboard.writeText(message);
+      toast.success("Follow-up message copied.");
+    } catch {
+      toast.error("Could not copy message.");
+    }
+  };
+
   const formDialog = (
     <DialogContent>
       <DialogHeader>
@@ -270,6 +281,33 @@ const Customers = () => {
           <p className={`font-display text-xl font-bold ${overdueDebtCount > 0 ? "text-destructive" : ""}`}>{overdueDebtCount}</p>
         </div>
       </div>
+
+      {debtorFollowUps.length > 0 && (
+        <Card className="shadow-soft">
+          <CardContent className="p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="font-display font-semibold">Payment Follow-Up Queue</p>
+                <p className="text-xs text-muted-foreground">Ready-to-send reminders for customers with outstanding balances.</p>
+              </div>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {debtorFollowUps.slice(0, 4).map((item) => (
+                <div key={`${item.customer}-${item.phone}`} className="rounded-lg border border-border p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium">{item.customer}</p>
+                      <p className="text-xs text-muted-foreground">{sym}{item.amount.toFixed(2)} | {item.ageDays} day{item.ageDays === 1 ? "" : "s"} old</p>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => copyFollowUpMessage(item.message)}>Copy</Button>
+                  </div>
+                  <p className="mt-2 text-xs text-muted-foreground">{item.message}</p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {filtered.length === 0 ? (
         <EmptyState icon={Users} title="No customers yet" description="Add your first customer to start tracking" actionLabel="Add Customer" onAction={openAdd} />

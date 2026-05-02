@@ -82,6 +82,11 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
+    business_code = serializers.SerializerMethodField()
+
+    def get_business_code(self, obj):
+        return f"VF-{obj.id}"
+
     def validate(self, attrs):
         currency = attrs.get("currency", getattr(self.instance, "currency", "ZAR"))
         enabled = attrs.get("enabled_currencies", getattr(self.instance, "enabled_currencies", [currency])) or [currency]
@@ -123,7 +128,9 @@ class UserSerializer(serializers.ModelSerializer):
             "dark_mode",
             "onboarding_complete",
             "email_verified",
+            "business_code",
         ]
+        read_only_fields = ["business_code"]
 
 
 class ChangePasswordSerializer(serializers.Serializer):
@@ -157,11 +164,79 @@ class ProfileSerializer(serializers.ModelSerializer):
 
 class StaffSerializer(serializers.ModelSerializer):
     branch_name = serializers.CharField(source="branch.name", read_only=True, allow_null=True)
+    temp_password = serializers.CharField(write_only=True, required=False, allow_blank=True, min_length=4)
 
     class Meta:
         model = Staff
         fields = "__all__"
-        read_only_fields = ["user", "created_at", "updated_at"]
+        read_only_fields = ["user", "password", "created_at", "updated_at"]
+
+    def validate_username(self, value):
+        username = (value or "").strip().lower()
+        if not username:
+            return ""
+        qs = Staff.objects.filter(user=self.context["request"].user, username__iexact=username, is_deleted=False)
+        if self.instance:
+            qs = qs.exclude(id=self.instance.id)
+        if qs.exists():
+            raise serializers.ValidationError("This staff username is already in use for your business.")
+        return username
+
+    def validate_permissions(self, value):
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Permissions must be a list.")
+        return [str(item).strip() for item in value if str(item).strip()]
+
+    def create(self, validated_data):
+        temp_password = validated_data.pop("temp_password", "")
+        staff = super().create(validated_data)
+        if temp_password:
+            staff.set_password(temp_password)
+            staff.save(update_fields=["password"])
+        return staff
+
+    def update(self, instance, validated_data):
+        temp_password = validated_data.pop("temp_password", "")
+        staff = super().update(instance, validated_data)
+        if temp_password:
+            staff.set_password(temp_password)
+            staff.save(update_fields=["password"])
+        return staff
+
+
+class StaffLoginSerializer(serializers.Serializer):
+    business_code = serializers.CharField()
+    username = serializers.CharField()
+    password = serializers.CharField(write_only=True, trim_whitespace=False)
+
+    def validate(self, attrs):
+        business_code = attrs["business_code"].strip()
+        username = attrs["username"].strip().lower()
+        password = attrs["password"]
+
+        owner = None
+        if business_code.upper().startswith("VF-"):
+            try:
+                owner_id = int(business_code.split("-", 1)[1])
+                owner = User.objects.filter(id=owner_id, is_active=True).first()
+            except (IndexError, TypeError, ValueError):
+                owner = None
+        if owner is None:
+            owner = User.objects.filter(email__iexact=business_code, is_active=True).first()
+        if owner is None:
+            owner = User.objects.filter(business_name__iexact=business_code, is_active=True).first()
+        if owner is None:
+            raise serializers.ValidationError({"detail": "Business account not found."})
+
+        staff = Staff.objects.filter(user=owner, username__iexact=username, is_deleted=False).first()
+        if not staff or staff.status != Staff.ACTIVE or not staff.login_enabled or not staff.check_password(password):
+            raise serializers.ValidationError({"detail": "Invalid staff username or password."})
+
+        attrs["owner"] = owner
+        attrs["staff"] = staff
+        return attrs
 
 
 class StaffActivityLogSerializer(serializers.ModelSerializer):

@@ -86,18 +86,18 @@ const App = () => (
                 <Route path="/help" element={<HelpCenter />} />
                 <Route path="/careers" element={<Careers />} />
                 <Route path="/api" element={<ApiDocs />} />
-                <Route path="/dashboard" element={<ProtectedRoute><AppRoute><Dashboard /></AppRoute></ProtectedRoute>} />
-                <Route path="/inventory" element={<ProtectedRoute><AppRoute><Inventory /></AppRoute></ProtectedRoute>} />
-                <Route path="/sales" element={<ProtectedRoute><AppRoute><Sales /></AppRoute></ProtectedRoute>} />
-                <Route path="/expenses" element={<ProtectedRoute><AppRoute><Expenses /></AppRoute></ProtectedRoute>} />
-                <Route path="/audits" element={<ProtectedRoute><AppRoute><Audits /></AppRoute></ProtectedRoute>} />
-                <Route path="/reports" element={<ProtectedRoute><AppRoute><Reports /></AppRoute></ProtectedRoute>} />
-                <Route path="/customers" element={<ProtectedRoute><AppRoute><Customers /></AppRoute></ProtectedRoute>} />
+                <Route path="/dashboard" element={<ProtectedRoute permission="dashboard"><AppRoute><Dashboard /></AppRoute></ProtectedRoute>} />
+                <Route path="/inventory" element={<ProtectedRoute permission="inventory"><AppRoute><Inventory /></AppRoute></ProtectedRoute>} />
+                <Route path="/sales" element={<ProtectedRoute permission="sales"><AppRoute><Sales /></AppRoute></ProtectedRoute>} />
+                <Route path="/expenses" element={<ProtectedRoute permission="expenses"><AppRoute><Expenses /></AppRoute></ProtectedRoute>} />
+                <Route path="/audits" element={<ProtectedRoute permission="audits"><AppRoute><Audits /></AppRoute></ProtectedRoute>} />
+                <Route path="/reports" element={<ProtectedRoute permission="reports"><AppRoute><Reports /></AppRoute></ProtectedRoute>} />
+                <Route path="/customers" element={<ProtectedRoute permission="customers"><AppRoute><Customers /></AppRoute></ProtectedRoute>} />
                 <Route path="/invoices" element={<Navigate to="/suppliers" replace />} />
-                <Route path="/suppliers" element={<ProtectedRoute><AppRoute><Suppliers /></AppRoute></ProtectedRoute>} />
-                <Route path="/staff" element={<ProtectedRoute><AppRoute><Staff /></AppRoute></ProtectedRoute>} />
-                <Route path="/settings" element={<ProtectedRoute><AppRoute><SettingsPage /></AppRoute></ProtectedRoute>} />
-                <Route path="/billing" element={<ProtectedRoute><AppRoute><Billing /></AppRoute></ProtectedRoute>} />
+                <Route path="/suppliers" element={<ProtectedRoute permission="suppliers"><AppRoute><Suppliers /></AppRoute></ProtectedRoute>} />
+                <Route path="/staff" element={<ProtectedRoute permission="staff"><AppRoute><Staff /></AppRoute></ProtectedRoute>} />
+                <Route path="/settings" element={<ProtectedRoute permission="settings"><AppRoute><SettingsPage /></AppRoute></ProtectedRoute>} />
+                <Route path="/billing" element={<ProtectedRoute permission="billing"><AppRoute><Billing /></AppRoute></ProtectedRoute>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>

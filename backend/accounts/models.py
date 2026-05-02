@@ -1,10 +1,15 @@
 from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.hashers import check_password, make_password
 from django.db import models
 from core.models import TimeStampedSoftDeleteModel
 
 
 def default_enabled_currencies():
     return ["ZAR"]
+
+
+def default_staff_permissions():
+    return []
 
 
 class User(AbstractUser, TimeStampedSoftDeleteModel):
@@ -55,6 +60,27 @@ class Staff(TimeStampedSoftDeleteModel):
     role = models.CharField(max_length=30, choices=ROLE_CHOICES, default=CASHIER)
     status = models.CharField(max_length=15, choices=STATUS_CHOICES, default=ACTIVE)
     last_active = models.DateTimeField(blank=True, null=True)
+    username = models.CharField(max_length=80, blank=True)
+    password = models.CharField(max_length=128, blank=True)
+    permissions = models.JSONField(default=default_staff_permissions, blank=True)
+    login_enabled = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "username"],
+                condition=models.Q(is_deleted=False) & ~models.Q(username=""),
+                name="unique_active_staff_username_per_owner",
+            )
+        ]
+
+    def set_password(self, raw_password):
+        self.password = make_password(raw_password)
+
+    def check_password(self, raw_password):
+        if not self.password:
+            return False
+        return check_password(raw_password, self.password)
 
 
 class StaffActivityLog(TimeStampedSoftDeleteModel):

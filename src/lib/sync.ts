@@ -110,6 +110,9 @@ type ApiStaff = {
   role: StaffMember["role"];
   status: StaffMember["status"];
   last_active: string | null;
+  username?: string;
+  permissions?: string[];
+  login_enabled?: boolean;
   branch?: number | null;
   branch_name?: string | null;
 };
@@ -318,6 +321,9 @@ export async function loadServerData(user: {
     role: s.role,
     status: s.status,
     lastActive: s.last_active ? fmtDate(s.last_active) : (s as ApiStaff & Partial<StaffMember>).lastActive || "",
+    username: s.username || (s as ApiStaff & Partial<StaffMember>).username || "",
+    permissions: s.permissions || (s as ApiStaff & Partial<StaffMember>).permissions || [],
+    loginEnabled: s.login_enabled ?? (s as ApiStaff & Partial<StaffMember>).loginEnabled ?? false,
     branchId: s.branch ? String(s.branch) : undefined,
     branchName: s.branch_name || "",
   }));

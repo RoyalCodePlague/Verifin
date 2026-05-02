@@ -1,11 +1,26 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Download, FileText, BarChart3, Package, AlertTriangle, Users, Receipt, TrendingUp, Calendar } from "lucide-react";
+import { Download, FileText, BarChart3, Package, AlertTriangle, Users, Receipt, TrendingUp, Calendar, WalletCards, HandCoins, Truck, HeartPulse } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { toast } from "sonner";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
-import { buildPeriodFinanceData, buildWeeklyFinanceData, csvCell, expenseBaseAmount, formatMoney, parseBusinessDate, salePaymentBreakdown, supplyInvoiceAmountBase, type FinancePeriod } from "@/lib/reporting";
+import {
+  buildBusinessHealthScore,
+  buildCashflowForecast,
+  buildDebtorFollowUps,
+  buildPeriodFinanceData,
+  buildProfitLeaks,
+  buildReorderSuggestions,
+  buildWeeklyFinanceData,
+  csvCell,
+  expenseBaseAmount,
+  formatMoney,
+  parseBusinessDate,
+  salePaymentBreakdown,
+  supplyInvoiceAmountBase,
+  type FinancePeriod,
+} from "@/lib/reporting";
 import { LockedBadge, useFeatureAccess, useUpgradePrompt } from "@/lib/features";
 import { symbolForCurrency } from "@/lib/currency";
 
@@ -44,6 +59,11 @@ const Reports = () => {
   const monthlyExpensesTotal = monthlyFinanceData.reduce((sum, d) => sum + d.expenses, 0);
   const paymentBreakdown = salePaymentBreakdown(sales, profile.currency);
   const customerDebtTotal = customers.reduce((sum, c) => sum + (c.debtAmount || 0), 0);
+  const cashflowForecast = buildCashflowForecast(sales, expenses, customers, supplyEntries, profile.currency);
+  const debtorFollowUps = buildDebtorFollowUps(customers, sym);
+  const reorderSuggestions = buildReorderSuggestions(products, sales);
+  const profitLeaks = buildProfitLeaks(products, sales, expenses, customers, discrepancies, sym);
+  const businessHealth = buildBusinessHealthScore({ products, sales, expenses, customers, discrepancies, cashflow: cashflowForecast });
 
   const categoryData = Array.from(
     products.reduce((acc, product) => {
@@ -71,6 +91,11 @@ const Reports = () => {
     { title: "Expense Analysis", desc: `${expenses.length} expenses across ${Object.keys(expenseByCat).length} categories`, icon: Receipt },
     { title: "Profit & Loss", desc: `Revenue: ${formatMoney(totalSales, sym)} - COGS: ${formatMoney(totalCostOfGoods, sym)} - Gross profit: ${formatMoney(grossProfit, sym)}`, icon: TrendingUp, feature: "advanced_analytics" },
     { title: "Monthly Overview", desc: `12-month sales: ${formatMoney(monthlySalesTotal, sym)} - expenses: ${formatMoney(monthlyExpensesTotal, sym)}`, icon: Calendar, feature: "advanced_reports" },
+    { title: "Cashflow Forecast", desc: `90-day net: ${formatMoney(cashflowForecast.find((point) => point.days === 90)?.projectedNet || 0, sym)}`, icon: WalletCards, feature: "advanced_analytics" },
+    { title: "Debtor Follow-Up", desc: `${debtorFollowUps.length} customer${debtorFollowUps.length === 1 ? "" : "s"} need payment follow-up`, icon: HandCoins, feature: "advanced_reports" },
+    { title: "Supplier Reorder Suggestions", desc: `${reorderSuggestions.length} product${reorderSuggestions.length === 1 ? "" : "s"} suggested for reorder`, icon: Truck, feature: "reorder_suggestions" },
+    { title: "Profit Leak Detector", desc: `${profitLeaks.length} leak${profitLeaks.length === 1 ? "" : "s"} detected`, icon: AlertTriangle, feature: "advanced_analytics" },
+    { title: "Business Health Score", desc: `${businessHealth.score}/100 - ${businessHealth.label}`, icon: HeartPulse, feature: "advanced_analytics" },
   ];
 
   const row = (values: unknown[]) => values.map(csvCell).join(",");
@@ -111,7 +136,7 @@ const Reports = () => {
         "Currency,Period,Sales,Expenses,Net",
         ...monthlyFinanceData.map(d => row([profile.currency, d.period, formatMoney(d.sales, sym), formatMoney(d.expenses, sym), formatMoney(d.sales - d.expenses, sym)])),
       ];
-    } else if (title.includes("Profit")) {
+    } else if (title === "Profit & Loss") {
       csvRows = [
         "Currency,Metric,Value",
         row([profile.currency, "Total Sales", formatMoney(totalSales, sym)]),
@@ -119,6 +144,36 @@ const Reports = () => {
         row([profile.currency, "Gross Profit", formatMoney(grossProfit, sym)]),
         row([profile.currency, "Expenses", formatMoney(totalExpenses, sym)]),
         row([profile.currency, "Net Profit", formatMoney(grossProfit - totalExpenses, sym)]),
+      ];
+    } else if (title.includes("Cashflow")) {
+      csvRows = [
+        "Currency,Horizon,Projected In,Projected Out,Projected Net",
+        ...cashflowForecast.map((point) => row([profile.currency, point.label, formatMoney(point.projectedIn, sym), formatMoney(point.projectedOut, sym), formatMoney(point.projectedNet, sym)])),
+      ];
+    } else if (title.includes("Debtor")) {
+      csvRows = [
+        "Currency,Customer,Phone,Amount,Age Days,Message",
+        ...debtorFollowUps.map((item) => row([profile.currency, item.customer, item.phone, formatMoney(item.amount, sym), item.ageDays, item.message])),
+      ];
+    } else if (title.includes("Reorder")) {
+      csvRows = [
+        "Product,Supplier,Stock,Reorder Level,Sold Last 30,Days Left,Suggested Order",
+        ...reorderSuggestions.map((item) => row([item.product, item.supplier, item.stock, item.reorderLevel, item.soldLast30, item.daysLeft ?? "N/A", item.suggestedOrder])),
+      ];
+    } else if (title.includes("Leak")) {
+      csvRows = [
+        "Severity,Title,Detail",
+        ...profitLeaks.map((item) => row([item.severity, item.title, item.detail])),
+      ];
+    } else if (title.includes("Health")) {
+      csvRows = [
+        "Metric,Value",
+        row(["Score", businessHealth.score]),
+        row(["Label", businessHealth.label]),
+        row(["Summary", businessHealth.summary]),
+        "",
+        "Driver",
+        ...businessHealth.drivers.map((driver) => row([driver])),
       ];
     } else if (title.includes("Stock")) {
       csvRows = [
@@ -186,6 +241,34 @@ const Reports = () => {
             <div>
               <p className="text-xs text-muted-foreground">Inventory Margin</p>
               <p className="text-xl font-display font-bold">{formatMoney(inventoryMarginValue, sym)}</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-soft lg:col-span-2">
+          <CardContent className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-5">
+            <div>
+              <p className="text-xs text-muted-foreground">Health Score</p>
+              <p className="text-xl font-display font-bold">{businessHealth.score}/100</p>
+              <p className="text-xs text-muted-foreground">{businessHealth.label}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">90-Day Cashflow</p>
+              <p className={`text-xl font-display font-bold ${(cashflowForecast.find((point) => point.days === 90)?.projectedNet || 0) < 0 ? "text-destructive" : "text-success"}`}>
+                {formatMoney(cashflowForecast.find((point) => point.days === 90)?.projectedNet || 0, sym)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Debtor Follow-Ups</p>
+              <p className="text-xl font-display font-bold">{debtorFollowUps.length}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Reorder Suggestions</p>
+              <p className="text-xl font-display font-bold">{reorderSuggestions.length}</p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Profit Leaks</p>
+              <p className={`text-xl font-display font-bold ${profitLeaks.length ? "text-destructive" : "text-success"}`}>{profitLeaks.length}</p>
             </div>
           </CardContent>
         </Card>

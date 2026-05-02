@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Menu, X, Moon, Sun } from "lucide-react";
+import { CheckCircle, Menu, X, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useStore } from "@/lib/store";
@@ -20,8 +20,11 @@ const Navbar = () => {
   return (
     <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border">
       <div className="container flex h-16 items-center justify-between">
-        <button onClick={() => navigate("/")} className="flex items-center rounded-2xl p-1 transition-colors dark:bg-white/95 dark:shadow-sm" aria-label="Go to Verifin home">
-          <img src="/WebIcons/favicon-196x196.png" alt="Verifin" className="h-14 w-14 object-contain dark:h-12 dark:w-12 sm:h-16 sm:w-16 sm:dark:h-14 sm:dark:w-14" />
+        <button onClick={() => navigate("/")} className="flex items-center gap-2" aria-label="Go to Verifin home">
+          <div className="h-8 w-8 rounded-lg bg-gradient-hero flex items-center justify-center text-primary-foreground">
+            <CheckCircle className="h-5 w-5" />
+          </div>
+          <span className="font-display font-bold text-lg">Verifin</span>
         </button>
 
         <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-muted-foreground">

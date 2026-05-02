@@ -104,6 +104,9 @@ export interface StaffMember {
   lastActive: string;
   branchId?: string;
   branchName?: string;
+  username?: string;
+  permissions?: string[];
+  loginEnabled?: boolean;
 }
 
 export interface Branch {
@@ -184,6 +187,7 @@ interface StoreState {
   updateCustomer: (id: string, c: Partial<Customer>) => void;
   deleteCustomer: (id: string) => void;
   addStaff: (s: Omit<StaffMember, "id">) => string;
+  upsertStaff: (s: StaffMember) => void;
   updateStaff: (id: string, s: Partial<StaffMember>) => void;
   deleteStaff: (id: string) => void;
   addBranch: (b: Omit<Branch, "id">) => string;
@@ -476,6 +480,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setStaff(prev => [{ ...s, id }, ...prev]);
     return id;
   }, []);
+  const upsertStaff = useCallback((member: StaffMember) => {
+    setStaff(prev => {
+      const exists = prev.some(s => s.id === member.id);
+      return exists ? prev.map(s => s.id === member.id ? member : s) : [member, ...prev];
+    });
+  }, []);
   const updateStaff = useCallback((id: string, updates: Partial<StaffMember>) => {
     setStaff(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
   }, []);
@@ -681,7 +691,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       profile, products, sales, expenses, audits, discrepancies, customers, staff, branches, activities, supplyEntries,
       setProfile, addProduct, upsertProduct, updateProduct, deleteProduct,
       addSale, upsertSale, deleteSale, addExpense, upsertExpense, deleteExpense,
-      addCustomer, updateCustomer, deleteCustomer, addStaff, updateStaff, deleteStaff,
+      addCustomer, updateCustomer, deleteCustomer, addStaff, upsertStaff, updateStaff, deleteStaff,
       addBranch, updateBranch, deleteBranch, addActivity, addSupplyEntry, updateSupplyEntry, resolveDiscrepancy, addAudit, upsertAudit, updateAudit, addDiscrepancy, upsertDiscrepancy, generateWhatsAppSummary,
       hydrateFromServer, resetForLogout,
     }}>

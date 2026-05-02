@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Package, ShoppingCart, Receipt, ClipboardCheck,
   BarChart3, Users, UserCog, Settings, Menu, X, LogOut,
   Moon, Sun, Clock, Truck, CreditCard,
-  Lock,
+  CheckCircle, Lock,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth-context";
@@ -23,17 +23,17 @@ import { toast } from "sonner";
 import { useFeatureAccess, useUpgradePrompt } from "@/lib/features";
 
 const navItems = [
-  { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-  { to: "/inventory", icon: Package, label: "Inventory" },
-  { to: "/sales", icon: ShoppingCart, label: "Sales" },
-  { to: "/expenses", icon: Receipt, label: "Expenses" },
-  { to: "/audits", icon: ClipboardCheck, label: "Audits", feature: "audits" },
-  { to: "/reports", icon: BarChart3, label: "Reports" },
-  { to: "/customers", icon: Users, label: "Customers" },
-  { to: "/suppliers", icon: Truck, label: "Suppliers" },
-  { to: "/staff", icon: UserCog, label: "Staff" },
-  { to: "/billing", icon: CreditCard, label: "Billing" },
-  { to: "/settings", icon: Settings, label: "Settings" },
+  { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard", permission: "dashboard" },
+  { to: "/inventory", icon: Package, label: "Inventory", permission: "inventory" },
+  { to: "/sales", icon: ShoppingCart, label: "Sales", permission: "sales" },
+  { to: "/expenses", icon: Receipt, label: "Expenses", permission: "expenses" },
+  { to: "/audits", icon: ClipboardCheck, label: "Audits", permission: "audits", feature: "audits" },
+  { to: "/reports", icon: BarChart3, label: "Reports", permission: "reports" },
+  { to: "/customers", icon: Users, label: "Customers", permission: "customers" },
+  { to: "/suppliers", icon: Truck, label: "Suppliers", permission: "suppliers" },
+  { to: "/staff", icon: UserCog, label: "Staff", permission: "staff" },
+  { to: "/billing", icon: CreditCard, label: "Billing", permission: "billing" },
+  { to: "/settings", icon: Settings, label: "Settings", permission: "settings" },
 ];
 
 const AppLayout = ({ children }: { children: React.ReactNode }) => {
@@ -41,7 +41,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { profile, setProfile } = useStore();
-  const { logout, refreshUser } = useAuth();
+  const { logout, refreshUser, canAccess, isStaffSession, staffSession } = useAuth();
   const { canUse } = useFeatureAccess();
   const promptUpgrade = useUpgradePrompt();
   const [time, setTime] = useState(new Date());
@@ -120,6 +120,12 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const initials = profile.name
     ? profile.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)
     : "U";
+  const visibleNavItems = navItems.filter((item) => canAccess(item.permission));
+  const activeNavLabel = visibleNavItems.find((i) => location.pathname.startsWith(i.to))?.label || "Dashboard";
+  const accountName = isStaffSession && staffSession ? staffSession.name : profile.name;
+  const accountInitials = accountName
+    ? accountName.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)
+    : initials;
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -139,17 +145,20 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
               setSidebarOpen(false);
               navigate("/");
             }}
-            className="flex items-center rounded-2xl p-1 transition-colors dark:bg-white/95 dark:shadow-sm"
+            className="flex items-center gap-2"
             aria-label="Go to Verifin home"
           >
-            <img src="/WebIcons/favicon-196x196.png" alt="Verifin" className="h-14 w-14 object-contain" />
+            <div className="h-8 w-8 rounded-lg bg-sidebar-primary flex items-center justify-center text-sidebar-primary-foreground">
+              <CheckCircle className="h-5 w-5" />
+            </div>
+            <span className="font-display font-bold text-sidebar-foreground">Verifin</span>
           </button>
           <button className="lg:hidden text-sidebar-foreground" onClick={() => setSidebarOpen(false)} title="Close sidebar">
             <X className="h-5 w-5" />
           </button>
         </div>
         <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {navItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -193,7 +202,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
             <Menu className="h-5 w-5" />
           </button>
           <h1 className="font-display font-semibold text-lg capitalize">
-            {navItems.find((i) => location.pathname.startsWith(i.to))?.label || "Dashboard"}
+            {activeNavLabel}
           </h1>
           <div className="ml-auto flex items-center gap-3">
             {/* Time display - hidden on mobile */}
@@ -203,14 +212,20 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
               <span className="hidden lg:inline">· {time.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}</span>
             </div>
             <NotificationCenter />
+            {isStaffSession && staffSession && (
+              <div className="hidden sm:flex flex-col items-end leading-tight">
+                <span className="text-xs font-medium">{staffSession.name}</span>
+                <span className="text-[11px] text-muted-foreground">{staffSession.role}</span>
+              </div>
+            )}
             <button onClick={toggleDark} className="p-2 rounded-lg hover:bg-muted transition-colors">
               {profile.darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>
             <button
-              onClick={() => navigate("/settings")}
+              onClick={() => navigate(canAccess("settings") ? "/settings" : "/dashboard")}
               className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary hover:bg-primary/20 transition-colors"
             >
-              {initials}
+              {accountInitials}
             </button>
           </div>
         </header>
