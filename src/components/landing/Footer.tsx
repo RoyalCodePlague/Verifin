@@ -1,5 +1,5 @@
-import { CheckCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { Logo } from "@/components/Logo";
 
 const Footer = () => {
   const navigate = useNavigate();
@@ -9,11 +9,8 @@ const Footer = () => {
       <div className="container">
         <div className="grid md:grid-cols-4 gap-10 mb-12">
           <div className="md:col-span-1">
-            <button onClick={() => navigate("/")} className="flex items-center gap-2 mb-4" aria-label="Go to Verifin home">
-              <div className="h-8 w-8 rounded-lg bg-sidebar-primary flex items-center justify-center text-sidebar-primary-foreground">
-                <CheckCircle className="h-5 w-5" />
-              </div>
-              <span className="font-display font-bold text-lg">Verifin</span>
+            <button onClick={() => navigate("/")} className="mb-4 flex items-center text-sidebar-foreground" aria-label="Go to Verifin home">
+              <Logo className="h-11 w-auto" />
             </button>
             <p className="text-sm text-sidebar-foreground/60 leading-relaxed">
               The all-in-one business operating system built for African SMEs. Automate admin, control stock, stop losing money.

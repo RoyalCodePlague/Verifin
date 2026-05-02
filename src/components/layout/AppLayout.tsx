@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Package, ShoppingCart, Receipt, ClipboardCheck,
   BarChart3, Users, UserCog, Settings, Menu, X, LogOut,
   Moon, Sun, Clock, Truck, CreditCard,
-  CheckCircle, Lock,
+  Lock,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth-context";
@@ -21,6 +21,7 @@ import {
 import { NotificationCenter } from "@/components/NotificationCenter";
 import { toast } from "sonner";
 import { useFeatureAccess, useUpgradePrompt } from "@/lib/features";
+import { Logo } from "@/components/Logo";
 
 const navItems = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard", permission: "dashboard" },
@@ -145,13 +146,10 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
               setSidebarOpen(false);
               navigate("/");
             }}
-            className="flex items-center gap-2"
+            className="flex items-center text-sidebar-foreground"
             aria-label="Go to Verifin home"
           >
-            <div className="h-8 w-8 rounded-lg bg-sidebar-primary flex items-center justify-center text-sidebar-primary-foreground">
-              <CheckCircle className="h-5 w-5" />
-            </div>
-            <span className="font-display font-bold text-sidebar-foreground">Verifin</span>
+            <Logo className="h-10 w-auto max-w-[142px]" />
           </button>
           <button className="lg:hidden text-sidebar-foreground" onClick={() => setSidebarOpen(false)} title="Close sidebar">
             <X className="h-5 w-5" />

@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, BadgeCheck, CheckCircle, Eye, EyeOff, Lock, Mail, User } from "lucide-react";
+import { ArrowLeft, BadgeCheck, Eye, EyeOff, Lock, Mail, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/lib/auth-context";
+import { Logo } from "@/components/Logo";
 import { toast } from "sonner";
 
 function AnimatedBackground() {
@@ -97,11 +98,8 @@ const Login = () => {
             <button onClick={() => navigate("/")} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft className="h-4 w-4" /> Back
             </button>
-            <button onClick={() => navigate("/")} className="inline-flex items-center gap-2" aria-label="Go to Verifin home">
-              <div className="h-10 w-10 rounded-xl bg-gradient-hero flex items-center justify-center text-primary-foreground">
-                <CheckCircle className="h-6 w-6" />
-              </div>
-              <span className="font-display font-bold text-2xl">Verifin</span>
+            <button onClick={() => navigate("/")} className="inline-flex items-center text-foreground" aria-label="Go to Verifin home">
+              <Logo className="h-12 w-auto" />
             </button>
             <div className="w-16" />
           </div>
