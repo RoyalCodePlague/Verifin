@@ -105,6 +105,7 @@ export interface StaffMember {
   branchId?: string;
   branchName?: string;
   username?: string;
+  tempPassword?: string;
   permissions?: string[];
   loginEnabled?: boolean;
 }

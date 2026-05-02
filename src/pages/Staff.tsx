@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Search, ShieldCheck, Trash2, UserCog } from "lucide-react";
+import { Eye, EyeOff, Plus, Search, ShieldCheck, Trash2, UserCog } from "lucide-react";
 import { useStore, type StaffMember } from "@/lib/store";
 import { ROLE_DEFAULT_PERMISSIONS } from "@/lib/auth-context";
 import { createStaffApi, deleteStaffApi, updateStaffApi, type ApiStaff } from "@/lib/api";
@@ -65,12 +65,20 @@ const Staff = () => {
   const [search, setSearch] = useState("");
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [detailsId, setDetailsId] = useState<string | null>(null);
+  const [showStaffPassword, setShowStaffPassword] = useState(false);
 
   const filtered = staff.filter(s =>
     s.name.toLowerCase().includes(search.toLowerCase()) ||
     s.role.toLowerCase().includes(search.toLowerCase()) ||
     (s.username || "").toLowerCase().includes(search.toLowerCase())
   );
+  const selectedStaff = staff.find((member) => member.id === detailsId) || null;
+  const selectedPermissions = selectedStaff
+    ? selectedStaff.permissions?.length
+      ? selectedStaff.permissions
+      : roleDefaults[selectedStaff.role as StaffRole] || []
+    : [];
 
   const resetForm = () => setForm({ ...emptyForm, permissions: [...emptyForm.permissions] });
 
@@ -101,7 +109,7 @@ const Staff = () => {
     try {
       if (navigator.onLine) {
         const created = await createStaffApi(payload);
-        upsertStaff(fromApiStaff(created));
+        upsertStaff({ ...fromApiStaff(created), tempPassword: payload.temp_password });
       } else {
         const localId = addStaff({
           name: payload.name,
@@ -109,6 +117,7 @@ const Staff = () => {
           status: payload.status,
           lastActive: "Just added",
           username: payload.username,
+          tempPassword: payload.temp_password,
           permissions: payload.permissions,
           loginEnabled: payload.login_enabled,
         });
@@ -173,7 +182,20 @@ const Staff = () => {
       ) : (
         <div className="grid sm:grid-cols-2 gap-4">
           {filtered.map((s) => (
-            <Card key={s.id} className="shadow-soft group">
+            <Card
+              key={s.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => { setDetailsId(s.id); setShowStaffPassword(false); }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setDetailsId(s.id);
+                  setShowStaffPassword(false);
+                }
+              }}
+              className="shadow-soft group cursor-pointer transition-shadow hover:shadow-card"
+            >
               <CardContent className="p-4 flex items-center gap-4">
                 <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center font-display font-bold text-sm text-primary">
                   {s.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
@@ -192,13 +214,13 @@ const Staff = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => toggleStatus(s.id, s.status)}>
+                  <button onClick={(event) => { event.stopPropagation(); void toggleStatus(s.id, s.status); }}>
                     <Badge className={s.status === "Active" ? "bg-success/10 text-success hover:bg-success/20 cursor-pointer" : "bg-muted text-muted-foreground hover:bg-muted/80 cursor-pointer"}>
                       {s.status}
                     </Badge>
                   </button>
                   {s.role !== "Owner" && (
-                    <button onClick={() => setDeleteId(s.id)} className="p-1.5 rounded hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="h-3.5 w-3.5 text-destructive" /></button>
+                    <button onClick={(event) => { event.stopPropagation(); setDeleteId(s.id); }} className="p-1.5 rounded hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="h-3.5 w-3.5 text-destructive" /></button>
                   )}
                 </div>
               </CardContent>
@@ -253,6 +275,93 @@ const Staff = () => {
               {saving ? "Saving..." : "Create Staff Login"}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!selectedStaff} onOpenChange={(open) => { if (!open) { setDetailsId(null); setShowStaffPassword(false); } }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-display">Staff Details</DialogTitle>
+            <DialogDescription>View login details, account status, and access permissions.</DialogDescription>
+          </DialogHeader>
+          {selectedStaff && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center font-display font-bold text-primary">
+                  {selectedStaff.name.split(" ").map(n => n[0]).join("").slice(0, 2)}
+                </div>
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{selectedStaff.name}</p>
+                  <p className="text-sm text-muted-foreground">{selectedStaff.role}</p>
+                </div>
+                <Badge className={selectedStaff.status === "Active" ? "ml-auto bg-success/10 text-success" : "ml-auto bg-muted text-muted-foreground"}>
+                  {selectedStaff.status}
+                </Badge>
+              </div>
+
+              <div className="grid gap-3 rounded-lg border border-border p-3 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Username</span>
+                  <span className="font-medium">{selectedStaff.username || "Not set"}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Login</span>
+                  <span className="font-medium">{selectedStaff.loginEnabled ? "Enabled" : "Disabled"}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">Last active</span>
+                  <span className="font-medium">{selectedStaff.lastActive || "Not yet"}</span>
+                </div>
+                <div>
+                  <div className="mb-1 text-muted-foreground">Password</div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      readOnly
+                      type={showStaffPassword ? "text" : "password"}
+                      value={selectedStaff.tempPassword || "Password hidden after sync"}
+                      className="h-9"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setShowStaffPassword(prev => !prev)}
+                      disabled={!selectedStaff.tempPassword}
+                      title={showStaffPassword ? "Hide password" : "Show password"}
+                    >
+                      {showStaffPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+                  <ShieldCheck className="h-4 w-4 text-primary" />
+                  Access
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {selectedPermissions.length ? selectedPermissions.map((permission) => (
+                    <Badge key={permission} variant="outline" className="capitalize">
+                      {permission}
+                    </Badge>
+                  )) : (
+                    <span className="text-sm text-muted-foreground">No access selected</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <Button variant="outline" onClick={() => void toggleStatus(selectedStaff.id, selectedStaff.status)}>
+                  {selectedStaff.status === "Active" ? "Disable Login" : "Enable Login"}
+                </Button>
+                {selectedStaff.role !== "Owner" && (
+                  <Button variant="destructive" onClick={() => { setDeleteId(selectedStaff.id); setDetailsId(null); }}>
+                    Remove Staff
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
       <ConfirmationModal open={!!deleteId} onOpenChange={() => setDeleteId(null)} title="Remove Staff" description="Remove this staff login?" confirmLabel="Remove" variant="destructive" onConfirm={() => void confirmDelete()} />
