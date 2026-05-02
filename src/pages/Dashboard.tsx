@@ -29,13 +29,17 @@ import { fetchRuleInsightsApi, fetchWhatsAppSummaryApi } from "@/lib/api";
 import { useFeatureAccess, useUpgradePrompt, LockedBadge } from "@/lib/features";
 import { useQuery } from "@tanstack/react-query";
 import { symbolForCurrency } from "@/lib/currency";
+import { useAuth } from "@/lib/auth-context";
 
 const Dashboard = () => {
   const [financePeriod, setFinancePeriod] = useState<FinancePeriod>("months");
   const { products, sales, expenses, discrepancies, activities, profile, generateWhatsAppSummary, supplyEntries, customers } = useStore();
   const navigate = useNavigate();
+  const { canAccess } = useAuth();
   const { canUse } = useFeatureAccess();
   const promptUpgrade = useUpgradePrompt();
+  const canAccessExpenses = canAccess("expenses");
+  const effectiveExpenses = useMemo(() => canAccessExpenses ? expenses : [], [canAccessExpenses, expenses]);
   const ruleInsights = useQuery({
     queryKey: ["rule-insights"],
     queryFn: fetchRuleInsightsApi,
@@ -90,12 +94,12 @@ const Dashboard = () => {
   
   const inventoryValue = products.reduce((sum, p) => sum + p.stock * p.costPrice, 0);
   const lowStockCount = products.filter(p => p.status === "low" || p.status === "out").length;
-  const todayExpenses = expenses.filter((expense) => isSameCalendarDay(expense.date, new Date())).reduce((sum, e) => sum + expenseBaseAmount(e), 0);
+  const todayExpenses = effectiveExpenses.filter((expense) => isSameCalendarDay(expense.date, new Date())).reduce((sum, e) => sum + expenseBaseAmount(e), 0);
 
   const displayName = profile.name || "there";
 
   // Calculate percentage change in expenses
-  const yesterdayExpenses = expenses
+  const yesterdayExpenses = effectiveExpenses
     .filter((expense) => isSameCalendarDay(expense.date, previousDay))
     .reduce((sum, e) => sum + expenseBaseAmount(e), 0);
   const expensesChange = yesterdayExpenses > 0 ? Math.round(((todayExpenses - yesterdayExpenses) / yesterdayExpenses) * 100) : null;
@@ -120,27 +124,27 @@ const Dashboard = () => {
   const weeklySalesTotal = useMemo(() => salesData.reduce((sum, item) => sum + item.sales, 0), [salesData]);
 
   const salesVsExpensesData = useMemo(
-    () => buildWeeklyFinanceData(sales, expenses, new Date(), paidSupplyRevenue),
-    [expenses, paidSupplyRevenue, sales]
+    () => buildWeeklyFinanceData(sales, effectiveExpenses, new Date(), paidSupplyRevenue),
+    [effectiveExpenses, paidSupplyRevenue, sales]
   );
 
   const periodSalesVsExpensesData = useMemo(
-    () => buildPeriodFinanceData(sales, expenses, financePeriod, new Date(), paidSupplyRevenue),
-    [expenses, financePeriod, paidSupplyRevenue, sales]
+    () => buildPeriodFinanceData(sales, effectiveExpenses, financePeriod, new Date(), paidSupplyRevenue),
+    [effectiveExpenses, financePeriod, paidSupplyRevenue, sales]
   );
   const cashflowForecast = useMemo(
-    () => buildCashflowForecast(sales, expenses, customers, supplyEntries, profile.currency),
-    [customers, expenses, profile.currency, sales, supplyEntries]
+    () => buildCashflowForecast(sales, effectiveExpenses, customers, supplyEntries, profile.currency),
+    [customers, effectiveExpenses, profile.currency, sales, supplyEntries]
   );
   const debtorFollowUps = useMemo(() => buildDebtorFollowUps(customers, sym), [customers, sym]);
   const reorderSuggestions = useMemo(() => buildReorderSuggestions(products, sales), [products, sales]);
   const profitLeaks = useMemo(
-    () => buildProfitLeaks(products, sales, expenses, customers, discrepancies, sym),
-    [customers, discrepancies, expenses, products, sales, sym]
+    () => buildProfitLeaks(products, sales, effectiveExpenses, customers, discrepancies, sym),
+    [customers, discrepancies, effectiveExpenses, products, sales, sym]
   );
   const businessHealth = useMemo(
-    () => buildBusinessHealthScore({ products, sales, expenses, customers, discrepancies, cashflow: cashflowForecast }),
-    [cashflowForecast, customers, discrepancies, expenses, products, sales]
+    () => buildBusinessHealthScore({ products, sales, expenses: effectiveExpenses, customers, discrepancies, cashflow: cashflowForecast }),
+    [cashflowForecast, customers, discrepancies, effectiveExpenses, products, sales]
   );
 
   const metrics = [
@@ -150,7 +154,7 @@ const Dashboard = () => {
     { label: "Inventory Value", value: formatMoney(inventoryValue, sym), secondaryValue: formatSecondaryMoney(inventoryValue), change: `${lowStockCount} low`, up: lowStockCount === 0, icon: Package },
     { label: "Open Supply Invoices", value: formatMoney(openSupplyInvoiceValue, sym), secondaryValue: outstandingSupplyCount > 0 ? `${outstandingSupplyCount} open` : null, change: outstandingSupplyCount > 0 ? `${outstandingSupplyCount} pending` : "0 pending", up: outstandingSupplyCount === 0, icon: Receipt },
     { label: "Low Stock Items", value: String(lowStockCount), secondaryValue: null, change: `${lowStockCount}`, up: false, icon: AlertTriangle },
-    { label: "Today's Expenses", value: formatMoney(todayExpenses, sym), secondaryValue: formatSecondaryMoney(todayExpenses), change: changeLabel(expensesChange, todayExpenses, yesterdayExpenses), up: expensesChange == null ? todayExpenses <= yesterdayExpenses : expensesChange <= 0, icon: Receipt },
+    ...(canAccessExpenses ? [{ label: "Today's Expenses", value: formatMoney(todayExpenses, sym), secondaryValue: formatSecondaryMoney(todayExpenses), change: changeLabel(expensesChange, todayExpenses, yesterdayExpenses), up: expensesChange == null ? todayExpenses <= yesterdayExpenses : expensesChange <= 0, icon: Receipt }] : []),
   ];
 
   const topProduct = useMemo(() => {
@@ -173,7 +177,7 @@ const Dashboard = () => {
 
   const quickActions = [
     { label: "Record Sale", icon: ShoppingCart, color: "bg-primary/10 text-primary", to: "/sales" },
-    { label: "Add Expense", icon: Receipt, color: "bg-accent/10 text-accent", to: "/expenses" },
+    ...(canAccessExpenses ? [{ label: "Add Expense", icon: Receipt, color: "bg-accent/10 text-accent", to: "/expenses" }] : []),
     { label: "Restock", icon: Plus, color: "bg-success/10 text-success", to: "/inventory" },
     { label: "Scan Product", icon: ScanBarcode, color: "bg-primary/10 text-primary", to: "/inventory", feature: "barcode_scanning" },
     { label: "Run Audit", icon: ClipboardCheck, color: "bg-warning/10 text-warning", to: "/audits", feature: "audits" },
@@ -406,59 +410,63 @@ const Dashboard = () => {
         </Card>
       </div>
 
-      <Card className="shadow-soft">
-        <CardHeader className="pb-2"><CardTitle className="text-base font-display">Sales vs Expenses (Weekly)</CardTitle></CardHeader>
-        <CardContent className="p-4 pt-0">
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={salesVsExpensesData} barCategoryGap={18}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              <XAxis dataKey="day" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
-              <YAxis tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
-              <Tooltip 
-                formatter={(value) => formatMoney(Number(value), sym)}
-              />
-              <Legend />
-              <Bar dataKey="sales" fill="hsl(152 55% 28%)" name="Sales" radius={[4, 4, 0, 0]} minPointSize={3} />
-              <Bar dataKey="expenses" fill="hsl(0 84% 60%)" name="Expenses" radius={[4, 4, 0, 0]} minPointSize={3} />
-            </BarChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
+      {canAccessExpenses && (
+        <>
+          <Card className="shadow-soft">
+            <CardHeader className="pb-2"><CardTitle className="text-base font-display">Sales vs Expenses (Weekly)</CardTitle></CardHeader>
+            <CardContent className="p-4 pt-0">
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={salesVsExpensesData} barCategoryGap={18}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="day" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
+                  <YAxis tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
+                  <Tooltip 
+                    formatter={(value) => formatMoney(Number(value), sym)}
+                  />
+                  <Legend />
+                  <Bar dataKey="sales" fill="hsl(152 55% 28%)" name="Sales" radius={[4, 4, 0, 0]} minPointSize={3} />
+                  <Bar dataKey="expenses" fill="hsl(0 84% 60%)" name="Expenses" radius={[4, 4, 0, 0]} minPointSize={3} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
 
-      <Card className="shadow-soft">
-        <CardHeader className="flex flex-col gap-3 pb-2 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle className="text-base font-display">Sales vs Expenses (Monthly / Yearly)</CardTitle>
-          <div className="inline-flex w-fit rounded-lg border border-border bg-muted/40 p-1">
-            {(["months", "years"] as FinancePeriod[]).map((period) => (
-              <button
-                key={period}
-                type="button"
-                onClick={() => setFinancePeriod(period)}
-                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-                  financePeriod === period ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {period === "months" ? "Months" : "Years"}
-              </button>
-            ))}
-          </div>
-        </CardHeader>
-        <CardContent className="p-4 pt-0">
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={periodSalesVsExpensesData} barCategoryGap={18}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              <XAxis dataKey="period" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
-              <YAxis tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
-              <Tooltip 
-                formatter={(value) => formatMoney(Number(value), sym)}
-              />
-              <Legend />
-              <Bar dataKey="sales" fill="hsl(152 55% 28%)" name="Sales" radius={[4, 4, 0, 0]} minPointSize={3} />
-              <Bar dataKey="expenses" fill="hsl(0 84% 60%)" name="Expenses" radius={[4, 4, 0, 0]} minPointSize={3} />
-            </BarChart>
-          </ResponsiveContainer>
-        </CardContent>
-      </Card>
+          <Card className="shadow-soft">
+            <CardHeader className="flex flex-col gap-3 pb-2 sm:flex-row sm:items-center sm:justify-between">
+              <CardTitle className="text-base font-display">Sales vs Expenses (Monthly / Yearly)</CardTitle>
+              <div className="inline-flex w-fit rounded-lg border border-border bg-muted/40 p-1">
+                {(["months", "years"] as FinancePeriod[]).map((period) => (
+                  <button
+                    key={period}
+                    type="button"
+                    onClick={() => setFinancePeriod(period)}
+                    className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                      financePeriod === period ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {period === "months" ? "Months" : "Years"}
+                  </button>
+                ))}
+              </div>
+            </CardHeader>
+            <CardContent className="p-4 pt-0">
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={periodSalesVsExpensesData} barCategoryGap={18}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="period" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
+                  <YAxis tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
+                  <Tooltip 
+                    formatter={(value) => formatMoney(Number(value), sym)}
+                  />
+                  <Legend />
+                  <Bar dataKey="sales" fill="hsl(152 55% 28%)" name="Sales" radius={[4, 4, 0, 0]} minPointSize={3} />
+                  <Bar dataKey="expenses" fill="hsl(0 84% 60%)" name="Expenses" radius={[4, 4, 0, 0]} minPointSize={3} />
+                </BarChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+        </>
+      )}
 
       <Card className="shadow-soft">
         <CardHeader className="pb-2"><CardTitle className="text-base font-display">Live Activity</CardTitle></CardHeader>

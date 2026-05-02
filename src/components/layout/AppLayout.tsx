@@ -210,15 +210,15 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
               <span className="hidden lg:inline">· {time.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}</span>
             </div>
             <NotificationCenter />
+            <button onClick={toggleDark} className="p-2 rounded-lg hover:bg-muted transition-colors">
+              {profile.darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
             {isStaffSession && staffSession && (
               <div className="hidden sm:flex flex-col items-end leading-tight">
                 <span className="text-xs font-medium">{staffSession.name}</span>
                 <span className="text-[11px] text-muted-foreground">{staffSession.role}</span>
               </div>
             )}
-            <button onClick={toggleDark} className="p-2 rounded-lg hover:bg-muted transition-colors">
-              {profile.darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            </button>
             <button
               onClick={() => navigate(canAccess("settings") ? "/settings" : "/dashboard")}
               className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary hover:bg-primary/20 transition-colors"
