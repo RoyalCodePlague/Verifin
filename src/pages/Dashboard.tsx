@@ -105,6 +105,11 @@ const Dashboard = () => {
 
   const weeklySalesTotal = useMemo(() => salesData.reduce((sum, item) => sum + item.sales, 0), [salesData]);
 
+  const salesVsExpensesData = useMemo(
+    () => buildWeeklyFinanceData(sales, expenses, new Date(), paidSupplyRevenue),
+    [expenses, paidSupplyRevenue, sales]
+  );
+
   const periodSalesVsExpensesData = useMemo(
     () => buildPeriodFinanceData(sales, expenses, financePeriod, new Date(), paidSupplyRevenue),
     [expenses, financePeriod, paidSupplyRevenue, sales]
@@ -275,8 +280,27 @@ const Dashboard = () => {
       </div>
 
       <Card className="shadow-soft">
+        <CardHeader className="pb-2"><CardTitle className="text-base font-display">Sales vs Expenses (Weekly)</CardTitle></CardHeader>
+        <CardContent className="p-4 pt-0">
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={salesVsExpensesData} barCategoryGap={18}>
+              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+              <XAxis dataKey="day" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
+              <YAxis tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
+              <Tooltip 
+                formatter={(value) => formatMoney(Number(value), sym)}
+              />
+              <Legend />
+              <Bar dataKey="sales" fill="hsl(152 55% 28%)" name="Sales" radius={[4, 4, 0, 0]} minPointSize={3} />
+              <Bar dataKey="expenses" fill="hsl(0 84% 60%)" name="Expenses" radius={[4, 4, 0, 0]} minPointSize={3} />
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-soft">
         <CardHeader className="flex flex-col gap-3 pb-2 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle className="text-base font-display">Sales vs Expenses</CardTitle>
+          <CardTitle className="text-base font-display">Sales vs Expenses (Monthly / Yearly)</CardTitle>
           <div className="inline-flex w-fit rounded-lg border border-border bg-muted/40 p-1">
             {(["months", "years"] as FinancePeriod[]).map((period) => (
               <button
