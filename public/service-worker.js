@@ -7,6 +7,7 @@ const STATIC_ASSETS = [
   '/manifest-light.json',
   '/manifest-dark.json',
   '/site.webmanifest',
+  '/og-image.png',
   '/favicomatic-LIGHT/favicon-16x16.png',
   '/favicomatic-LIGHT/favicon-32x32.png',
   '/favicomatic-LIGHT/favicon-96x96.png',

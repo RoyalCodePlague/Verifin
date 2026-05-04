@@ -2,8 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https: http://127.0.0.1:8000 http://localhost:8000 ws: wss:; object-src 'none'; base-uri 'self'; form-action 'self' mailto: https:;" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https: http://127.0.0.1:8000 http://localhost:8000 ws: wss:; object-src 'none'; base-uri 'self'; form-action 'self' mailto: https:;" />
     <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
     <meta http-equiv="X-Content-Type-Options" content="nosniff" />
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#206f4a" />
@@ -18,6 +18,7 @@
     <link rel="icon" type="image/png" sizes="196x196" href="/favicomatic-LIGHT/favicon-196x196.png" data-icon-size="196x196" />
     <link rel="shortcut icon" href="/favicomatic-LIGHT/favicon.ico" data-icon-size="ico" />
     <link rel="manifest" href="/manifest-light.json" id="app-manifest" />
+    <link rel="canonical" href="https://verifin-tau.vercel.app/" />
     <link rel="apple-touch-icon" sizes="57x57" href="/favicomatic-LIGHT/apple-touch-icon-57x57.png" data-apple-icon-size="57x57" />
     <link rel="apple-touch-icon" sizes="60x60" href="/favicomatic-LIGHT/apple-touch-icon-60x60.png" data-apple-icon-size="60x60" />
     <link rel="apple-touch-icon" sizes="72x72" href="/favicomatic-LIGHT/apple-touch-icon-72x72.png" data-apple-icon-size="72x72" />
@@ -28,18 +29,59 @@
     <link rel="apple-touch-icon" sizes="152x152" href="/favicomatic-LIGHT/apple-touch-icon-152x152.png" data-apple-icon-size="152x152" />
     <meta name="msapplication-TileColor" content="#206f4a" id="ms-tile-color" />
     <meta name="msapplication-TileImage" content="/favicomatic-LIGHT/mstile-144x144.png" id="ms-tile-image" />
-    <title>Verifin — Smart Inventory & Admin for African SMEs</title>
+    <title>Verifin - Smart Inventory & Admin for African SMEs</title>
     <meta name="description" content="Automate your admin, control your stock, and stop losing money. The all-in-one business OS for African SMEs." />
     <meta name="author" content="Verifin" />
+    <meta name="robots" content="index, follow" />
 
-    <meta property="og:title" content="Verifin — Smart Business OS" />
+    <meta property="og:title" content="Verifin - Smart Business OS for African SMEs" />
     <meta property="og:description" content="Automate your admin, control your stock, and stop losing money." />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="/og-image.png" />
+    <meta property="og:url" content="https://verifin-tau.vercel.app/" />
+    <meta property="og:site_name" content="Verifin" />
+    <meta property="og:image" content="https://verifin-tau.vercel.app/og-image.png" />
+    <meta property="og:image:alt" content="Verifin social preview" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@Verifin" />
-    <meta name="twitter:image" content="/og-image.png" />
+    <meta name="twitter:title" content="Verifin - Smart Business OS for African SMEs" />
+    <meta name="twitter:description" content="Automate admin, control stock, track sales and expenses, and work offline." />
+    <meta name="twitter:image" content="https://verifin-tau.vercel.app/og-image.png" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://verifin-tau.vercel.app/#organization",
+            "name": "Verifin",
+            "url": "https://verifin-tau.vercel.app/",
+            "logo": "https://verifin-tau.vercel.app/favicomatic-LIGHT/mstile-310x310.png",
+            "email": "robzmtambo@gmail.com",
+            "areaServed": ["South Africa", "Zimbabwe", "Botswana", "Kenya", "Nigeria", "Ghana", "Tanzania", "Zambia"]
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://verifin-tau.vercel.app/#software",
+            "name": "Verifin",
+            "applicationCategory": "BusinessApplication",
+            "operatingSystem": "Web, Android, iOS",
+            "url": "https://verifin-tau.vercel.app/",
+            "description": "Verifin is an all-in-one business operating system for African SMEs with inventory, sales, expenses, audits, reports, offline access, and admin automation.",
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "ZAR"
+            },
+            "publisher": {
+              "@id": "https://verifin-tau.vercel.app/#organization"
+            }
+          }
+        ]
+      }
+    </script>
   </head>
 
   <body>

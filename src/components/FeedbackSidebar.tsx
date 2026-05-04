@@ -23,6 +23,7 @@ const categories: Array<{ value: FeedbackItem["category"]; label: string }> = [
 
 export function FeedbackSidebar({ triggerClassName, triggerLabel = "Feedback", onTriggerClick }: FeedbackSidebarProps) {
   const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [category, setCategory] = useState<FeedbackItem["category"]>("idea");
@@ -30,6 +31,10 @@ export function FeedbackSidebar({ triggerClassName, triggerLabel = "Feedback", o
   const feedbackQuery = useQuery({
     queryKey: ["feedback"],
     queryFn: listFeedbackApi,
+    enabled: open,
+    refetchInterval: open ? 20000 : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: open,
   });
 
   const sortedFeedback = useMemo(() => {
@@ -68,7 +73,7 @@ export function FeedbackSidebar({ triggerClassName, triggerLabel = "Feedback", o
   };
 
   return (
-    <Sheet>
+    <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <button
           type="button"
@@ -111,6 +116,9 @@ export function FeedbackSidebar({ triggerClassName, triggerLabel = "Feedback", o
         </div>
 
         <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
+          {feedbackQuery.isFetching && !feedbackQuery.isLoading && (
+            <p className="text-xs font-medium text-muted-foreground">Checking for new feedback...</p>
+          )}
           {feedbackQuery.isLoading && <p className="text-sm text-muted-foreground">Loading feedback...</p>}
           {feedbackQuery.isError && <p className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">Feedback could not be loaded.</p>}
           {!feedbackQuery.isLoading && sortedFeedback.length === 0 && (

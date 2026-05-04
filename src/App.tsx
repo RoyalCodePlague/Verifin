@@ -11,6 +11,7 @@ import AppLayout from "./components/layout/AppLayout";
 import { PWAInstallButton } from "./components/PWAInstallButton";
 import { PWAUpdatePrompt } from "./components/PWAUpdatePrompt";
 import { PageSkeleton } from "@/components/ui/page-skeleton";
+import { RouteSEO } from "@/components/RouteSEO";
 
 const Index = lazy(() => import("./pages/Index"));
 const NotFound = lazy(() => import("./pages/NotFound"));
@@ -73,6 +74,7 @@ const App = () => (
           <PWAUpdatePrompt />
           <BrowserRouter>
             <ScrollToTop />
+            <RouteSEO />
             <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/" element={<Index />} />
