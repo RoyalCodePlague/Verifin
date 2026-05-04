@@ -182,6 +182,10 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
               {item.feature && !canUse(item.feature) && <Lock className="ml-auto h-3.5 w-3.5 opacity-60" />}
             </NavLink>
           ))}
+          <FeedbackSidebar
+            onTriggerClick={() => setSidebarOpen(false)}
+            triggerClassName="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-foreground/70 transition-colors hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+          />
         </nav>
         <div className="p-4 border-t border-sidebar-border">
           <button
@@ -210,7 +214,6 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
               <span className="font-mono">{time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
               <span className="hidden lg:inline">· {time.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}</span>
             </div>
-            <FeedbackSidebar />
             <NotificationCenter />
             <button onClick={toggleDark} className="p-2 rounded-lg hover:bg-muted transition-colors">
               {profile.darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}

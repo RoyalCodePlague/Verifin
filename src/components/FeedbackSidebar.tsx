@@ -8,6 +8,12 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { Textarea } from "@/components/ui/textarea";
 import { createFeedbackApi, listFeedbackApi, toggleFeedbackUpvoteApi, type FeedbackItem } from "@/lib/api";
 
+type FeedbackSidebarProps = {
+  triggerClassName?: string;
+  triggerLabel?: string;
+  onTriggerClick?: () => void;
+};
+
 const categories: Array<{ value: FeedbackItem["category"]; label: string }> = [
   { value: "idea", label: "Idea" },
   { value: "bug", label: "Bug" },
@@ -15,7 +21,7 @@ const categories: Array<{ value: FeedbackItem["category"]; label: string }> = [
   { value: "praise", label: "Praise" },
 ];
 
-export function FeedbackSidebar() {
+export function FeedbackSidebar({ triggerClassName, triggerLabel = "Feedback", onTriggerClick }: FeedbackSidebarProps) {
   const queryClient = useQueryClient();
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
@@ -64,9 +70,13 @@ export function FeedbackSidebar() {
   return (
     <Sheet>
       <SheetTrigger asChild>
-        <button className="inline-flex h-9 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted">
+        <button
+          type="button"
+          onClick={onTriggerClick}
+          className={triggerClassName || "inline-flex h-9 items-center gap-2 rounded-lg border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted"}
+        >
           <MessageSquarePlus className="h-4 w-4" />
-          <span className="hidden sm:inline">Feedback</span>
+          <span>{triggerLabel}</span>
         </button>
       </SheetTrigger>
       <SheetContent className="flex w-full flex-col p-0 sm:max-w-md">
