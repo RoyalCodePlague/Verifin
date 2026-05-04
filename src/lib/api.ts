@@ -1000,6 +1000,35 @@ export async function fetchNotificationLogsApi() {
   return fetchAllPages<NotificationLog>("/api/v1/notifications/");
 }
 
+export type FeedbackItem = {
+  id: number;
+  title: string;
+  message: string;
+  category: "idea" | "bug" | "improvement" | "praise";
+  author_name: string;
+  upvote_count: number;
+  has_upvoted: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function listFeedbackApi() {
+  return fetchAllPages<FeedbackItem>("/api/v1/notifications/feedback/");
+}
+
+export async function createFeedbackApi(payload: Pick<FeedbackItem, "title" | "message" | "category">) {
+  return apiFetch<FeedbackItem>("/api/v1/notifications/feedback/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function toggleFeedbackUpvoteApi(id: number) {
+  return apiFetch<FeedbackItem>(`/api/v1/notifications/feedback/${id}/upvote/`, {
+    method: "POST",
+  });
+}
+
 export type NotificationPreference = {
   id: number;
   user: number;
