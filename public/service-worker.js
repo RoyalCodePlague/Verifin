@@ -1,4 +1,4 @@
-const CACHE_NAME = 'verifin-cache-v9';
+const CACHE_NAME = 'verifin-cache-v10';
 const APP_SHELL = '/index.html';
 const OFFLINE_FALLBACK = '<!doctype html><title>Verifin</title><p>Verifin is offline. Reconnect and try again.</p>';
 const STATIC_ASSETS = [
@@ -53,7 +53,6 @@ self.addEventListener('install', event => {
       )
     )
   );
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {

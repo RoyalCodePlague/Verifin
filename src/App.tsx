@@ -9,6 +9,7 @@ import { AuthProvider } from "@/lib/auth-context";
 import { GuestRoute, OnboardingRoute, ProtectedRoute } from "@/components/ProtectedRoute";
 import AppLayout from "./components/layout/AppLayout";
 import { PWAInstallButton } from "./components/PWAInstallButton";
+import { PWAUpdatePrompt } from "./components/PWAUpdatePrompt";
 import { PageSkeleton } from "@/components/ui/page-skeleton";
 
 const Index = lazy(() => import("./pages/Index"));
@@ -69,6 +70,7 @@ const App = () => (
           <Toaster />
           <Sonner />
           <PWAInstallButton />
+          <PWAUpdatePrompt />
           <BrowserRouter>
             <ScrollToTop />
             <Suspense fallback={<RouteFallback />}>
