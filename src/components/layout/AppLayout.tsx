@@ -19,6 +19,7 @@ import {
   setupOfflineSync,
 } from "@/lib/offlineQueue";
 import { NotificationCenter } from "@/components/NotificationCenter";
+import { FeedbackSidebar } from "@/components/FeedbackSidebar";
 import { toast } from "sonner";
 import { useFeatureAccess, useUpgradePrompt } from "@/lib/features";
 import { Logo } from "@/components/Logo";
@@ -209,6 +210,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
               <span className="font-mono">{time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
               <span className="hidden lg:inline">· {time.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}</span>
             </div>
+            <FeedbackSidebar />
             <NotificationCenter />
             <button onClick={toggleDark} className="p-2 rounded-lg hover:bg-muted transition-colors">
               {profile.darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}

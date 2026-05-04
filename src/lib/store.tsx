@@ -682,7 +682,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       staff: StaffMember[];
       branches: Branch[];
     }) => {
-      setProfileState(data.profile);
+      setProfileState(prev => ({ ...data.profile, darkMode: prev.darkMode }));
       setProducts(data.products);
       setSales(data.sales);
       setExpenses(data.expenses);
