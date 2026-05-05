@@ -326,6 +326,7 @@ export async function createProductApi(payload: {
   sku: string;
   barcode?: string;
   categoryName: string;
+  categoryId?: number | null;
   stock: number;
   reorder_level: number;
   cost_price: number;
@@ -333,7 +334,7 @@ export async function createProductApi(payload: {
   branch?: string;
   preferred_supplier?: string;
 }) {
-  const categoryId = await ensureInventoryCategoryId(payload.categoryName);
+  const categoryId = payload.categoryId ?? await ensureInventoryCategoryId(payload.categoryName);
   const body: Record<string, unknown> = {
     name: payload.name,
     sku: payload.sku,

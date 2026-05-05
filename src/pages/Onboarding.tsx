@@ -95,6 +95,11 @@ const steps = [
   { title: "Starter Stock", desc: "Add a few sample products so the app feels ready immediately." },
 ];
 
+const toNumberOrZero = (value: string) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 interface QuickProduct {
   name: string;
   price: string;
@@ -107,8 +112,8 @@ function starterProductsFor(type: BusinessType, categories: string[]): QuickProd
   const defaultCategory = categories[0] || business.categories[0] || "General";
   return business.starterProducts.map((name, index) => ({
     name,
-    price: index === 0 ? "0" : "",
-    stock: index === 0 ? "0" : "",
+    price: "",
+    stock: "",
     category: categories[index] || defaultCategory,
   }));
 }
@@ -174,23 +179,26 @@ const Onboarding = () => {
         onboarding_complete: true,
       });
 
-      for (const category of categories) {
-        await ensureInventoryCategoryId(category);
-      }
+      const categoryPairs = await Promise.all(
+        categories.map(async (category) => [category, await ensureInventoryCategoryId(category)] as const)
+      );
+      const categoryIdByName = new Map(categoryPairs.map(([category, id]) => [category.toLowerCase(), id]));
+      const productsToCreate = quickProducts
+        .map((product, index) => ({ ...product, originalIndex: index }))
+        .filter((product) => product.name.trim() && (product.price.trim() || product.stock.trim()));
 
-      for (let i = 0; i < quickProducts.length; i += 1) {
-        const product = quickProducts[i];
-        if (!product.name.trim()) continue;
-        await createProductApi({
+      await Promise.all(productsToCreate.map((product) => (
+        createProductApi({
           name: product.name.trim(),
-          sku: `PRD${String(i + 100).padStart(3, "0")}`,
+          sku: `PRD${String(product.originalIndex + 100).padStart(3, "0")}`,
           categoryName: product.category,
-          stock: parseInt(product.stock, 10) || 0,
+          categoryId: categoryIdByName.get(product.category.toLowerCase()),
+          stock: toNumberOrZero(product.stock),
           reorder_level: 5,
           cost_price: 0,
-          price: parseFloat(product.price) || 0,
-        });
-      }
+          price: toNumberOrZero(product.price),
+        })
+      )));
 
       setProfile({
         ...profile,
