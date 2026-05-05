@@ -110,7 +110,7 @@ interface QuickProduct {
 function starterProductsFor(type: BusinessType, categories: string[]): QuickProduct[] {
   const business = businessTypes.find((item) => item.id === type) || businessTypes[0];
   const defaultCategory = categories[0] || business.categories[0] || "General";
-  return business.starterProducts.map((name, index) => ({
+  return business.starterProducts.slice(0, 1).map((name, index) => ({
     name,
     price: "",
     stock: "",
@@ -152,6 +152,14 @@ const Onboarding = () => {
       return starterProductsFor(businessType, businessMeta.categories);
     });
   }, [businessMeta, businessType]);
+
+  useEffect(() => {
+    setQuickProducts((current) => current.map((product) => ({
+      ...product,
+      price: product.price === "0" ? "" : product.price,
+      stock: product.stock === "0" ? "" : product.stock,
+    })));
+  }, []);
 
   const toggleGoal = (goal: SetupGoal) => {
     setGoals((current) => current.includes(goal) ? current.filter((item) => item !== goal) : [...current, goal]);
