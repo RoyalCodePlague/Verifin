@@ -4,18 +4,47 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth-context";
+import { useQuery } from "@tanstack/react-query";
+import { getDetectedPricingCountry, getPricingContextApi, type PlanCode, type RegionalPlanPrice } from "@/lib/api";
+import { fallbackPricingContextForCountry } from "@/lib/pricing";
 
-const plans = [
-  { name: "Starter", price: "Free", note: "Forever", features: ["1 user", "50 products", "Basic tracking"], popular: false },
-  { name: "Growth", price: "R299", note: "/mo", features: ["3 users", "Unlimited products", "AI assistant", "WhatsApp reports"], popular: true },
-  { name: "Business", price: "R599", note: "/mo", features: ["Unlimited users", "Advanced analytics", "API access", "Priority support"], popular: false },
-];
+const planFeatures: Record<PlanCode, string[]> = {
+  starter: ["1 user", "50 products", "Basic tracking"],
+  growth: ["3 users", "Unlimited products", "AI assistant", "WhatsApp reports"],
+  business: ["Unlimited users", "Advanced analytics", "API access", "Priority support"],
+};
+
+function formatPlanPrice(price: RegionalPlanPrice) {
+  const amount = Number(price.monthly_price);
+  if (amount <= 0) return { price: "Free", note: "Forever" };
+  return {
+    price: `${price.currency_symbol}${amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+    note: "/mo",
+  };
+}
 
 const CTASection = () => {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
   const primaryPath = isAuthenticated ? "/dashboard" : "/login?signup=1";
   const primaryLabel = isAuthenticated ? "Dashboard" : "Get Started Free";
+  const fallbackPricing = fallbackPricingContextForCountry(getDetectedPricingCountry());
+  const pricingQuery = useQuery({ queryKey: ["pricing-context"], queryFn: () => getPricingContextApi(), staleTime: 5 * 60_000 });
+  const pricing = pricingQuery.data ?? fallbackPricing;
+  const plans = pricing.prices.length
+    ? pricing.prices
+        .sort((a, b) => a.plan.sort_order - b.plan.sort_order)
+        .map((regionalPrice) => {
+          const formatted = formatPlanPrice(regionalPrice);
+          return {
+            code: regionalPrice.plan.code,
+            name: regionalPrice.plan.name,
+            price: formatted.price,
+            note: formatted.note,
+            popular: regionalPrice.plan.code === "growth",
+          };
+        })
+    : [];
 
   return (
     <section className="py-20">
@@ -31,7 +60,7 @@ const CTASection = () => {
                   <h3 className="font-display font-semibold">{p.name}</h3>
                   <div className="mt-2 mb-3"><span className="font-display font-bold text-2xl">{p.price}</span><span className="text-sm text-muted-foreground">{p.note}</span></div>
                   <ul className="space-y-1.5">
-                    {p.features.map(f => <li key={f} className="text-xs flex items-center gap-1.5"><Check className="h-3 w-3 text-success" />{f}</li>)}
+                    {planFeatures[p.code].map(f => <li key={f} className="text-xs flex items-center gap-1.5"><Check className="h-3 w-3 text-success" />{f}</li>)}
                   </ul>
                 </CardContent>
               </Card>

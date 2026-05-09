@@ -5,67 +5,8 @@ import { BarChart3, Check, HelpCircle, Lock, ScanBarcode, ShieldCheck, Sparkles,
 import Navbar from "@/components/landing/Navbar";
 import Footer from "@/components/landing/Footer";
 import { useAuth } from "@/lib/auth-context";
-import { getDetectedPricingCountry, getPricingContextApi, type BillingPeriod, type BillingPlan, type PlanCode, type PricingContext, type RegionalPlanPrice } from "@/lib/api";
-
-const fallbackPlans: BillingPlan[] = [
-  {
-    id: 1,
-    code: "starter",
-    name: "Starter",
-    description: "Free forever for solo owners getting started.",
-    monthly_price: "0.00",
-    yearly_price: "0.00",
-    currency: "ZAR",
-    sort_order: 1,
-    limits: [],
-  },
-  {
-    id: 2,
-    code: "growth",
-    name: "Growth",
-    description: "For growing SMEs that need automation and unlimited stock.",
-    monthly_price: "299.00",
-    yearly_price: "2990.00",
-    currency: "ZAR",
-    sort_order: 2,
-    limits: [],
-  },
-  {
-    id: 3,
-    code: "business",
-    name: "Business",
-    description: "For established businesses needing advanced control.",
-    monthly_price: "599.00",
-    yearly_price: "5990.00",
-    currency: "ZAR",
-    sort_order: 3,
-    limits: [],
-  },
-];
-
-const fallbackPricingContext: PricingContext = {
-  country_code: "ZA",
-  country_name: "South Africa",
-  currency: "ZAR",
-  currency_symbol: "R",
-  detected_by: "fallback",
-  available_countries: [
-    { country_code: "ZA", country_name: "South Africa", currency: "ZAR", currency_symbol: "R" },
-    { country_code: "ZW", country_name: "Zimbabwe", currency: "USD", currency_symbol: "$" },
-    { country_code: "BW", country_name: "Botswana", currency: "BWP", currency_symbol: "P" },
-    { country_code: "KE", country_name: "Kenya", currency: "KES", currency_symbol: "KSh" },
-    { country_code: "NG", country_name: "Nigeria", currency: "NGN", currency_symbol: "NGN" },
-  ],
-  prices: fallbackPlans.map((plan) => ({
-    plan,
-    country_code: "ZA",
-    country_name: "South Africa",
-    currency: "ZAR",
-    currency_symbol: "R",
-    monthly_price: plan.monthly_price,
-    yearly_price: plan.yearly_price,
-  })),
-};
+import { getDetectedPricingCountry, getPricingContextApi, type BillingPeriod, type PlanCode, type RegionalPlanPrice } from "@/lib/api";
+import { fallbackPricingContextForCountry } from "@/lib/pricing";
 
 const features: Record<PlanCode, string[]> = {
   starter: ["1 user", "50 products", "100 customers", "Basic sales", "Daily summaries", "2 basic reports"],
@@ -114,6 +55,7 @@ const Pricing = () => {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
   const { data } = useQuery({ queryKey: ["pricing-context", country], queryFn: () => getPricingContextApi(country) });
+  const fallbackPricingContext = fallbackPricingContextForCountry(country);
   const pricing = data ?? fallbackPricingContext;
   const prices = (pricing.prices.length ? pricing.prices : fallbackPricingContext.prices).sort((a, b) => a.plan.sort_order - b.plan.sort_order);
 

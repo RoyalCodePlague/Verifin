@@ -144,7 +144,7 @@ class AssistantLogModelTest(TestCase):
 class ClaudeIntegrationTest(TestCase):
     def test_parse_command_with_api(self):
         service = ClaudeAssistantService()
-        result = service.parse_command("I sold 3 loaves for R45 each")
+        result = service.parse_command("I sold 3 loaves for 45 each")
         
         self.assertIn("action", result)
         self.assertIn("confidence", result)

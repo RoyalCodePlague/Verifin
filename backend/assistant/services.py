@@ -32,12 +32,12 @@ SYSTEM_PROMPT = """You are an AI assistant for Verifin, a business operating sys
 You help shop owners manage their business through natural language commands.
 
 You can help with:
-1. Recording sales: e.g., "I sold 3 loaves of bread for R45 each to John"
-2. Logging expenses: e.g., "I spent R200 on transport today"
+1. Recording sales: e.g., "I sold 3 loaves of bread for 45 each to John"
+2. Logging expenses: e.g., "I spent 200 on transport today"
 3. Restocking inventory: e.g., "I restocked 24 Coca-Cola cans" or "Add 25 iphones"
 4. Querying sales data: e.g., "How much did I earn today?" or "What were my sales this week?"
 5. Stock queries: e.g., "What products are low on stock?"
-6. Customer management: e.g., "Add R100 credit to customer John's account"
+6. Customer management: e.g., "Add 100 credit to customer John's account"
 
 When a user gives you a command:
 1. Parse the intent clearly
@@ -542,7 +542,7 @@ def create_product(product_name: str, quantity: int = 0, price: float = 0.0, sku
             "sku": product.sku,
             "stock": product.stock,
             "price": float(product.price),
-            "message": f"✅ Added {quantity} units of '{product_name}' at R{price:.2f} each"
+            "message": f"✅ Added {quantity} units of '{product_name}' at {user.currency_symbol}{price:.2f} each"
         }
     except Exception as e:
         logger.error(f"Error creating product: {e}")
@@ -607,7 +607,7 @@ def record_sale_action(product_name: str, quantity: int, price_per_unit: float, 
             "quantity": quantity,
             "total": total,
             "customer": customer_name or "Walk-in",
-            "message": f"💰 Recorded sale: {quantity}x {product_name} for R{total:.2f}"
+            "message": f"💰 Recorded sale: {quantity}x {product_name} for {user.currency_symbol}{total:.2f}"
         }
     except Exception as e:
         logger.error(f"Error recording sale: {e}")
@@ -635,7 +635,7 @@ def log_expense_action(description: str, amount: float, category: str = "General
             "description": description,
             "amount": amount,
             "category": category,
-            "message": f"💸 Logged expense: R{amount:.2f} for {description}"
+            "message": f"💸 Logged expense: {user.currency_symbol}{amount:.2f} for {description}"
         }
     except Exception as e:
         logger.error(f"Error logging expense: {e}")
@@ -656,12 +656,12 @@ class GroqAssistantService:
         You help shop owners manage their business through natural language commands.
 
         You can help with:
-        1. Recording sales: e.g., "I sold 3 loaves of bread for R45 each to John"
-        2. Logging expenses: e.g., "I spent R200 on transport today"
+        1. Recording sales: e.g., "I sold 3 loaves of bread for 45 each to John"
+        2. Logging expenses: e.g., "I spent 200 on transport today"
         3. Restocking inventory: e.g., "I restocked 24 Coca-Cola cans" or "Add 25 iphones"
         4. Querying sales data: e.g., "How much did I earn today?" or "What were my sales this week?"
         5. Stock queries: e.g., "What products are low on stock?"
-        6. Customer management: e.g., "Add R100 credit to customer John's account"
+        6. Customer management: e.g., "Add 100 credit to customer John's account"
 
         When a user gives you a command:
         1. Parse the intent clearly

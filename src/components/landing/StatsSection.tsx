@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 
 const stats = [
   { value: "2,500+", label: "Active Businesses" },
-  { value: "R12M+", label: "Revenue Tracked" },
+  { value: "12M+", label: "Transactions Tracked" },
   { value: "99.9%", label: "Uptime" },
   { value: "4.9★", label: "User Rating" },
 ];

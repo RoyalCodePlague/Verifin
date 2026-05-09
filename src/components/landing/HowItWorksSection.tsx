@@ -1,9 +1,13 @@
 import { motion } from "framer-motion";
-import { MessageSquare, BarChart3, Shield, Zap } from "lucide-react";
+import { BarChart3, MessageSquare, Shield, Zap } from "lucide-react";
+import { getDetectedPricingCountry } from "@/lib/api";
+import { formatRegionalSampleAmount } from "@/lib/pricing";
+
+const sampleSale = `Sold 5 bread for ${formatRegionalSampleAmount(90, getDetectedPricingCountry())}`;
 
 const steps = [
   { icon: Zap, title: "Set Up in 2 Minutes", desc: "Enter your business name, currency, and add your first products. You're ready to go." },
-  { icon: MessageSquare, title: "Record Everything by Talking", desc: 'Just type "Sold 5 bread for R90" — Verifin handles inventory, receipts, and reports automatically.' },
+  { icon: MessageSquare, title: "Record Everything by Talking", desc: `Just type "${sampleSale}" - Verifin handles inventory, receipts, and reports automatically.` },
   { icon: Shield, title: "Audit & Control Stock", desc: "Run stock counts, detect discrepancies instantly, and prevent losses with smart alerts." },
   { icon: BarChart3, title: "Grow with Insights", desc: "Smart reports show trends, predict low stock, and help you make smarter business decisions." },
 ];

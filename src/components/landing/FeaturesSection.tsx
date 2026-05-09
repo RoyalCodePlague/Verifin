@@ -8,7 +8,7 @@ const features = [
   //   icon: MessageSquare,
   //   title: "Auto Admin Assistant",
   //   description:
-  //     'Just type "Sold 3 loaves for R90" and the system records everything — sales, stock, and receipts updated instantly.',
+  //     "Just type a sale in your local currency and the system records everything - sales, stock, and receipts updated instantly.",
   // },
   {
     icon: ScanBarcode,

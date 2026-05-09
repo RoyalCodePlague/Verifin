@@ -945,6 +945,8 @@ const TIMEZONE_COUNTRY: Record<string, string> = {
 const SUPPORTED_PRICING_COUNTRIES = new Set(["ZA", "ZW", "BW", "KE", "NG", "GH", "TZ", "ZM"]);
 
 export function getDetectedPricingCountry(): string {
+  if (typeof navigator === "undefined") return "ZA";
+
   const languageRegion = navigator.languages
     ?.map((language) => {
       try {

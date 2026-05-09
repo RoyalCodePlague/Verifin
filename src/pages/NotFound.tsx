@@ -5,10 +5,17 @@ import { Logo } from "@/components/Logo";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth-context";
 
-const quickLinks = [
+const appQuickLinks = [
   { label: "Dashboard", path: "/dashboard", icon: BarChart3, hint: "Business snapshot" },
   { label: "Inventory", path: "/inventory", icon: Boxes, hint: "Stock and products" },
   { label: "Sales", path: "/sales", icon: WalletCards, hint: "Receipts and tills" },
+  { label: "Help Center", path: "/help", icon: LifeBuoy, hint: "Guides and support" },
+];
+
+const publicQuickLinks = [
+  { label: "Home", path: "/", icon: Home, hint: "Verifin overview" },
+  { label: "Pricing", path: "/pricing", icon: WalletCards, hint: "Plans and features" },
+  { label: "Demo", path: "/demo", icon: Sparkles, hint: "See how it works" },
   { label: "Help Center", path: "/help", icon: LifeBuoy, hint: "Guides and support" },
 ];
 
@@ -18,6 +25,7 @@ const NotFound = () => {
   const { isAuthenticated } = useAuth();
   const [query, setQuery] = useState("");
   const [spotlight, setSpotlight] = useState({ x: 50, y: 34 });
+  const quickLinks = isAuthenticated ? appQuickLinks : publicQuickLinks;
 
   useEffect(() => {
     console.error("404 Error: User attempted to access non-existent route:", location.pathname);
@@ -94,8 +102,8 @@ const NotFound = () => {
                 <Sparkles className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="text-base font-semibold">Find your way</h2>
-                <p className="text-sm text-muted-foreground">Current path: {location.pathname}</p>
+              <h2 className="text-base font-semibold">Find your way</h2>
+              <p className="text-sm text-muted-foreground">Current path: {location.pathname}</p>
               </div>
             </div>
 
@@ -134,7 +142,7 @@ const NotFound = () => {
                 })
               ) : (
                 <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
-                  No matching shortcut. Try dashboard, inventory, sales, or help.
+                  No matching shortcut. Try {isAuthenticated ? "dashboard, inventory, sales, or help" : "home, pricing, demo, or help"}.
                 </div>
               )}
             </div>

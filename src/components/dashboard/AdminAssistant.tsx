@@ -250,7 +250,7 @@ export function AdminAssistant({ autoExpand = false, onDismissAutoExpand }: Admi
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => e.key === "Enter" && handleSend()}
             disabled={loading}
-            placeholder="Try: Add 30 apples, Sold 3 loaves for R54..."
+            placeholder={`Try: Add 30 apples, Sold 3 loaves for ${sym}54...`}
             className="pl-9 pr-4 h-11"
           />
         </div>

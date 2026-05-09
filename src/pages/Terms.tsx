@@ -1,85 +1,211 @@
-import { FileText, Shield, CreditCard, Lock, Globe, Scale, AlertTriangle, RefreshCw, Gavel, Mail } from "lucide-react";
+import { AlertTriangle, CreditCard, FileText, Gavel, Globe, Lock, Mail, RefreshCw, Scale, Shield } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import Navbar from "@/components/landing/Navbar";
 import Footer from "@/components/landing/Footer";
 
+const highlights = [
+  "Use Verifin only for lawful business purposes.",
+  "You are responsible for users, staff permissions, and data entered under your account.",
+  "You own your business data; Verifin owns the platform, software, brand, and product design.",
+  "Paid subscriptions renew until cancelled, unless your plan or written agreement says otherwise.",
+];
+
 const sections = [
-  { icon: FileText, title: "1. Acceptance of Terms", content: 'By accessing or using Verifin ("the Platform"), you agree to be bound by these Terms and Conditions. If you do not agree, you may not use the Platform.' },
-  { icon: Globe, title: "2. Description of Service", content: "Verifin is a cloud-based business operating system designed for small and medium-sized enterprises (SMEs). The Platform provides inventory management, sales tracking, expense logging, audit tools, customer loyalty (QR-based), smart insights, reporting, and staff management features." },
-  { icon: Shield, title: "3. Account Registration", content: "You must provide accurate, current, and complete information during registration. You are responsible for safeguarding your password and for all activities under your account. You must notify us immediately of any unauthorized use." },
-  { icon: CreditCard, title: "4. Subscription & Billing", items: [
-    "Starter Plan: Free forever with limited features (1 user, up to 50 products).",
-    "Growth Plan (R299/month): Includes up to 3 users, unlimited products, admin assistance system, barcode scanning, WhatsApp reports, and priority support.",
-    "Business Plan (R599/month): Unlimited users, advanced analytics, smart forecasting, custom reports, role-based access, offline mode, API access, and dedicated support.",
-    "All paid plans include a 14-day free trial. You will not be charged during the trial period.",
-    "You may cancel your subscription at any time. Cancellation takes effect at the end of the current billing period.",
-    "Prices are in South African Rand (ZAR) and are subject to change with 30 days' notice.",
-  ]},
-  { icon: Lock, title: "5. Data Ownership & Privacy", content: 'You retain ownership of all business data entered into the Platform. We do not sell, rent, or share your data with third parties except as required to operate the service or comply with law. Your data is protected with secure authentication, HTTPS in production, and access-controlled infrastructure. For full details, see our Privacy Policy.' },
-  { icon: AlertTriangle, title: "6. Acceptable Use", content: "You agree not to:", items: [
-    "Use the Platform for any unlawful purpose or in violation of any applicable laws.",
-    "Attempt to gain unauthorized access to the Platform or its related systems.",
-    "Transmit any malicious code, viruses, or harmful content.",
-    "Resell, sublicense, or redistribute the Platform without written consent.",
-    "Use automated tools to scrape or extract data from the Platform.",
-    "Impersonate another user or misrepresent your identity.",
-  ]},
-  { icon: Shield, title: "7. Intellectual Property", content: "All content, features, and functionality of Verifin — including but not limited to text, graphics, logos, icons, software, and design — are the exclusive property of Verifin and are protected by intellectual property laws." },
-  { icon: Globe, title: "8. Service Availability & Offline Mode", content: "We strive for 99.9% uptime. The Platform includes offline-first functionality that allows recording sales and stock counts without internet. Data will automatically sync when connectivity is restored. We are not liable for data loss resulting from extended offline periods exceeding 30 days without sync." },
-  { icon: FileText, title: "9. API Usage", content: "API access is available on the Business plan. API keys are confidential and must not be shared. We reserve the right to rate-limit or revoke API access for abusive usage." },
-  { icon: Scale, title: "10. Limitation of Liability", content: "To the maximum extent permitted by law, Verifin shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including loss of profits, data, or goodwill, arising out of or in connection with your use of the Platform." },
-  { icon: Shield, title: "11. Indemnification", content: "You agree to indemnify and hold harmless Verifin, its officers, directors, employees, and agents from any claims, losses, damages, liabilities, and expenses arising from your use of the Platform or violation of these Terms." },
-  { icon: AlertTriangle, title: "12. Termination", content: "We reserve the right to suspend or terminate your account if you violate these Terms. Upon termination, your right to use the Platform ceases immediately. You may request an export of your data within 30 days of termination." },
-  { icon: RefreshCw, title: "13. Refund Policy", content: "We offer a full refund within 7 days of your first paid subscription. After 7 days, refunds are not available, but you may cancel your subscription at any time to prevent future charges." },
-  { icon: Globe, title: "14. Force Majeure", content: "Verifin shall not be liable for any failure to perform due to events beyond its reasonable control, including natural disasters, power outages, internet disruptions, pandemics, or government actions." },
-  { icon: Gavel, title: "15. Dispute Resolution", content: "In the event of a dispute, both parties agree to attempt resolution through good-faith negotiation. If negotiation fails, the dispute shall be submitted to mediation before pursuing legal action." },
-  { icon: FileText, title: "16. Changes to Terms", content: "We may update these Terms from time to time. We will notify you of material changes via email or in-app notification. Continued use of the Platform after changes constitutes acceptance of the revised Terms." },
-  { icon: Scale, title: "17. Governing Law", content: "These Terms are governed by the laws of the Republic of South Africa. Any disputes shall be resolved in the courts of Johannesburg, South Africa." },
-  { icon: Mail, title: "18. Contact", content: "For questions about these Terms, contact us at robzmtambo@gmail.com or visit our Contact page." },
+  {
+    icon: FileText,
+    title: "1. Acceptance of Terms",
+    content:
+      'These Terms of Service ("Terms") govern your access to and use of Verifin, including our website, app, APIs, offline sync features, support, and related services. By creating an account, using the service, or allowing staff to use it, you agree to these Terms. If you use Verifin for a business, you confirm that you have authority to bind that business.',
+  },
+  {
+    icon: Globe,
+    title: "2. The Service",
+    content:
+      "Verifin is a business operating platform for SMEs. Features may include inventory, branches, suppliers, purchase orders, sales, tills, expenses, customers, loyalty and credit tools, audits, reports, staff permissions, notifications, offline sync, AI-assisted insights, billing, and API access. Features can vary by plan, region, release stage, and account configuration.",
+  },
+  {
+    icon: Shield,
+    title: "3. Accounts and Security",
+    items: [
+      "You must provide accurate account, business, and billing information.",
+      "You are responsible for protecting passwords, devices, API keys, and staff access.",
+      "You are responsible for all activity under your account, including staff actions.",
+      "You must notify us promptly if you suspect unauthorized access or misuse.",
+      "We may require verification, reset credentials, or restrict access where needed to protect the service.",
+    ],
+  },
+  {
+    icon: CreditCard,
+    title: "4. Plans, Trials, Billing, and Cancellation",
+    items: [
+      "Some features are free; others require a paid plan or trial.",
+      "Trial access may be limited, changed, or ended if abused or if you are not eligible.",
+      "Subscription fees, included features, limits, taxes, and billing cycles are shown during checkout or in the app.",
+      "Paid subscriptions renew automatically unless cancelled before the renewal date.",
+      "You can cancel a subscription, but cancellation usually takes effect at the end of the current billing period.",
+      "We may change prices or plan features with reasonable notice where required.",
+      "Refunds are provided only where required by law, stated in the app, or approved by Verifin in writing.",
+    ],
+  },
+  {
+    icon: Lock,
+    title: "5. Your Data and Privacy",
+    content:
+      "You retain ownership of business data you submit to Verifin. You grant us permission to host, process, transmit, back up, analyze, and display that data as needed to provide, secure, support, and improve the service. Our Privacy Policy explains how personal information is handled.",
+  },
+  {
+    icon: AlertTriangle,
+    title: "6. Acceptable Use",
+    content: "You agree that you will not:",
+    items: [
+      "Use Verifin for unlawful, fraudulent, harmful, or misleading activity.",
+      "Attempt to access accounts, records, systems, or APIs without authorization.",
+      "Bypass security, usage limits, billing controls, or staff permission controls.",
+      "Upload malicious code or interfere with the reliability of the service.",
+      "Scrape, copy, resell, sublicense, or redistribute Verifin without written permission.",
+      "Reverse engineer the platform except where applicable law expressly allows it.",
+      "Use AI-assisted features to generate unlawful, discriminatory, or harmful outputs.",
+    ],
+  },
+  {
+    icon: Shield,
+    title: "7. AI-Assisted Features",
+    content:
+      "Verifin may provide AI-assisted summaries, forecasts, reorder suggestions, receipt extraction, or business insights. These outputs are informational and may be incomplete or inaccurate. You are responsible for reviewing outputs before relying on them for stock, pricing, tax, accounting, staffing, legal, or financial decisions.",
+  },
+  {
+    icon: Globe,
+    title: "8. Offline Mode and Sync",
+    content:
+      "Offline features are designed to help you continue recording selected activity when connectivity is limited. You are responsible for syncing regularly, resolving conflicts, and checking that records are accurate after sync. We are not responsible for loss caused by device failure, deleted local storage, extended offline use, or unsynced records outside our control.",
+  },
+  {
+    icon: FileText,
+    title: "9. APIs and Integrations",
+    content:
+      "API access and integrations may be available only on selected plans. You must keep API keys confidential and comply with rate limits, documentation, and security requirements. We may suspend API access that harms the service, risks data exposure, or breaches these Terms.",
+  },
+  {
+    icon: Scale,
+    title: "10. Intellectual Property",
+    content:
+      "Verifin and its licensors own the platform, software, source code, design, workflows, documentation, brand, logos, and other service materials. These Terms do not transfer ownership of Verifin intellectual property to you. You may use Verifin only as allowed by these Terms and your plan.",
+  },
+  {
+    icon: RefreshCw,
+    title: "11. Changes to the Service",
+    content:
+      "We may add, remove, suspend, rename, or change features to improve Verifin, comply with law, protect users, or adjust plans. We will try to provide reasonable notice for material changes that negatively affect paid users.",
+  },
+  {
+    icon: AlertTriangle,
+    title: "12. Suspension and Termination",
+    content:
+      "We may suspend or terminate access if you breach these Terms, fail to pay fees, create risk for other users, misuse the service, or if required by law. You may stop using Verifin at any time. After termination, your right to use the service ends, but provisions that by nature should survive will continue.",
+  },
+  {
+    icon: Scale,
+    title: "13. Disclaimers",
+    content:
+      'Verifin is provided on an "as is" and "as available" basis to the maximum extent permitted by law. We do not guarantee that the service will be uninterrupted, error-free, or suitable for every business need. You are responsible for verifying records, exports, reports, AI outputs, tax calculations, and operational decisions.',
+  },
+  {
+    icon: Shield,
+    title: "14. Limitation of Liability",
+    content:
+      "To the maximum extent permitted by law, Verifin will not be liable for indirect, incidental, special, consequential, exemplary, or punitive damages, or for lost profits, lost revenue, loss of goodwill, business interruption, or data loss. Where liability cannot be excluded, it is limited to the amount you paid to Verifin for the service in the three months before the event giving rise to the claim, unless applicable law requires otherwise.",
+  },
+  {
+    icon: Gavel,
+    title: "15. Indemnity",
+    content:
+      "You agree to defend, indemnify, and hold Verifin harmless from claims, losses, liabilities, damages, costs, and expenses arising from your data, your use of the service, staff actions, breach of these Terms, or violation of law or third-party rights.",
+  },
+  {
+    icon: Gavel,
+    title: "16. Disputes and Governing Law",
+    content:
+      "These Terms are governed by the laws of the Republic of South Africa, unless mandatory local law says otherwise. The parties will first try to resolve disputes in good faith. If unresolved, disputes may be brought before courts with jurisdiction in South Africa, subject to applicable law.",
+  },
+  {
+    icon: FileText,
+    title: "17. Changes to These Terms",
+    content:
+      "We may update these Terms from time to time. If changes are material, we will take reasonable steps to notify you by email, in-app notice, or another appropriate method. Continued use of Verifin after the effective date means you accept the updated Terms.",
+  },
+  {
+    icon: Mail,
+    title: "18. Contact",
+    content: "For questions about these Terms, contact us at robzmtambo@gmail.com or visit the Contact page.",
+  },
 ];
 
 const Terms = () => (
   <div className="min-h-screen bg-background">
     <Navbar />
-    <section className="py-16 px-4">
-      <div className="container max-w-3xl">
-        <div className="text-center mb-12">
-          <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
-            <FileText className="h-7 w-7 text-primary" />
+    <main>
+      <section className="border-b border-border bg-gradient-to-b from-accent/15 to-background px-4 py-16">
+        <div className="container max-w-4xl">
+          <div className="mb-6 inline-flex items-center gap-2 rounded-md border border-accent/30 bg-background/80 px-3 py-1 text-sm font-medium text-accent">
+            <FileText className="h-4 w-4" />
+            Terms of Service
           </div>
-          <h1 className="font-display font-bold text-3xl mb-2">Terms & Conditions</h1>
-          <p className="text-muted-foreground">Last updated: April 5, 2026</p>
+          <h1 className="max-w-3xl text-4xl font-bold tracking-normal sm:text-5xl">The rules for using Verifin</h1>
+          <p className="mt-5 max-w-2xl text-lg text-muted-foreground">
+            These terms explain account responsibilities, subscriptions, acceptable use, data ownership, and service limitations.
+          </p>
+          <p className="mt-4 text-sm text-muted-foreground">Last updated: May 9, 2026</p>
         </div>
+      </section>
 
-        <div className="space-y-4">
-          {sections.map((s) => (
-            <Card key={s.title} className="shadow-soft">
-              <CardContent className="p-6">
-                <div className="flex items-start gap-3">
-                  <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <s.icon className="h-4.5 w-4.5 text-primary" />
-                  </div>
-                  <div className="flex-1">
-                    <h2 className="font-display font-semibold text-lg mb-2">{s.title}</h2>
-                    {s.content && <p className="text-sm text-muted-foreground leading-relaxed">{s.content}</p>}
-                    {"items" in s && s.items && (
-                      <ul className="space-y-1.5 mt-2">
-                        {s.items.map((item) => (
-                          <li key={item} className="text-sm text-muted-foreground flex items-start gap-2">
-                            <span className="h-1.5 w-1.5 rounded-full bg-primary/40 mt-1.5 flex-shrink-0" />
-                            {item}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </div>
+      <section className="px-4 py-12">
+        <div className="container grid max-w-5xl gap-8 lg:grid-cols-[280px_1fr]">
+          <aside className="lg:sticky lg:top-24 lg:h-fit">
+            <Card className="shadow-soft">
+              <CardContent className="p-5">
+                <h2 className="mb-3 text-base font-semibold">Key points</h2>
+                <ul className="space-y-3">
+                  {highlights.map((item) => (
+                    <li key={item} className="flex gap-2 text-sm text-muted-foreground">
+                      <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
               </CardContent>
             </Card>
-          ))}
+          </aside>
+
+          <div className="space-y-4">
+            {sections.map((section) => (
+              <Card key={section.title} className="shadow-soft">
+                <CardContent className="p-6">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md bg-primary/10">
+                      <section.icon className="h-4 w-4 text-primary" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h2 className="mb-2 text-lg font-semibold">{section.title}</h2>
+                      {"content" in section && section.content && <p className="text-sm leading-relaxed text-muted-foreground">{section.content}</p>}
+                      {"items" in section && section.items && (
+                        <ul className="mt-3 space-y-1.5">
+                          {section.items.map((item) => (
+                            <li key={item} className="flex gap-2 text-sm leading-relaxed text-muted-foreground">
+                              <span className="mt-2 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-primary/50" />
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </main>
     <Footer />
   </div>
 );

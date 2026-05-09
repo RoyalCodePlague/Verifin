@@ -14,7 +14,7 @@ from assistant.services import ClaudeAssistantService
 service = ClaudeAssistantService()
 
 # Parse a command
-command = "I sold 3 loaves of bread for R45 each to John"
+command = "I sold 3 loaves of bread for 45 each to John"
 response = service.parse_command(command)
 
 print(response)
@@ -28,7 +28,7 @@ print(response)
 #     "customer": "John",
 #     "total": 135.0
 #   },
-#   "message": "I'll create a sale for 3 loaves of bread at R45 each",
+#   "message": "I'll create a sale for 3 loaves of bread at 45 each",
 #   "requires_confirmation": False
 # }
 
@@ -119,7 +119,7 @@ class BusinessLogicExecutor:
 
             return {
                 "status": "success",
-                "message": f"Sale created: {quantity} {product.name} for R{total}",
+                "message": f"Sale created: {quantity} {product.name} for {user.currency_symbol}{total}",
                 "sale_id": sale.id,
             }
 
@@ -165,8 +165,8 @@ User = get_user_model()
 
 # Process multiple commands from a user
 commands = [
-    "I sold 5 eggs for R100",
-    "I spent R50 on transport",
+    "I sold 5 eggs for 100",
+    "I spent 50 on transport",
     "Restock 24 Coca-Cola cans",
 ]
 

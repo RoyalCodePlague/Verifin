@@ -1,11 +1,15 @@
 import { motion } from "framer-motion";
 import { Star } from "lucide-react";
+import { getDetectedPricingCountry } from "@/lib/api";
+import { formatRegionalSampleAmount } from "@/lib/pricing";
+
+const sampleLoss = formatRegionalSampleAmount(2000, getDetectedPricingCountry());
 
 const testimonials = [
   {
     name: "Thabo M.",
     role: "Spaza Shop Owner, Johannesburg",
-    text: "I used to lose R2,000 a month from stock going missing. Verifin caught the discrepancies in the first week. Game changer.",
+    text: `I used to lose ${sampleLoss} a month from stock going missing. Verifin caught the discrepancies in the first week. Game changer.`,
     stars: 5,
   },
   {

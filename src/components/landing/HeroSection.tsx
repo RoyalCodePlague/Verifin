@@ -3,12 +3,15 @@ import { ArrowRight, Zap, Shield, TrendingUp, CheckCircle, Sparkles } from "luci
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth-context";
+import { getDetectedPricingCountry } from "@/lib/api";
+import { formatRegionalSampleAmount } from "@/lib/pricing";
 
 const HeroSection = () => {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
   const primaryPath = isAuthenticated ? "/dashboard" : "/login?signup=1";
   const primaryLabel = isAuthenticated ? "Dashboard" : "Start Free Trial";
+  const countryCode = getDetectedPricingCountry();
 
   const particles = Array.from({ length: 12 }, (_, i) => ({
     id: i,
@@ -98,10 +101,10 @@ const HeroSection = () => {
               </div>
               <div className="grid grid-cols-2 gap-3 mb-4">
                 {[
-                  { label: "Today's Sales", value: "R2,486" },
+                  { label: "Today's Sales", value: formatRegionalSampleAmount(2486, countryCode) },
                   { label: "Inventory", value: "128 items" },
                   { label: "Low Stock", value: "3 alerts" },
-                  { label: "Net Profit", value: "R1,236" },
+                  { label: "Net Profit", value: formatRegionalSampleAmount(1236, countryCode) },
                 ].map((m, i) => (
                   <motion.div 
                     key={m.label} 

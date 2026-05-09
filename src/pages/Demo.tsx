@@ -8,11 +8,17 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import Navbar from "@/components/landing/Navbar";
 import Footer from "@/components/landing/Footer";
+import { getDetectedPricingCountry } from "@/lib/api";
+import { formatRegionalSampleAmount } from "@/lib/pricing";
+
+const countryCode = getDetectedPricingCountry();
+const sampleSale = `Sold 3 bread for ${formatRegionalSampleAmount(54, countryCode)}`;
+const sampleExpense = `Spent ${formatRegionalSampleAmount(200, countryCode)} on transport`;
 
 const tourSteps = [
   {
     title: "Record Sales Instantly",
-    desc: 'Type natural commands like "Sold 3 bread for R54" and the AI assistant records it automatically. Try it below!',
+    desc: `Type natural commands like "${sampleSale}" and the AI assistant records it automatically. Try it below!`,
     icon: ShoppingCart,
     action: "sale",
   },
@@ -24,7 +30,7 @@ const tourSteps = [
   },
   {
     title: "Log Expenses Easily",
-    desc: 'Type "Spent R200 on transport" and it\'s logged. No forms, no hassle. Try recording an expense below.',
+    desc: `Type "${sampleExpense}" and it's logged. No forms, no hassle. Try recording an expense below.`,
     icon: Receipt,
     action: "expense",
   },
@@ -59,7 +65,7 @@ function SaleDemo() {
   const [recorded, setRecorded] = useState(false);
 
   const handleRecord = () => {
-    if (!input.trim()) { setInput("Sold 3 bread for R54"); return; }
+    if (!input.trim()) { setInput(sampleSale); return; }
     setRecorded(true);
     toast.success("Sale recorded!", { description: input });
   };
@@ -69,7 +75,7 @@ function SaleDemo() {
       <div className="flex gap-2">
         <div className="flex-1 relative">
           <Sparkles className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-primary" />
-          <Input value={input} onChange={e => { setInput(e.target.value); setRecorded(false); }} placeholder='Try: "Sold 3 bread for R54"' className="pl-9" />
+          <Input value={input} onChange={e => { setInput(e.target.value); setRecorded(false); }} placeholder={`Try: "${sampleSale}"`} className="pl-9" />
         </div>
         <Button onClick={handleRecord} className="bg-gradient-hero text-primary-foreground" disabled={recorded}>
           {recorded ? <Check className="h-4 w-4" /> : "Record"}
@@ -81,7 +87,7 @@ function SaleDemo() {
         </motion.div>
       )}
       <div className="flex gap-2 flex-wrap">
-        {["Sold 5 milk for R110", "Sold 2 cement for R340"].map(s => (
+        {[`Sold 5 milk for ${formatRegionalSampleAmount(110, countryCode)}`, `Sold 2 cement for ${formatRegionalSampleAmount(340, countryCode)}`].map(s => (
           <button key={s} onClick={() => { setInput(s); setRecorded(false); }} className="px-3 py-1.5 rounded-full bg-muted text-xs text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors">{s}</button>
         ))}
       </div>
@@ -92,9 +98,9 @@ function SaleDemo() {
 function InventoryDemo() {
   const [selected, setSelected] = useState<string | null>(null);
   const items = [
-    { name: "White Bread", stock: 24, status: "ok", price: "R18" },
-    { name: "Cooking Oil 2L", stock: 3, status: "low", price: "R65" },
-    { name: "Washing Powder", stock: 0, status: "out", price: "R42" },
+    { name: "White Bread", stock: 24, status: "ok", price: formatRegionalSampleAmount(18, countryCode) },
+    { name: "Cooking Oil 2L", stock: 3, status: "low", price: formatRegionalSampleAmount(65, countryCode) },
+    { name: "Washing Powder", stock: 0, status: "out", price: formatRegionalSampleAmount(42, countryCode) },
   ];
   return (
     <div className="space-y-2">
@@ -135,13 +141,13 @@ function QRDemo() {
         <div className="flex-1">
           <p className="font-medium text-sm">Mama Ndlovu</p>
           <p className="text-xs text-muted-foreground">45 visits · 87 loyalty points</p>
-          <Badge className="mt-1 bg-accent/10 text-accent hover:bg-accent/10">R20 credit available</Badge>
+          <Badge className="mt-1 bg-accent/10 text-accent hover:bg-accent/10">{formatRegionalSampleAmount(20, countryCode)} credit available</Badge>
         </div>
       </div>
       <div className="grid grid-cols-3 gap-2 text-center">
-        <div className="p-2 rounded-lg bg-success/10"><p className="font-display font-bold text-success text-sm">R8,720</p><p className="text-xs text-muted-foreground">Spent</p></div>
+        <div className="p-2 rounded-lg bg-success/10"><p className="font-display font-bold text-success text-sm">{formatRegionalSampleAmount(8720, countryCode)}</p><p className="text-xs text-muted-foreground">Spent</p></div>
         <div className="p-2 rounded-lg bg-primary/10"><p className="font-display font-bold text-primary text-sm">45</p><p className="text-xs text-muted-foreground">Visits</p></div>
-        <div className="p-2 rounded-lg bg-accent/10"><p className="font-display font-bold text-accent text-sm">R20</p><p className="text-xs text-muted-foreground">Credits</p></div>
+        <div className="p-2 rounded-lg bg-accent/10"><p className="font-display font-bold text-accent text-sm">{formatRegionalSampleAmount(20, countryCode)}</p><p className="text-xs text-muted-foreground">Credits</p></div>
       </div>
     </div>
   );

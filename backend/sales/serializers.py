@@ -67,6 +67,9 @@ class SaleSerializer(serializers.ModelSerializer):
             till_session = attrs.get("till_session")
             if till_session and till_session.user_id != user.id:
                 raise serializers.ValidationError({"till_session": "Till session does not belong to this account."})
+            customer = attrs.get("customer")
+            if customer and customer.user_id != user.id:
+                raise serializers.ValidationError({"customer": "Customer does not belong to this account."})
             for item in items:
                 product = item.get("product")
                 if product and product.user_id != user.id:

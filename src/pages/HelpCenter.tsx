@@ -6,6 +6,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useQuery } from "@tanstack/react-query";
+import { getDetectedPricingCountry, getPricingContextApi, type RegionalPlanPrice } from "@/lib/api";
+import { fallbackPricingContextForCountry, formatRegionalSampleAmount } from "@/lib/pricing";
+
+const detectedCountry = getDetectedPricingCountry();
+const helpSaleExample = `Sold 3 bread for ${formatRegionalSampleAmount(54, detectedCountry)}`;
+const loyaltyEarnRate = formatRegionalSampleAmount(10, detectedCountry);
 
 const categories = [
   { icon: BookOpen, label: "Getting Started", articles: [
@@ -23,7 +30,7 @@ const categories = [
   ]},
   { icon: ShoppingCart, label: "Sales & Expenses", articles: [
     { title: "Recording sales manually", content: "In the Sales tab, click 'Record Sale'. Add products by selecting from your inventory, specify quantities, choose the payment method (Cash, EFT, or Card), and confirm. The sale is logged and stock is deducted automatically." },
-    { title: "Using the Admin Assistant for sales", content: "On the Dashboard, type natural commands like 'Sold 3 bread for R54' into the Admin Assistant. It parses your input, records the sale, and updates inventory — no forms needed." },
+    { title: "Using the Admin Assistant for sales", content: `On the Dashboard, type natural commands like '${helpSaleExample}' into the Admin Assistant. It parses your input, records the sale, and updates inventory - no forms needed.` },
     { title: "Tracking expenses by category", content: "In the Expenses tab, add expenses with a description, amount, and category (Transport, Utilities, Rent, etc.). Use search to filter expenses. All expenses appear in reports and affect your profit calculations." },
     { title: "Payment method tracking", content: "Each sale records the payment method. This helps you track cash vs digital payments. Reports break down sales by payment method for reconciliation." },
   ]},
@@ -35,7 +42,7 @@ const categories = [
   ]},
   { icon: Users, label: "Customers & Loyalty", articles: [
     { title: "Adding customers", content: "In the Customers tab, click 'Add Customer'. Enter their name, phone number, and assign a loyalty badge (Bronze, Silver, Gold, Platinum). A unique QR code is generated automatically for tracking." },
-    { title: "QR code loyalty system", content: "Each customer gets a unique QR code. Scan it at checkout to track visits and spending. Loyalty points are earned at 1 point per R10 spent. Use points to offer discounts or credits." },
+    { title: "QR code loyalty system", content: `Each customer gets a unique QR code. Scan it at checkout to track visits and spending. Loyalty points are earned at 1 point per ${loyaltyEarnRate} spent. Use points to offer discounts or credits.` },
     { title: "Managing customer credits", content: "Click the gift icon on any customer card to add store credit. Credits are stored on their profile and can be applied at their next purchase. The credit balance is visible on their QR code." },
     { title: "Loyalty tier system explained", content: "Customers are assigned badges: Bronze (new), Silver (regular), Gold (loyal), and Platinum (VIP). You can set badges manually when adding or editing customers based on their relationship with your business." },
   ]},
@@ -59,18 +66,35 @@ const categories = [
   ]},
 ];
 
-const faqs = [
-  { q: "Is Verifin free to use?", a: "Yes! The Starter plan is free forever and includes core features for 1 user with up to 50 products. Paid plans start at R299/month for additional features like AI insights, barcode scanning, and WhatsApp reports." },
+const baseFaqs = [
   { q: "Can I use Verifin without internet?", a: "Yes. Verifin works offline-first. You can record sales, update stock, and log expenses without internet. Data is stored locally and will sync automatically when you reconnect." },
   { q: "How do I scan barcodes?", a: "Go to the Inventory tab and click the 'Scan' button. Grant camera access and point your device at a barcode. The system will recognize known products or let you save new ones with full product details." },
   { q: "Can I export my data?", a: "Yes. Go to the Reports tab and click 'Export' on any report type. Reports are downloaded as CSV files that open directly in Excel or Google Sheets with proper formatting." },
-  { q: "How does the AI Assistant work?", a: "The Admin Assistant on the dashboard accepts natural language commands like 'Sold 3 bread for R54' or 'What's my inventory value?'. It automatically records transactions, updates stock, and answers business questions." },
+  { q: "How does the AI Assistant work?", a: `The Admin Assistant on the dashboard accepts natural language commands like '${helpSaleExample}' or 'What's my inventory value?'. It automatically records transactions, updates stock, and answers business questions.` },
   { q: "Is my data secure?", a: "Your data is protected with secure authentication, HTTPS in production, and access-controlled infrastructure. We are continuing to strengthen encryption, backup, and compliance controls. Your business data is never sold." },
 ];
+
+function monthlyPrice(price?: RegionalPlanPrice) {
+  if (!price) return "the regional Growth plan price";
+  const amount = Number(price.monthly_price);
+  if (amount <= 0) return "Free";
+  return `${price.currency_symbol}${amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}/month`;
+}
 
 const HelpCenter = () => {
   const [search, setSearch] = useState("");
   const [selectedArticle, setSelectedArticle] = useState<{ title: string; content: string } | null>(null);
+  const fallbackPricing = fallbackPricingContextForCountry(getDetectedPricingCountry());
+  const pricingQuery = useQuery({ queryKey: ["pricing-context"], queryFn: () => getPricingContextApi(), staleTime: 5 * 60_000 });
+  const pricing = pricingQuery.data ?? fallbackPricing;
+  const growthPrice = pricing.prices.find((price) => price.plan.code === "growth");
+  const faqs = [
+    {
+      q: "Is Verifin free to use?",
+      a: `Yes! The Starter plan is free forever and includes core features for 1 user with up to 50 products. Paid plans start at ${monthlyPrice(growthPrice)} for your region, with additional features like AI insights, barcode scanning, and WhatsApp reports.`,
+    },
+    ...baseFaqs,
+  ];
 
   const filteredCategories = categories.filter(c =>
     c.label.toLowerCase().includes(search.toLowerCase()) ||
