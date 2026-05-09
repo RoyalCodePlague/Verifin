@@ -50,7 +50,7 @@ class AuditViewSet(viewsets.ModelViewSet):
 
 class StockCountViewSet(viewsets.ModelViewSet):
     serializer_class = StockCountSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         return StockCount.objects.filter(counted_by=self.request.user, is_deleted=False)
@@ -62,13 +62,10 @@ class StockCountViewSet(viewsets.ModelViewSet):
 class DiscrepancyViewSet(viewsets.ModelViewSet):
     serializer_class = DiscrepancySerializer
     filterset_fields = ["status", "audit"]
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        if self.request.user and self.request.user.is_authenticated:
-            return Discrepancy.objects.filter(audit__conductor=self.request.user, is_deleted=False)
-        else:
-            return Discrepancy.objects.filter(is_deleted=False)
+        return Discrepancy.objects.filter(audit__conductor=self.request.user, is_deleted=False)
 
     @action(detail=True, methods=["post"], url_path="resolve")
     def resolve(self, request, pk=None):

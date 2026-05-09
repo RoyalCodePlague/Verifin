@@ -75,6 +75,14 @@ class StockMovementSerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = ["created_by", "created_at", "updated_at"]
 
+    def validate(self, attrs):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        product = attrs.get("product")
+        if user and user.is_authenticated and product and product.user_id != user.id:
+            raise serializers.ValidationError({"product": "Product does not belong to this account."})
+        return attrs
+
 
 class StockTransferSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source="product.name", read_only=True)

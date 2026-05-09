@@ -190,7 +190,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         enforce_limit(request.user, "products", increment=len(request.data.get("items", [])))
         created = []
         for row in request.data.get("items", []):
-            serializer = ProductSerializer(data=row)
+            serializer = ProductSerializer(data=row, context={"request": request})
             serializer.is_valid(raise_exception=True)
             serializer.save(user=request.user)
             created.append(serializer.data)
@@ -230,6 +230,13 @@ class ProductViewSet(viewsets.ModelViewSet):
                 category = Category.objects.get(id=category_id, user=request.user)
             except Category.DoesNotExist:
                 return Response({"detail": "Category not found."}, status=404)
+        branch = None
+        branch_id = request.data.get("branch")
+        if branch_id:
+            try:
+                branch = Branch.objects.get(id=branch_id, user=request.user, is_deleted=False)
+            except Branch.DoesNotExist:
+                return Response({"detail": "Branch not found."}, status=404)
         product = Product.objects.create(
             user=request.user,
             name=name,
@@ -238,7 +245,7 @@ class ProductViewSet(viewsets.ModelViewSet):
             cost_price=request.data.get("cost_price", 0),
             sku=sku,
             category=category,
-            branch_id=request.data.get("branch"),
+            branch=branch,
         )
         return Response(ProductSerializer(product).data)
 
