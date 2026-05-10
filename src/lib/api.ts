@@ -640,6 +640,7 @@ type ApiSale = {
   payment_currency?: string;
   payment_allocations?: Array<{ currency: string; amount: string; fx_rate_to_base?: string; amount_base?: string }>;
   branch?: number | null;
+  customer?: number | null;
   date: string;
   time: string;
   created_at?: string;
@@ -719,7 +720,20 @@ export async function fetchReceiptApi(id: string) {
     subtotal: string;
     total: string;
     customer: string;
+    customer_phone: string;
   }>(`/api/v1/sales/${id}/receipt/`);
+}
+
+export async function fetchWhatsAppReceiptApi(id: string, payload: { phone?: string; message?: string } = {}) {
+  return apiFetch<{
+    message: string;
+    whatsapp_url: string;
+    receipt: Awaited<ReturnType<typeof fetchReceiptApi>>;
+    log_id: number;
+  }>(`/api/v1/sales/${id}/whatsapp-receipt/`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 type ApiExpenseCategory = { id: number; name: string };

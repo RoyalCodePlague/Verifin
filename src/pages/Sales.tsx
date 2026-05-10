@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { closeTillApi, createSaleApi, deleteSaleApi, fetchReceiptApi, getCurrentTillApi, openTillApi, type ApiTillSession } from "@/lib/api";
+import { closeTillApi, createSaleApi, deleteSaleApi, fetchReceiptApi, fetchWhatsAppReceiptApi, getCurrentTillApi, openTillApi, type ApiTillSession } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { addToOfflineQueue, canQueueOfflineAction } from "@/lib/offlineQueue";
 import { motion } from "framer-motion";
-import { Plus, Search, ArrowUpRight, Trash2, ShoppingCart, Receipt, Wallet, ScanBarcode } from "lucide-react";
+import { Plus, Search, ArrowUpRight, Trash2, ShoppingCart, Receipt, Wallet, ScanBarcode, MessageCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,7 +34,7 @@ function roundMoney(value: number) {
 }
 
 const Sales = () => {
-  const { sales, deleteSale, profile, products, addSale } = useStore();
+  const { sales, deleteSale, profile, products, customers, addSale } = useStore();
   const { refreshUser } = useAuth();
   const { canUse } = useFeatureAccess();
   const promptUpgrade = useUpgradePrompt();
@@ -45,6 +45,8 @@ const Sales = () => {
   const [tillOpen, setTillOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [receiptText, setReceiptText] = useState("");
+  const [receiptSaleId, setReceiptSaleId] = useState<string | null>(null);
+  const [receiptPhone, setReceiptPhone] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [till, setTill] = useState<ApiTillSession | null>(null);
   const [tillForm, setTillForm] = useState({ cashier: "", openingCash: "0", closingCash: "" });
@@ -54,6 +56,7 @@ const Sales = () => {
   const [barcodeInput, setBarcodeInput] = useState("");
   const [qty, setQty] = useState("1");
   const [paymentCurrency, setPaymentCurrency] = useState(profile.currency);
+  const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [paymentRate, setPaymentRate] = useState("");
   const [canUseCameraScan, setCanUseCameraScan] = useState(false);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
@@ -210,6 +213,7 @@ const Sales = () => {
         amountBase: roundMoney(row.amount * (row.fx_rate_to_base || 1)),
       })),
       saleItems: lineItems,
+      customerId: selectedCustomerId || undefined,
     });
   };
 
@@ -241,7 +245,7 @@ const Sales = () => {
       // Multi-branch is disabled for now. Keep sending null until branch routing is restored.
       branch: null,
       till_session: till?.id || null,
-      customer: null,
+      customer: selectedCustomerId ? Number(selectedCustomerId) : null,
       sale_items: lineItems.map((l) => ({
         product: parseInt(l.productId, 10),
         quantity: l.quantity,
@@ -252,7 +256,7 @@ const Sales = () => {
     const offlinePayload = {
       payment_method: method,
       payment_currency: paymentCurrency,
-      customer: null,
+      customer: selectedCustomerId ? Number(selectedCustomerId) : null,
       sale_items: lineItems.map((l) => {
         const productId = parseInt(l.productId, 10);
         return {
@@ -290,6 +294,7 @@ const Sales = () => {
       setLineItems([]);
       setBarcodeInput("");
       setSelectedProduct("");
+      setSelectedCustomerId("");
       setQty("1");
       resetPaymentForm();
       setAddOpen(false);
@@ -303,6 +308,7 @@ const Sales = () => {
       setLineItems([]);
       setBarcodeInput("");
       setSelectedProduct("");
+      setSelectedCustomerId("");
       setQty("1");
       resetPaymentForm();
       setAddOpen(false);
@@ -373,9 +379,24 @@ const Sales = () => {
         `Total: ${sym}${Number(receipt.total).toLocaleString()}`,
       ].filter(Boolean);
       setReceiptText(lines.join("\n"));
+      setReceiptSaleId(id);
+      setReceiptPhone(receipt.customer_phone || "");
       setReceiptOpen(true);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not load receipt");
+    }
+  };
+
+  const shareReceiptOnWhatsApp = async () => {
+    if (!receiptSaleId) return;
+    try {
+      const payload = await fetchWhatsAppReceiptApi(receiptSaleId, {
+        phone: receiptPhone,
+        message: receiptText,
+      });
+      window.open(payload.whatsapp_url, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not prepare WhatsApp receipt");
     }
   };
 
@@ -517,6 +538,25 @@ const Sales = () => {
               </Button>
             </div>
 
+            <div>
+              <Label>Customer</Label>
+              <select
+                value={selectedCustomerId}
+                onChange={e => setSelectedCustomerId(e.target.value)}
+                className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">Walk-in customer</option>
+                {customers.map((customer) => (
+                  <option key={customer.id} value={customer.id}>
+                    {customer.name}{customer.phone ? ` · ${customer.phone}` : ""}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Select a saved customer to attach their WhatsApp number to the receipt.
+              </p>
+            </div>
+
             {lineItems.length > 0 && (
               <div className="border border-border rounded-lg divide-y divide-border">
                 {lineItems.map((item, idx) => (
@@ -654,11 +694,26 @@ const Sales = () => {
           <DialogHeader>
             <DialogTitle className="font-display">Receipt</DialogTitle>
             <DialogDescription>
-              Review the generated receipt text and copy it if you need to share it.
+              Review the generated receipt text, copy it, or share it on WhatsApp.
             </DialogDescription>
           </DialogHeader>
           <pre className="rounded-lg bg-muted p-4 text-sm whitespace-pre-wrap">{receiptText}</pre>
-          <Button variant="outline" onClick={() => navigator.clipboard.writeText(receiptText)}>Copy Receipt</Button>
+          <div>
+            <Label>WhatsApp Number</Label>
+            <Input
+              className="mt-1"
+              value={receiptPhone}
+              onChange={e => setReceiptPhone(e.target.value)}
+              placeholder="Leave blank to choose contact in WhatsApp"
+            />
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Button variant="outline" onClick={() => navigator.clipboard.writeText(receiptText)}>Copy Receipt</Button>
+            <Button onClick={() => void shareReceiptOnWhatsApp()}>
+              <MessageCircle className="mr-2 h-4 w-4" />
+              WhatsApp Receipt
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
       <ConfirmationModal

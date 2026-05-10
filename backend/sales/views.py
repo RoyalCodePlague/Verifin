@@ -1,12 +1,54 @@
 from django.db.models import Sum
 from django.db.models.functions import TruncDay, TruncMonth, TruncWeek
+from urllib.parse import quote
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from accounts.activity import log_staff_activity
+from billing.services import enforce_feature
+from notifications.models import NotificationLog
 from .models import Sale, SaleItem, TillSession
 from .serializers import SaleItemReadSerializer, SaleItemSerializer, SaleSerializer, TillSessionSerializer
+
+
+def build_receipt_payload(sale, user):
+    return {
+        "receipt_number": sale.receipt_number,
+        "invoice_number": sale.invoice_number,
+        "business_name": user.business_name,
+        "branch": sale.branch.name if sale.branch else "",
+        "date": sale.date,
+        "time": sale.time,
+        "payment_method": sale.payment_method,
+        "payment_currency": sale.payment_currency,
+        "payment_allocations": sale.payment_allocations,
+        "items": SaleItemReadSerializer(sale.sale_items.all(), many=True).data,
+        "subtotal": sale.total,
+        "total": sale.total,
+        "customer": sale.customer.name if sale.customer else "",
+        "customer_phone": sale.customer.phone if sale.customer else "",
+    }
+
+
+def build_receipt_message(payload, currency_symbol):
+    lines = [
+        payload["business_name"] or "Verifin Receipt",
+        f"Receipt: {payload['receipt_number']}",
+        f"Invoice: {payload['invoice_number']}" if payload.get("invoice_number") else "",
+        f"{payload['date']} {payload['time']}",
+        f"Payment: {payload['payment_method']}",
+        f"Currency: {payload['payment_currency']}" if payload.get("payment_currency") else "",
+        "",
+        *[
+            f"{item['quantity']} {item.get('product_name') or 'Item'} - {currency_symbol}{item.get('subtotal')}"
+            for item in payload["items"]
+        ],
+        "",
+        f"Total: {currency_symbol}{payload['total']}",
+        "Thank you for shopping with us.",
+    ]
+    return "\n".join([line for line in lines if line != ""])
 
 
 class SaleViewSet(viewsets.ModelViewSet):
@@ -63,20 +105,30 @@ class SaleViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path="receipt")
     def receipt(self, request, pk=None):
         sale = self.get_object()
+        return Response(build_receipt_payload(sale, request.user))
+
+    @action(detail=True, methods=["post"], url_path="whatsapp-receipt")
+    def whatsapp_receipt(self, request, pk=None):
+        enforce_feature(request.user, "whatsapp_reports")
+        sale = self.get_object()
+        payload = build_receipt_payload(sale, request.user)
+        message = request.data.get("message") or build_receipt_message(payload, request.user.currency_symbol)
+        phone = (request.data.get("phone") or payload.get("customer_phone") or "").strip()
+        whatsapp_url = f"https://wa.me/{phone}?text={quote(message)}" if phone else f"https://wa.me/?text={quote(message)}"
+        log = NotificationLog.objects.create(user=request.user, type="customer_receipt", message=message, channel="whatsapp")
+        log_staff_activity(
+            request.user,
+            "whatsapp_receipt_prepared",
+            f"Prepared WhatsApp receipt {sale.receipt_number}",
+            actor=request.user,
+            object_type="sale",
+            object_id=sale.id,
+        )
         return Response({
-            "receipt_number": sale.receipt_number,
-            "invoice_number": sale.invoice_number,
-            "business_name": request.user.business_name,
-            "branch": sale.branch.name if sale.branch else "",
-            "date": sale.date,
-            "time": sale.time,
-            "payment_method": sale.payment_method,
-            "payment_currency": sale.payment_currency,
-            "payment_allocations": sale.payment_allocations,
-            "items": SaleItemReadSerializer(sale.sale_items.all(), many=True).data,
-            "subtotal": sale.total,
-            "total": sale.total,
-            "customer": sale.customer.name if sale.customer else "",
+            "message": message,
+            "whatsapp_url": whatsapp_url,
+            "receipt": payload,
+            "log_id": log.id,
         })
 
 
