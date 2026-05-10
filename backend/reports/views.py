@@ -1,3 +1,4 @@
+from decimal import Decimal
 from django.db.models import Sum
 from django.http import HttpResponse
 from rest_framework.permissions import IsAuthenticated
@@ -5,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from expenses.models import Expense
 from inventory.models import Product, StockMovement
-from sales.models import Sale
+from sales.models import Sale, SaleItem
 from billing.services import enforce_feature
 from . import services
 
@@ -85,6 +86,75 @@ class MarginReportView(APIView):
                 "unit_margin": product.price - product.cost_price,
             })
         return Response({"items": sorted(rows, key=lambda row: row["profit"], reverse=True)})
+
+
+class ProfitLeakView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        enforce_feature(request.user, "advanced_analytics")
+        leaks = []
+        products = Product.objects.filter(user=request.user, is_deleted=False)
+
+        for product in products:
+            if product.price <= product.cost_price:
+                leaks.append({
+                    "type": "negative_margin",
+                    "severity": "critical",
+                    "title": f"{product.name} is priced at or below cost",
+                    "impact": product.price - product.cost_price,
+                    "product": product.name,
+                    "sku": product.sku,
+                    "suggested_action": "Increase selling price or renegotiate supplier cost.",
+                })
+
+        discounted_items = (
+            SaleItem.objects.filter(sale__created_by=request.user, is_deleted=False)
+            .select_related("product")
+            .order_by("-created_at")[:500]
+        )
+        for item in discounted_items:
+            if item.product and item.unit_price < item.product.price:
+                leak_amount = (item.product.price - item.unit_price) * item.quantity
+                if leak_amount > 0:
+                    leaks.append({
+                        "type": "discount_leak",
+                        "severity": "medium" if leak_amount < Decimal("100") else "high",
+                        "title": f"{item.product.name} sold below listed price",
+                        "impact": leak_amount,
+                        "product": item.product.name,
+                        "sku": item.product.sku,
+                        "suggested_action": "Review discount approvals and cashier pricing rules.",
+                    })
+
+        expense_total = Expense.objects.filter(created_by=request.user).aggregate(total=Sum("amount_base"))["total"] or 0
+        gross_profit = Sale.objects.filter(created_by=request.user).aggregate(total=Sum("gross_profit"))["total"] or 0
+        if gross_profit and expense_total > gross_profit * Decimal("0.35"):
+            leaks.append({
+                "type": "expense_drag",
+                "severity": "high",
+                "title": "Expenses are eating into gross profit",
+                "impact": expense_total - (gross_profit * Decimal("0.35")),
+                "product": "",
+                "sku": "",
+                "suggested_action": "Inspect recurring expenses and supplier charges this month.",
+            })
+
+        zero_cost_count = products.filter(cost_price=0).count()
+        if zero_cost_count:
+            leaks.append({
+                "type": "missing_costs",
+                "severity": "medium",
+                "title": f"{zero_cost_count} products have no cost price",
+                "impact": 0,
+                "product": "",
+                "sku": "",
+                "suggested_action": "Add cost prices so profit reports stop undercounting losses.",
+            })
+
+        priority = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+        leaks.sort(key=lambda leak: (priority.get(leak["severity"], 9), -Decimal(str(leak["impact"] or 0))))
+        return Response({"items": leaks[:30]})
 
 
 class GenericStubView(APIView):

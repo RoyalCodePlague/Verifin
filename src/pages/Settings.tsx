@@ -7,6 +7,7 @@ import {
   CloudOff,
   Eye,
   EyeOff,
+  KeyRound,
   Loader2,
   Lock,
   Moon,
@@ -24,14 +25,18 @@ import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/lib/auth-context";
 import {
   createNotificationPreferencesApi,
+  createApiKeyApi,
   changePasswordRequest,
   fetchNotificationPreferencesApi,
   getAccessToken,
+  listApiKeysApi,
   listSyncConflicts,
   logoutOtherDevicesRequest,
   patchMe,
   pushOfflineActions,
+  revokeApiKeyApi,
   updateNotificationPreferencesApi,
+  type ApiIntegrationKey,
 } from "@/lib/api";
 import {
   clearAuthenticatedOfflineSession,
@@ -51,6 +56,14 @@ import { currencyOptions, getDetectedCountryCode, getRegionalCurrencyDefaults, s
 
 const SECURITY_PREFS_KEY = "sp_security_prefs";
 const EXTENDED_NOTIFICATION_PREFS_KEY = "sp_extended_notification_prefs";
+const apiPermissionOptions = [
+  { id: "inventory", label: "Inventory" },
+  { id: "sales", label: "Sales" },
+  { id: "customers", label: "Customers" },
+  { id: "reports", label: "Reports" },
+  { id: "suppliers", label: "Suppliers" },
+  { id: "audits", label: "Audits" },
+];
 const PASSWORD_STAGE_PROMPTS = [
   "First, confirm it is really you.",
   "Now choose the new password carefully.",
@@ -217,6 +230,11 @@ const SettingsPage = () => {
   const [passwordCelebration, setPasswordCelebration] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [loggingOutOthers, setLoggingOutOthers] = useState(false);
+  const [apiKeys, setApiKeys] = useState<ApiIntegrationKey[]>([]);
+  const [apiKeyName, setApiKeyName] = useState("POS terminal");
+  const [apiKeyPermissions, setApiKeyPermissions] = useState(["inventory", "sales", "customers"]);
+  const [newApiKey, setNewApiKey] = useState("");
+  const [apiKeyLoading, setApiKeyLoading] = useState(false);
   const detectedCountry = getDetectedCountryCode();
   const detectedDefaults = getRegionalCurrencyDefaults(detectedCountry);
 
@@ -262,6 +280,21 @@ const SettingsPage = () => {
   useEffect(() => {
     saveJson(EXTENDED_NOTIFICATION_PREFS_KEY, notificationPrefs);
   }, [notificationPrefs]);
+
+  useEffect(() => {
+    if (!getAccessToken()) return;
+    let cancelled = false;
+    void listApiKeysApi()
+      .then((items) => {
+        if (!cancelled) setApiKeys(items);
+      })
+      .catch(() => {
+        if (!cancelled) setApiKeys([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!online || !getAccessToken()) {
@@ -457,6 +490,47 @@ const SettingsPage = () => {
       });
     } finally {
       setLoggingOutOthers(false);
+    }
+  };
+
+  const toggleApiPermission = (permission: string) => {
+    setApiKeyPermissions((current) =>
+      current.includes(permission) ? current.filter((item) => item !== permission) : [...current, permission]
+    );
+  };
+
+  const handleCreateApiKey = async () => {
+    if (!apiKeyName.trim() || apiKeyPermissions.length === 0) {
+      toast.error("Name the key and choose at least one permission.");
+      return;
+    }
+    setApiKeyLoading(true);
+    try {
+      const created = await createApiKeyApi({ name: apiKeyName.trim(), permissions: apiKeyPermissions });
+      setApiKeys((current) => [created, ...current]);
+      setNewApiKey(created.raw_key || "");
+      toast.success("API key created. Copy it now; it will only be shown once.");
+    } catch (error) {
+      toast.error("Could not create API key.", {
+        description: error instanceof Error ? error.message : "Check that API access is enabled on this plan.",
+      });
+    } finally {
+      setApiKeyLoading(false);
+    }
+  };
+
+  const handleRevokeApiKey = async (id: number) => {
+    setApiKeyLoading(true);
+    try {
+      const updated = await revokeApiKeyApi(id);
+      setApiKeys((current) => current.map((key) => (key.id === id ? updated : key)));
+      toast.success("API key revoked.");
+    } catch (error) {
+      toast.error("Could not revoke API key.", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setApiKeyLoading(false);
     }
   };
 
@@ -771,6 +845,66 @@ const SettingsPage = () => {
                 </div>
               </div>
             ) : null}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-soft">
+        <CardHeader>
+          <CardTitle className="font-display flex items-center gap-2 text-base">
+            <KeyRound className="h-4 w-4 text-primary" />
+            POS API Keys
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-lg border border-border bg-muted/20 p-4 dark:bg-muted/10">
+            <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+              <div>
+                <Label>Key Name</Label>
+                <Input className="mt-1.5" value={apiKeyName} onChange={(e) => setApiKeyName(e.target.value)} />
+              </div>
+              <Button onClick={() => void handleCreateApiKey()} disabled={apiKeyLoading || !apiKeyName.trim() || apiKeyPermissions.length === 0}>
+                {apiKeyLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                Create Key
+              </Button>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {apiPermissionOptions.map((permission) => (
+                <label key={permission.id} className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-xs dark:bg-card">
+                  <input type="checkbox" checked={apiKeyPermissions.includes(permission.id)} onChange={() => toggleApiPermission(permission.id)} />
+                  <span>{permission.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {newApiKey ? (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950 dark:border-amber-800/70 dark:bg-amber-950/30 dark:text-amber-100">
+              <p className="text-sm font-medium">Copy this key now</p>
+              <div className="mt-2 overflow-x-auto rounded-md border border-amber-200 bg-white px-3 py-2 font-mono text-xs dark:border-amber-800 dark:bg-background">
+                {newApiKey}
+              </div>
+            </div>
+          ) : null}
+
+          <div className="space-y-2">
+            {apiKeys.length ? apiKeys.map((key) => (
+              <div key={key.id} className="flex flex-col gap-3 rounded-lg border border-border p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-medium">{key.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {key.key_prefix}... · {key.permissions.join(", ")} · {key.last_used_at ? `Last used ${formatRelativeSync(key.last_used_at)}` : "Never used"}
+                  </p>
+                </div>
+                <Button variant="outline" size="sm" disabled={apiKeyLoading || key.status === "revoked"} onClick={() => void handleRevokeApiKey(key.id)}>
+                  {key.status === "revoked" ? "Revoked" : "Revoke"}
+                </Button>
+              </div>
+            )) : (
+              <p className="rounded-lg border border-border p-4 text-sm text-muted-foreground">
+                No API keys yet. Create one for POS terminals, barcode devices, or external integrations.
+              </p>
+            )}
           </div>
         </CardContent>
       </Card>

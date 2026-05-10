@@ -39,6 +39,10 @@ class Supplier(TimeStampedSoftDeleteModel):
     email = models.EmailField(blank=True)
     address = models.CharField(max_length=255, blank=True)
     notes = models.TextField(blank=True)
+    lead_time_days = models.PositiveIntegerField(default=7)
+    payment_terms_days = models.PositiveIntegerField(default=14)
+    reliability_score = models.PositiveSmallIntegerField(default=80)
+    minimum_order_value = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
     class Meta:
         unique_together = ("user", "name")

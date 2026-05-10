@@ -12,9 +12,9 @@ class BranchAdmin(admin.ModelAdmin):
 
 @admin.register(Supplier)
 class SupplierAdmin(admin.ModelAdmin):
-    list_display = ("name", "contact_name", "phone", "email", "user", "created_at")
+    list_display = ("name", "contact_name", "phone", "email", "lead_time_days", "reliability_score", "user", "created_at")
     search_fields = ("name", "contact_name", "phone", "email", "user__email")
-    list_filter = ("user",)
+    list_filter = ("user", "reliability_score")
 
 
 @admin.register(Category)

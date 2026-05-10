@@ -12,6 +12,10 @@ def default_staff_permissions():
     return []
 
 
+def default_api_key_permissions():
+    return ["inventory", "sales", "customers", "reports"]
+
+
 class User(AbstractUser, TimeStampedSoftDeleteModel):
     email = models.EmailField(unique=True)
     phone = models.CharField(max_length=30, blank=True)
@@ -94,3 +98,29 @@ class StaffActivityLog(TimeStampedSoftDeleteModel):
 
     class Meta:
         ordering = ["-created_at"]
+
+
+class ApiKey(TimeStampedSoftDeleteModel):
+    ACTIVE = "active"
+    REVOKED = "revoked"
+    STATUS_CHOICES = [(ACTIVE, ACTIVE), (REVOKED, REVOKED)]
+
+    user = models.ForeignKey(User, related_name="api_keys", on_delete=models.CASCADE)
+    created_by = models.ForeignKey(User, related_name="created_api_keys", on_delete=models.SET_NULL, blank=True, null=True)
+    name = models.CharField(max_length=120)
+    key_prefix = models.CharField(max_length=24, db_index=True)
+    key_hash = models.CharField(max_length=128)
+    permissions = models.JSONField(default=default_api_key_permissions, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=ACTIVE)
+    last_used_at = models.DateTimeField(blank=True, null=True)
+    expires_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def verify(self, raw_key):
+        return check_password(raw_key, self.key_hash)
+
+    def set_key(self, raw_key):
+        self.key_prefix = raw_key[:18]
+        self.key_hash = make_password(raw_key)

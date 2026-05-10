@@ -12,6 +12,7 @@ from .views import (
     MarginReportView,
     MonthlyOverviewView,
     ProfitLossView,
+    ProfitLeakView,
     StockMovementView,
     WeeklyPerformanceView,
 )
@@ -24,6 +25,7 @@ urlpatterns = [
     path("customer/", CustomerReportView.as_view()),
     path("expense-analysis/", ExpenseAnalysisView.as_view()),
     path("profit-loss/", ProfitLossView.as_view()),
+    path("profit-leaks/", ProfitLeakView.as_view()),
     path("margins/", MarginReportView.as_view()),
     path("monthly-overview/", MonthlyOverviewView.as_view()),
     path("advanced-analytics/", AdvancedAnalyticsView.as_view()),

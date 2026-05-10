@@ -436,6 +436,49 @@ export async function deleteStaffApi(id: string) {
   await apiFetch(`/api/v1/accounts/staff/${id}/`, { method: "DELETE" });
 }
 
+export type ApiStaffActivityLog = {
+  id: number;
+  actor: number | null;
+  actor_email: string | null;
+  action: string;
+  object_type: string;
+  object_id: string;
+  summary: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export async function listStaffActivityLogsApi() {
+  return fetchAllPages<ApiStaffActivityLog>("/api/v1/accounts/activity-logs/");
+}
+
+export type ApiIntegrationKey = {
+  id: number;
+  name: string;
+  key_prefix: string;
+  permissions: string[];
+  status: "active" | "revoked";
+  last_used_at: string | null;
+  expires_at: string | null;
+  created_at: string;
+  raw_key?: string;
+};
+
+export async function listApiKeysApi() {
+  return fetchAllPages<ApiIntegrationKey>("/api/v1/accounts/api-keys/");
+}
+
+export async function createApiKeyApi(payload: { name: string; permissions: string[]; expires_at?: string | null }) {
+  return apiFetch<ApiIntegrationKey>("/api/v1/accounts/api-keys/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function revokeApiKeyApi(id: number) {
+  return apiFetch<ApiIntegrationKey>(`/api/v1/accounts/api-keys/${id}/revoke/`, { method: "POST" });
+}
+
 export async function createBranchApi(payload: Omit<ApiBranch, "id">) {
   return apiFetch<ApiBranch>("/api/v1/inventory/branches/", {
     method: "POST",
@@ -471,6 +514,10 @@ export type ApiSupplier = {
   email: string;
   address: string;
   notes: string;
+  lead_time_days?: number;
+  payment_terms_days?: number;
+  reliability_score?: number;
+  minimum_order_value?: string;
 };
 
 export async function listSuppliersApi(): Promise<ApiSupplier[]> {
@@ -562,6 +609,14 @@ export async function fetchPurchaseSuggestions(days = 7) {
 
 export async function fetchInventoryForecast(days = 7) {
   return apiFetch<{ horizon_days: number; items: ApiForecastItem[] }>(`/api/v1/inventory/products/forecast/?days=${days}`);
+}
+
+export async function fetchSmartReorderApi() {
+  return apiFetch<{ items: Array<{ product: ApiProduct; supplier: ApiSupplier | null; urgency: "critical" | "high" | "watch"; suggested_quantity: number; estimated_cost: string; days_remaining: number | null; reorder_in_days: number | null; lead_time_days: number; average_daily_sales: number }> }>("/api/v1/inventory/products/smart-reorder/");
+}
+
+export async function fetchSupplierScorecardsApi() {
+  return apiFetch<{ items: Array<{ supplier: ApiSupplier; product_count: number; open_purchase_orders: number; low_stock_products: number; total_spend: string; lead_time_days: number; payment_terms_days: number; reliability_score: number; health: "strong" | "watch" | "risk" }> }>("/api/v1/inventory/suppliers/scorecards/");
 }
 
 export async function identifyBarcodeProductApi(code: string) {
@@ -1010,8 +1065,19 @@ export async function fetchRuleInsightsApi() {
   return apiFetch<{ insights: Array<{ type: string; severity: string; message: string }>; timestamp: string }>("/api/v1/assistant/insights/");
 }
 
+export async function fetchProfitLeaksApi() {
+  return apiFetch<{ items: Array<{ type: string; severity: "critical" | "high" | "medium" | "low"; title: string; impact: string | number; product: string; sku: string; suggested_action: string }> }>("/api/v1/reports/profit-leaks/");
+}
+
 export async function fetchWhatsAppSummaryApi() {
   return apiFetch<{ message: string; date: string; channel: string }>("/api/v1/assistant/whatsapp-summary/");
+}
+
+export async function createWhatsAppReportApi(phone?: string) {
+  return apiFetch<{ message: string; date?: string; channel: string; whatsapp_url: string; log: NotificationLog }>("/api/v1/notifications/whatsapp-report/", {
+    method: "POST",
+    body: JSON.stringify({ phone: phone || "" }),
+  });
 }
 
 export type NotificationLog = {

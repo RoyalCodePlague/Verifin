@@ -8,15 +8,17 @@ import logging
 import smtplib
 from django.core.exceptions import ImproperlyConfigured
 from rest_framework import exceptions, permissions, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 from billing.services import enforce_feature, enforce_limit
-from .models import Profile, Staff, StaffActivityLog
+from .activity import log_staff_activity
+from .models import ApiKey, Profile, Staff, StaffActivityLog
 from .permissions import IsOwnerOrManager
-from .serializers import ChangePasswordSerializer, CustomTokenObtainPairSerializer, ProfileSerializer, RegisterSerializer, StaffActivityLogSerializer, StaffLoginSerializer, StaffSerializer, UserSerializer
+from .serializers import ApiKeySerializer, ChangePasswordSerializer, CustomTokenObtainPairSerializer, ProfileSerializer, RegisterSerializer, StaffActivityLogSerializer, StaffLoginSerializer, StaffSerializer, UserSerializer
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -235,6 +237,47 @@ class StaffActivityLogViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         enforce_feature(self.request.user, "staff_activity_logs")
         return StaffActivityLog.objects.filter(user=self.request.user, is_deleted=False)
+
+
+class ApiKeyViewSet(viewsets.ModelViewSet):
+    serializer_class = ApiKeySerializer
+    permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+
+    def get_queryset(self):
+        enforce_feature(self.request.user, "api_access")
+        return ApiKey.objects.filter(user=self.request.user, is_deleted=False)
+
+    def create(self, request, *args, **kwargs):
+        enforce_feature(request.user, "api_access")
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        raw_key = f"vf_live_{secrets.token_urlsafe(32)}"
+        api_key = serializer.save(user=request.user, created_by=request.user)
+        api_key.set_key(raw_key)
+        api_key.save(update_fields=["key_prefix", "key_hash", "updated_at"])
+        log_staff_activity(request.user, "api_key_created", f"Created API key {api_key.name}", actor=request.user, object_type="api_key", object_id=api_key.id)
+        data = ApiKeySerializer(api_key).data
+        data["raw_key"] = raw_key
+        return Response(data, status=status.HTTP_201_CREATED)
+
+    def perform_update(self, serializer):
+        api_key = serializer.save()
+        log_staff_activity(self.request.user, "api_key_updated", f"Updated API key {api_key.name}", actor=self.request.user, object_type="api_key", object_id=api_key.id)
+
+    def perform_destroy(self, instance):
+        instance.status = ApiKey.REVOKED
+        instance.is_deleted = True
+        instance.save(update_fields=["status", "is_deleted", "updated_at"])
+        log_staff_activity(self.request.user, "api_key_revoked", f"Revoked API key {instance.name}", actor=self.request.user, object_type="api_key", object_id=instance.id)
+
+    @action(detail=True, methods=["post"], url_path="revoke")
+    def revoke(self, request, pk=None):
+        api_key = self.get_object()
+        api_key.status = ApiKey.REVOKED
+        api_key.save(update_fields=["status", "updated_at"])
+        log_staff_activity(request.user, "api_key_revoked", f"Revoked API key {api_key.name}", actor=request.user, object_type="api_key", object_id=api_key.id)
+        return Response(ApiKeySerializer(api_key).data)
 
 
 class MeView(APIView):

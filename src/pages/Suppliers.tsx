@@ -13,6 +13,8 @@ import {
   createPurchaseOrderApi,
   createSupplierApi,
   fetchPurchaseSuggestions,
+  fetchSmartReorderApi,
+  fetchSupplierScorecardsApi,
   listPurchaseOrdersApi,
   listSuppliersApi,
   receivePurchaseOrderApi,
@@ -25,11 +27,15 @@ import { symbolForCurrency } from "@/lib/currency";
 import { addToOfflineQueue, canQueueOfflineAction } from "@/lib/offlineQueue";
 
 type Suggestion = Awaited<ReturnType<typeof fetchPurchaseSuggestions>>["items"][number];
+type SmartReorderItem = Awaited<ReturnType<typeof fetchSmartReorderApi>>["items"][number];
+type SupplierScorecard = Awaited<ReturnType<typeof fetchSupplierScorecardsApi>>["items"][number];
 
 const emptySupplier = { name: "", contact_name: "", phone: "", email: "", address: "", notes: "" };
 const SUPPLIERS_CACHE_KEY = "sp_suppliers_cache";
 const PURCHASE_ORDERS_CACHE_KEY = "sp_purchase_orders_cache";
 const PURCHASE_SUGGESTIONS_CACHE_KEY = "sp_purchase_suggestions_cache";
+const SMART_REORDER_CACHE_KEY = "sp_smart_reorder_cache";
+const SUPPLIER_SCORECARDS_CACHE_KEY = "sp_supplier_scorecards_cache";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -72,6 +78,8 @@ const Suppliers = () => {
   const [suppliers, setSuppliers] = useState<ApiSupplier[]>([]);
   const [orders, setOrders] = useState<ApiPurchaseOrder[]>([]);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [smartReorders, setSmartReorders] = useState<SmartReorderItem[]>([]);
+  const [scorecards, setScorecards] = useState<SupplierScorecard[]>([]);
   const [supplierOpen, setSupplierOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("log");
@@ -108,19 +116,27 @@ const Suppliers = () => {
       setSuppliers(readCache<ApiSupplier[]>(SUPPLIERS_CACHE_KEY, []));
       setOrders(readCache<ApiPurchaseOrder[]>(PURCHASE_ORDERS_CACHE_KEY, []));
       setSuggestions(readCache<Suggestion[]>(PURCHASE_SUGGESTIONS_CACHE_KEY, []));
+      setSmartReorders(readCache<SmartReorderItem[]>(SMART_REORDER_CACHE_KEY, []));
+      setScorecards(readCache<SupplierScorecard[]>(SUPPLIER_SCORECARDS_CACHE_KEY, []));
       return;
     }
-    const [nextSuppliers, nextOrders, nextSuggestions] = await Promise.all([
+    const [nextSuppliers, nextOrders, nextSuggestions, nextSmartReorders, nextScorecards] = await Promise.all([
       listSuppliersApi(),
       listPurchaseOrdersApi(),
       fetchPurchaseSuggestions(7),
+      fetchSmartReorderApi().catch(() => ({ items: [] })),
+      fetchSupplierScorecardsApi().catch(() => ({ items: [] })),
     ]);
     setSuppliers(nextSuppliers);
     setOrders(nextOrders);
     setSuggestions(nextSuggestions.items);
+    setSmartReorders(nextSmartReorders.items);
+    setScorecards(nextScorecards.items);
     writeCache(SUPPLIERS_CACHE_KEY, nextSuppliers);
     writeCache(PURCHASE_ORDERS_CACHE_KEY, nextOrders);
     writeCache(PURCHASE_SUGGESTIONS_CACHE_KEY, nextSuggestions.items);
+    writeCache(SMART_REORDER_CACHE_KEY, nextSmartReorders.items);
+    writeCache(SUPPLIER_SCORECARDS_CACHE_KEY, nextScorecards.items);
   };
 
   useEffect(() => {
@@ -128,6 +144,8 @@ const Suppliers = () => {
       setSuppliers(readCache<ApiSupplier[]>(SUPPLIERS_CACHE_KEY, []));
       setOrders(readCache<ApiPurchaseOrder[]>(PURCHASE_ORDERS_CACHE_KEY, []));
       setSuggestions(readCache<Suggestion[]>(PURCHASE_SUGGESTIONS_CACHE_KEY, []));
+      setSmartReorders(readCache<SmartReorderItem[]>(SMART_REORDER_CACHE_KEY, []));
+      setScorecards(readCache<SupplierScorecard[]>(SUPPLIER_SCORECARDS_CACHE_KEY, []));
     });
   }, []);
 
@@ -340,6 +358,59 @@ const Suppliers = () => {
             <p className="text-xs text-muted-foreground">Suppliers Saved</p>
             <p className="mt-1 text-2xl font-display font-bold">{suppliers.length}</p>
             <p className="mt-1 text-xs text-muted-foreground">Use saved suppliers for quick stock-in entries</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+        <Card className="shadow-soft">
+          <CardHeader>
+            <CardTitle className="text-base font-display">Smart Reorder Engine</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2">
+            {smartReorders.length ? smartReorders.slice(0, 4).map((item) => (
+              <div key={item.product.id} className="rounded-lg border border-border p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="truncate text-sm font-medium">{item.product.name}</p>
+                  <Badge variant={item.urgency === "critical" ? "destructive" : "outline"} className="capitalize">{item.urgency}</Badge>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{item.supplier?.name || "No supplier"} · lead time {item.lead_time_days} days</p>
+                <p className="mt-2 text-sm font-semibold">Order {item.suggested_quantity} units</p>
+                <p className="text-xs text-muted-foreground">
+                  {item.days_remaining == null ? "No sales trend yet" : `${item.days_remaining} stock days left`} · est. {sym}{Number(item.estimated_cost || 0).toFixed(2)}
+                </p>
+              </div>
+            )) : (
+              <p className="rounded-lg border border-border p-4 text-sm text-muted-foreground sm:col-span-2">
+                No reorder risks detected. Products with low stock, supplier lead times, and sales velocity will appear here.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-soft">
+          <CardHeader>
+            <CardTitle className="text-base font-display">Supplier Scorecards</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {scorecards.length ? scorecards.slice(0, 4).map((card) => (
+              <div key={card.supplier.id} className="rounded-lg border border-border p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="truncate text-sm font-medium">{card.supplier.name}</p>
+                  <Badge variant={card.health === "risk" ? "destructive" : "outline"} className="capitalize">{card.health}</Badge>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {card.product_count} products · {card.open_purchase_orders} open POs · {card.low_stock_products} low-stock
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Reliability {card.reliability_score}% · terms {card.payment_terms_days} days
+                </p>
+              </div>
+            )) : (
+              <p className="rounded-lg border border-border p-4 text-sm text-muted-foreground">
+                Supplier reliability and stock risk will appear as supplier history grows.
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>

@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 
-from .models import Profile, Staff, StaffActivityLog, User
+from .models import ApiKey, Profile, Staff, StaffActivityLog, User
 
 
 class ProfileInline(admin.StackedInline):
@@ -49,4 +49,11 @@ class StaffActivityLogAdmin(admin.ModelAdmin):
     list_display = ("user", "actor", "action", "object_type", "summary", "created_at")
     list_filter = ("action", "object_type")
     search_fields = ("user__email", "actor__email", "summary")
-    search_fields = ("name", "user__email")
+
+
+@admin.register(ApiKey)
+class ApiKeyAdmin(admin.ModelAdmin):
+    list_display = ("name", "user", "key_prefix", "status", "last_used_at", "created_at")
+    list_filter = ("status", "created_at")
+    search_fields = ("name", "user__email", "key_prefix")
+    readonly_fields = ("key_hash", "key_prefix", "last_used_at")

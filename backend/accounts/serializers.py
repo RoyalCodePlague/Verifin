@@ -1,7 +1,7 @@
 from django.contrib.auth import authenticate, get_user_model, password_validation
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import Profile, Staff, StaffActivityLog
+from .models import ApiKey, Profile, Staff, StaffActivityLog
 
 User = get_user_model()
 
@@ -262,3 +262,37 @@ class StaffActivityLogSerializer(serializers.ModelSerializer):
         model = StaffActivityLog
         fields = ["id", "actor", "actor_email", "action", "object_type", "object_id", "summary", "metadata", "created_at"]
         read_only_fields = fields
+
+
+class ApiKeySerializer(serializers.ModelSerializer):
+    raw_key = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = ApiKey
+        fields = [
+            "id",
+            "name",
+            "key_prefix",
+            "permissions",
+            "status",
+            "last_used_at",
+            "expires_at",
+            "created_at",
+            "raw_key",
+        ]
+        read_only_fields = ["key_prefix", "status", "last_used_at", "created_at", "raw_key"]
+
+    def validate_permissions(self, value):
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Permissions must be a list.")
+        allowed = {"inventory", "sales", "customers", "reports", "suppliers", "audits"}
+        permissions = []
+        for item in value:
+            permission = str(item).strip()
+            if permission and permission in allowed and permission not in permissions:
+                permissions.append(permission)
+        if not permissions:
+            raise serializers.ValidationError("Choose at least one API permission.")
+        return permissions

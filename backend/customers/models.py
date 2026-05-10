@@ -29,7 +29,7 @@ class LoyaltyTransaction(TimeStampedSoftDeleteModel):
 
 
 class CreditTransaction(TimeStampedSoftDeleteModel):
-    TYPE_CHOICES = [("add", "add"), ("redeem", "redeem")]
+    TYPE_CHOICES = [("add", "add"), ("redeem", "redeem"), ("debt", "debt"), ("payment", "payment"), ("writeoff", "writeoff")]
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name="credit_transactions")
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     type = models.CharField(max_length=20, choices=TYPE_CHOICES)

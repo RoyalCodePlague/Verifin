@@ -1,6 +1,9 @@
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from urllib.parse import quote
+from assistant.services import generate_whatsapp_summary, make_json_safe
+from billing.services import enforce_feature
 from .models import Feedback, FeedbackVote, NotificationLog, NotificationPreference
 from .serializers import FeedbackSerializer, NotificationLogSerializer, NotificationPreferenceSerializer
 
@@ -27,6 +30,21 @@ class NotificationLogViewSet(viewsets.ReadOnlyModelViewSet):
             user=request.user, type="test", message="This is a test notification", channel="push"
         )
         return Response(NotificationLogSerializer(log).data)
+
+    @action(detail=False, methods=["post"], url_path="whatsapp-report")
+    def whatsapp_report(self, request):
+        enforce_feature(request.user, "whatsapp_reports")
+        payload = make_json_safe(generate_whatsapp_summary(request.user))
+        message = payload.get("message", "")
+        phone = (request.data.get("phone") or getattr(request.user, "phone", "") or "").strip()
+        log = NotificationLog.objects.create(user=request.user, type="daily_business_report", message=message, channel="whatsapp")
+        return Response({
+            "message": message,
+            "date": payload.get("date"),
+            "channel": "whatsapp",
+            "log": NotificationLogSerializer(log).data,
+            "whatsapp_url": f"https://wa.me/{phone}?text={quote(message)}" if phone else "",
+        })
 
 
 class FeedbackViewSet(viewsets.ModelViewSet):

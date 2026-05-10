@@ -1,13 +1,13 @@
-import { useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import { useEffect, useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { BadgeCheck, Copy, Eye, EyeOff, Plus, Search, ShieldCheck, Trash2, UserCog } from "lucide-react";
+import { Activity, BadgeCheck, Copy, Eye, EyeOff, Plus, Search, ShieldCheck, Trash2, UserCog } from "lucide-react";
 import { useStore, type StaffMember } from "@/lib/store";
 import { ROLE_DEFAULT_PERMISSIONS, useAuth } from "@/lib/auth-context";
-import { createStaffApi, deleteStaffApi, updateStaffApi, type ApiStaff } from "@/lib/api";
+import { createStaffApi, deleteStaffApi, listStaffActivityLogsApi, updateStaffApi, type ApiStaff, type ApiStaffActivityLog } from "@/lib/api";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -72,6 +72,21 @@ const Staff = () => {
   const [saving, setSaving] = useState(false);
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const [showStaffPassword, setShowStaffPassword] = useState(false);
+  const [activityLogs, setActivityLogs] = useState<ApiStaffActivityLog[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void listStaffActivityLogsApi()
+      .then((logs) => {
+        if (!cancelled) setActivityLogs(logs.slice(0, 8));
+      })
+      .catch(() => {
+        if (!cancelled) setActivityLogs([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filtered = staff.filter(s =>
     s.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -204,6 +219,30 @@ const Staff = () => {
               <Copy className="h-4 w-4" />
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-soft">
+        <CardHeader>
+          <CardTitle className="font-display flex items-center gap-2 text-base">
+            <Activity className="h-4 w-4 text-primary" />
+            Permission Audit
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {activityLogs.length ? activityLogs.map((log) => (
+            <div key={log.id} className="flex flex-col gap-1 rounded-lg border border-border px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-medium">{log.summary}</p>
+                <p className="text-xs text-muted-foreground">{log.action.replaceAll("_", " ")} · {log.actor_email || "system"}</p>
+              </div>
+              <p className="text-xs text-muted-foreground">{new Date(log.created_at).toLocaleString()}</p>
+            </div>
+          )) : (
+            <p className="rounded-lg border border-border p-4 text-sm text-muted-foreground">
+              Staff activity will appear here as your team creates products, suppliers, purchase orders, API keys, and customer collection records.
+            </p>
+          )}
         </CardContent>
       </Card>
 
