@@ -541,6 +541,19 @@ export function formatMoney(value: number, symbol: string) {
   })}`;
 }
 
+export function formatCompactMoney(value: number, symbol: string) {
+  const abs = Math.abs(value);
+  const compact =
+    abs >= 1_000_000_000
+      ? `${(value / 1_000_000_000).toFixed(abs >= 10_000_000_000 ? 0 : 1)}b`
+      : abs >= 1_000_000
+        ? `${(value / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}m`
+        : abs >= 1_000
+          ? `${(value / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}k`
+          : value.toFixed(0);
+  return `${symbol}${compact.replace(".0", "")}`;
+}
+
 export function csvCell(value: unknown) {
   const text = String(value ?? "");
   return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;

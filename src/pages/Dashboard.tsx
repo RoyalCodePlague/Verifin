@@ -18,6 +18,7 @@ import {
   buildReorderSuggestions,
   buildWeeklyFinanceData,
   expenseBaseAmount,
+  formatCompactMoney,
   formatMoney,
   parseBusinessDate,
   supplyInvoiceAmountBase,
@@ -419,7 +420,7 @@ const Dashboard = () => {
                 <BarChart data={salesVsExpensesData} barCategoryGap={18}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis dataKey="day" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
-                  <YAxis tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
+                  <YAxis width={64} tick={{ fontSize: 12 }} tickFormatter={(value) => formatCompactMoney(Number(value), sym)} stroke="hsl(var(--muted-foreground))" />
                   <Tooltip 
                     formatter={(value) => formatMoney(Number(value), sym)}
                   />
@@ -454,7 +455,7 @@ const Dashboard = () => {
                 <BarChart data={periodSalesVsExpensesData} barCategoryGap={18}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis dataKey="period" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
-                  <YAxis tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
+                  <YAxis width={64} tick={{ fontSize: 12 }} tickFormatter={(value) => formatCompactMoney(Number(value), sym)} stroke="hsl(var(--muted-foreground))" />
                   <Tooltip 
                     formatter={(value) => formatMoney(Number(value), sym)}
                   />

@@ -15,6 +15,7 @@ import {
   buildWeeklyFinanceData,
   csvCell,
   expenseBaseAmount,
+  formatCompactMoney,
   formatMoney,
   parseBusinessDate,
   salePaymentBreakdown,
@@ -280,7 +281,7 @@ const Reports = () => {
               <BarChart data={weeklyData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="day" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
-                <YAxis tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
+                <YAxis width={64} tick={{ fontSize: 12 }} tickFormatter={(value) => formatCompactMoney(Number(value), sym)} stroke="hsl(var(--muted-foreground))" />
                 <Tooltip formatter={(value) => formatMoney(Number(value), sym)} />
                 <Legend />
                 <Bar dataKey="sales" fill="hsl(152 55% 28%)" name="Sales" radius={[4, 4, 0, 0]} minPointSize={3} />
@@ -313,7 +314,7 @@ const Reports = () => {
               <BarChart data={periodFinanceData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                 <XAxis dataKey="period" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
-                <YAxis tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
+                <YAxis width={64} tick={{ fontSize: 12 }} tickFormatter={(value) => formatCompactMoney(Number(value), sym)} stroke="hsl(var(--muted-foreground))" />
                 <Tooltip formatter={(value) => formatMoney(Number(value), sym)} />
                 <Legend />
                 <Bar dataKey="sales" fill="hsl(152 55% 28%)" name="Sales" radius={[4, 4, 0, 0]} minPointSize={3} />
