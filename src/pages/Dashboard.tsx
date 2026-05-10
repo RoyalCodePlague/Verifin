@@ -19,6 +19,7 @@ import {
   buildWeeklyFinanceData,
   expenseBaseAmount,
   formatCompactMoney,
+  formatDashboardMoney,
   formatMoney,
   parseBusinessDate,
   supplyInvoiceAmountBase,
@@ -61,10 +62,7 @@ const Dashboard = () => {
   const formatSecondaryMoney = (amountBase: number) => {
     if (!secondaryCurrency || !secondaryRate) return null;
     const converted = amountBase / secondaryRate;
-    return `${symbolForCurrency(secondaryCurrency)}${converted.toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
+    return formatDashboardMoney(converted, symbolForCurrency(secondaryCurrency));
   };
 
   const todaySales = sales.filter((sale) => isSameCalendarDay(sale.date, new Date()));
@@ -149,13 +147,13 @@ const Dashboard = () => {
   );
 
   const metrics = [
-    { label: "Today's Sales", value: formatMoney(todayTotal, sym), secondaryValue: formatSecondaryMoney(todayTotal), change: changeLabel(salesChange, todayTotal, yesterdayTotal), up: changeTrendUp(salesChange, todayTotal, yesterdayTotal), icon: ShoppingCart },
-    { label: "Paid Supply Today", value: formatMoney(todayPaidSupply, sym), secondaryValue: formatSecondaryMoney(todayPaidSupply), change: changeLabel(supplyRevenueChange, todayPaidSupply, yesterdayPaidSupply), up: changeTrendUp(supplyRevenueChange, todayPaidSupply, yesterdayPaidSupply), icon: TrendingUp },
-    { label: "This Week", value: formatMoney(weeklySalesTotal, sym), secondaryValue: formatSecondaryMoney(weeklySalesTotal), change: `${weeklySalesTotal >= todayTotal ? 'Up' : 'Down'}`, up: weeklySalesTotal >= todayTotal, icon: TrendingUp },
-    { label: "Inventory Value", value: formatMoney(inventoryValue, sym), secondaryValue: formatSecondaryMoney(inventoryValue), change: `${lowStockCount} low`, up: lowStockCount === 0, icon: Package },
-    { label: "Open Supply Invoices", value: formatMoney(openSupplyInvoiceValue, sym), secondaryValue: outstandingSupplyCount > 0 ? `${outstandingSupplyCount} open` : null, change: outstandingSupplyCount > 0 ? `${outstandingSupplyCount} pending` : "0 pending", up: outstandingSupplyCount === 0, icon: Receipt },
+    { label: "Today's Sales", value: formatDashboardMoney(todayTotal, sym), secondaryValue: formatSecondaryMoney(todayTotal), change: changeLabel(salesChange, todayTotal, yesterdayTotal), up: changeTrendUp(salesChange, todayTotal, yesterdayTotal), icon: ShoppingCart },
+    { label: "Paid Supply Today", value: formatDashboardMoney(todayPaidSupply, sym), secondaryValue: formatSecondaryMoney(todayPaidSupply), change: changeLabel(supplyRevenueChange, todayPaidSupply, yesterdayPaidSupply), up: changeTrendUp(supplyRevenueChange, todayPaidSupply, yesterdayPaidSupply), icon: TrendingUp },
+    { label: "This Week", value: formatDashboardMoney(weeklySalesTotal, sym), secondaryValue: formatSecondaryMoney(weeklySalesTotal), change: `${weeklySalesTotal >= todayTotal ? 'Up' : 'Down'}`, up: weeklySalesTotal >= todayTotal, icon: TrendingUp },
+    { label: "Inventory Value", value: formatDashboardMoney(inventoryValue, sym), secondaryValue: formatSecondaryMoney(inventoryValue), change: `${lowStockCount} low`, up: lowStockCount === 0, icon: Package },
+    { label: "Open Supply Invoices", value: formatDashboardMoney(openSupplyInvoiceValue, sym), secondaryValue: outstandingSupplyCount > 0 ? `${outstandingSupplyCount} open` : null, change: outstandingSupplyCount > 0 ? `${outstandingSupplyCount} pending` : "0 pending", up: outstandingSupplyCount === 0, icon: Receipt },
     { label: "Low Stock Items", value: String(lowStockCount), secondaryValue: null, change: `${lowStockCount}`, up: false, icon: AlertTriangle },
-    ...(canAccessExpenses ? [{ label: "Today's Expenses", value: formatMoney(todayExpenses, sym), secondaryValue: formatSecondaryMoney(todayExpenses), change: changeLabel(expensesChange, todayExpenses, yesterdayExpenses), up: expensesChange == null ? todayExpenses <= yesterdayExpenses : expensesChange <= 0, icon: Receipt }] : []),
+    ...(canAccessExpenses ? [{ label: "Today's Expenses", value: formatDashboardMoney(todayExpenses, sym), secondaryValue: formatSecondaryMoney(todayExpenses), change: changeLabel(expensesChange, todayExpenses, yesterdayExpenses), up: expensesChange == null ? todayExpenses <= yesterdayExpenses : expensesChange <= 0, icon: Receipt }] : []),
   ];
 
   const topProduct = useMemo(() => {

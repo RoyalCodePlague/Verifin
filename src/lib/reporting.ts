@@ -554,6 +554,10 @@ export function formatCompactMoney(value: number, symbol: string) {
   return `${symbol}${compact.replace(".0", "")}`;
 }
 
+export function formatDashboardMoney(value: number, symbol: string) {
+  return Math.abs(value) >= 1_000_000 ? formatCompactMoney(value, symbol) : formatMoney(value, symbol);
+}
+
 export function csvCell(value: unknown) {
   const text = String(value ?? "");
   return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
