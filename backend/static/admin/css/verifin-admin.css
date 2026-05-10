@@ -73,10 +73,7 @@
 
 html,
 body {
-  background:
-    radial-gradient(circle at 18% 0%, rgba(53, 184, 121, 0.18), transparent 26rem),
-    radial-gradient(circle at 88% 8%, rgba(247, 165, 31, 0.12), transparent 20rem),
-    var(--bg);
+  background: var(--bg);
 }
 
 body {
@@ -96,34 +93,40 @@ body {
   gap: 12px;
 }
 
-.verifin-brand__mark {
-  display: grid;
-  width: 42px;
-  height: 42px;
-  place-items: center;
-  border-radius: 12px;
-  color: #fff !important;
-  font-weight: 900;
+.verifin-brand__logo {
+  display: inline-flex;
+  width: 156px;
+  color: var(--text) !important;
   text-decoration: none;
-  background: linear-gradient(135deg, var(--secondary), var(--accent));
-  box-shadow: 0 16px 36px rgba(32, 111, 74, 0.34);
 }
 
-.verifin-brand h1,
+.verifin-brand__logo svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.verifin-logo-primary {
+  fill: var(--primary);
+}
+
+.verifin-logo-accent {
+  fill: var(--accent);
+}
+
+.verifin-brand__divider {
+  width: 1px;
+  height: 30px;
+  background: var(--border);
+}
+
 .verifin-brand p {
   margin: 0;
-}
-
-.verifin-brand h1 a {
-  color: var(--text) !important;
-  font-size: 18px;
-  font-weight: 800;
-  letter-spacing: 0;
-}
-
-.verifin-brand p {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .verifin-theme-toggle {
@@ -173,7 +176,7 @@ div.form-row,
 .inline-group h2 {
   border-radius: 14px 14px 0 0;
   color: var(--text);
-  background: linear-gradient(135deg, rgba(32, 111, 74, 0.20), rgba(245, 158, 11, 0.12));
+  background: var(--panel-2);
 }
 
 a:link,
@@ -267,9 +270,7 @@ a.button {
   gap: 24px;
   padding: 28px;
   overflow: hidden;
-  background:
-    linear-gradient(135deg, rgba(32, 111, 74, 0.34), rgba(245, 158, 11, 0.12)),
-    var(--panel);
+  background: var(--panel);
 }
 
 .verifin-eyebrow {
@@ -339,19 +340,19 @@ a.button {
 }
 
 .verifin-metric--violet {
-  background: linear-gradient(135deg, rgba(32, 111, 74, 0.62), rgba(32, 111, 74, 0.12)), var(--panel);
+  border-left: 4px solid var(--primary);
 }
 
 .verifin-metric--emerald {
-  background: linear-gradient(135deg, rgba(53, 184, 121, 0.34), rgba(53, 184, 121, 0.08)), var(--panel);
+  border-left: 4px solid #35b879;
 }
 
 .verifin-metric--amber {
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.40), rgba(245, 158, 11, 0.08)), var(--panel);
+  border-left: 4px solid var(--accent);
 }
 
 .verifin-metric--sky {
-  background: linear-gradient(135deg, rgba(20, 59, 44, 0.48), rgba(53, 184, 121, 0.10)), var(--panel);
+  border-left: 4px solid var(--secondary);
 }
 
 .verifin-metric__top,
@@ -429,7 +430,7 @@ a.button {
   display: block;
   min-height: 10px;
   border-radius: 999px 999px 6px 6px;
-  background: linear-gradient(180deg, var(--primary), var(--accent));
+  background: var(--primary);
 }
 
 .verifin-chart small,
@@ -496,7 +497,7 @@ a.button {
 
 .verifin-admin-modules .app-list .app th {
   padding: 14px 16px;
-  background: linear-gradient(135deg, rgba(32, 111, 74, 0.20), rgba(245, 158, 11, 0.10));
+  background: var(--panel-2);
 }
 
 .verifin-admin-modules .app-list .model-row,
@@ -538,7 +539,7 @@ a.button {
 
 #changelist-filter h2 {
   border-radius: 14px 14px 0 0;
-  background: linear-gradient(135deg, rgba(32, 111, 74, 0.22), rgba(245, 158, 11, 0.12));
+  background: var(--panel-2);
 }
 
 #toolbar {

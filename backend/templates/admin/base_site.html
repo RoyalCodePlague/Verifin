@@ -15,11 +15,15 @@
 
 {% block branding %}
 <div class="verifin-brand">
-  <a href="{% url 'admin:index' %}" class="verifin-brand__mark" aria-label="Verifin admin home">V</a>
-  <div>
-    <h1 id="site-name"><a href="{% url 'admin:index' %}">Verifin</a></h1>
-    <p>Command Center</p>
-  </div>
+  <a href="{% url 'admin:index' %}" class="verifin-brand__logo" aria-label="Verifin admin home">
+    <svg viewBox="0 0 560 140" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Verifin">
+      <polygon points="20,30 60,110 100,30 80,30 60,75 40,30" class="verifin-logo-primary" />
+      <polygon points="60,75 70,110 60,110 52,90" class="verifin-logo-accent" />
+      <text x="130" y="95" font-size="64" font-weight="700" letter-spacing="6" fill="currentColor" font-family="Arial, sans-serif">VERIFIN</text>
+    </svg>
+  </a>
+  <span class="verifin-brand__divider"></span>
+  <p>Admin</p>
 </div>
 {% endblock %}
 
