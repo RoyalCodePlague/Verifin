@@ -1,0 +1,119 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<div id="content-main" class="verifin-admin-dashboard">
+  <section class="verifin-hero">
+    <div>
+      <p class="verifin-eyebrow">Operations Overview</p>
+      <h2>Business control room</h2>
+      <p class="verifin-hero__copy">Monitor account activity, stock pressure, sales movement, and subscription health from one admin surface.</p>
+    </div>
+    <div class="verifin-hero__actions">
+      <a href="/health/" class="verifin-pill">Health</a>
+      <a href="/api/v1/" class="verifin-pill">API</a>
+    </div>
+  </section>
+
+  <section class="verifin-metrics" aria-label="Admin metrics">
+    {% for metric in verifin_metrics %}
+      <article class="verifin-metric verifin-metric--{{ metric.tone }}">
+        <div class="verifin-metric__top">
+          <span>{{ metric.label }}</span>
+          <span class="verifin-metric__dot"></span>
+        </div>
+        <strong>{{ metric.value }}</strong>
+        <p>{{ metric.detail }}</p>
+      </article>
+    {% endfor %}
+  </section>
+
+  <section class="verifin-dashboard-grid">
+    <article class="verifin-panel verifin-panel--wide">
+      <div class="verifin-panel__header">
+        <div>
+          <p class="verifin-eyebrow">Sales Pulse</p>
+          <h3>Last 7 days</h3>
+        </div>
+        <span class="verifin-chip">Live data</span>
+      </div>
+      <div class="verifin-chart" role="img" aria-label="Sales by day">
+        {% for day in verifin_chart_days %}
+          <div class="verifin-chart__item">
+            <span class="verifin-chart__bar" style="height: {{ day.height }}%" title="{{ day.display }}"></span>
+            <small>{{ day.label }}</small>
+          </div>
+        {% endfor %}
+      </div>
+    </article>
+
+    <article class="verifin-panel">
+      <div class="verifin-panel__header">
+        <div>
+          <p class="verifin-eyebrow">Snapshot</p>
+          <h3>System totals</h3>
+        </div>
+      </div>
+      <dl class="verifin-snapshot">
+        <div><dt>Users</dt><dd>{{ verifin_snapshot.users }}</dd></div>
+        <div><dt>Customers</dt><dd>{{ verifin_snapshot.customers }}</dd></div>
+        <div><dt>Low stock</dt><dd>{{ verifin_snapshot.low_stock }}</dd></div>
+      </dl>
+    </article>
+  </section>
+
+  <section class="verifin-dashboard-grid">
+    <article class="verifin-panel">
+      <div class="verifin-panel__header">
+        <div>
+          <p class="verifin-eyebrow">Recent Sales</p>
+          <h3>Transactions</h3>
+        </div>
+      </div>
+      <div class="verifin-list">
+        {% for sale in verifin_recent_sales %}
+          <div class="verifin-list__row">
+            <span>{{ sale.receipt_number|default:"Sale" }}</span>
+            <strong>{{ sale.total }}</strong>
+          </div>
+        {% empty %}
+          <p class="verifin-empty">No sales yet.</p>
+        {% endfor %}
+      </div>
+    </article>
+
+    <article class="verifin-panel">
+      <div class="verifin-panel__header">
+        <div>
+          <p class="verifin-eyebrow">New Accounts</p>
+          <h3>Latest users</h3>
+        </div>
+      </div>
+      <div class="verifin-list">
+        {% for user in verifin_recent_users %}
+          <div class="verifin-list__row">
+            <span>{{ user.email }}</span>
+            <strong>{{ user.date_joined|date:"M d" }}</strong>
+          </div>
+        {% empty %}
+          <p class="verifin-empty">No users yet.</p>
+        {% endfor %}
+      </div>
+    </article>
+  </section>
+
+  <section class="verifin-admin-modules">
+    <div class="verifin-panel__header">
+      <div>
+        <p class="verifin-eyebrow">Admin Modules</p>
+        <h3>Manage Verifin</h3>
+      </div>
+    </div>
+    {% if app_list %}
+      {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
+    {% else %}
+      <p>{% translate "You don't have permission to view or edit anything." %}</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

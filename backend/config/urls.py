@@ -3,6 +3,10 @@ from django.http import HttpResponse, JsonResponse
 from django.urls import include, path
 from django.conf import settings
 from django.conf.urls.static import static
+from .admin import configure_admin_site
+
+
+configure_admin_site()
 
 
 def api_root(request):

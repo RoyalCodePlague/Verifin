@@ -1,0 +1,30 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | Verifin Admin{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'admin/css/verifin-admin.css' %}">
+{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<script src="{% static 'admin/js/verifin-admin.js' %}" defer></script>
+{% endblock %}
+
+{% block branding %}
+<div class="verifin-brand">
+  <a href="{% url 'admin:index' %}" class="verifin-brand__mark" aria-label="Verifin admin home">V</a>
+  <div>
+    <h1 id="site-name"><a href="{% url 'admin:index' %}">Verifin</a></h1>
+    <p>Command Center</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block nav-global %}
+<button type="button" class="verifin-theme-toggle" data-verifin-theme-toggle aria-label="Toggle admin theme">
+  <span data-verifin-theme-label>Dark</span>
+</button>
+{% endblock %}
