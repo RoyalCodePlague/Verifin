@@ -1,16 +1,18 @@
 :root,
 :root.verifin-dark {
   color-scheme: dark;
-  --primary: #9b5cff;
-  --secondary: #6f3dff;
-  --accent: #22c55e;
-  --bg: #08090c;
-  --bg-soft: #101116;
-  --panel: #15161c;
-  --panel-2: #1b1d25;
-  --text: #f4f7fb;
-  --muted: #9ca3af;
-  --border: rgba(255, 255, 255, 0.09);
+  --primary: #35b879;
+  --primary-deep: #143b2c;
+  --secondary: #206f4a;
+  --accent: #f7a51f;
+  --accent-deep: #b96212;
+  --bg: #07110d;
+  --bg-soft: #0e1c16;
+  --panel: #13231c;
+  --panel-2: #193027;
+  --text: #f6f2ea;
+  --muted: #a9b8af;
+  --border: rgba(246, 242, 234, 0.10);
   --shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
   --body-bg: var(--bg);
   --body-fg: var(--text);
@@ -20,13 +22,13 @@
   --header-color: var(--text);
   --breadcrumbs-bg: var(--bg-soft);
   --breadcrumbs-fg: var(--muted);
-  --link-fg: #b994ff;
-  --link-hover-color: #d7c4ff;
+  --link-fg: #58d89a;
+  --link-hover-color: #91efbd;
   --hairline-color: var(--border);
   --border-color: var(--border);
   --darkened-bg: var(--panel);
-  --selected-bg: rgba(155, 92, 255, 0.16);
-  --selected-row: rgba(155, 92, 255, 0.12);
+  --selected-bg: rgba(53, 184, 121, 0.16);
+  --selected-row: rgba(53, 184, 121, 0.12);
   --button-bg: var(--primary);
   --button-hover-bg: var(--secondary);
   --default-button-bg: var(--primary);
@@ -35,32 +37,34 @@
 
 :root.verifin-light {
   color-scheme: light;
-  --primary: #6f3dff;
-  --secondary: #4f24d8;
-  --accent: #15803d;
-  --bg: #f7f8fb;
+  --primary: #206f4a;
+  --primary-deep: #123b2a;
+  --secondary: #164f37;
+  --accent: #f59e0b;
+  --accent-deep: #b45309;
+  --bg: #fbfaf7;
   --bg-soft: #ffffff;
   --panel: #ffffff;
-  --panel-2: #f0f2f7;
-  --text: #111827;
-  --muted: #64748b;
-  --border: rgba(15, 23, 42, 0.11);
-  --shadow: 0 24px 70px rgba(15, 23, 42, 0.10);
+  --panel-2: #f3f0e8;
+  --text: #0e2118;
+  --muted: #607269;
+  --border: rgba(14, 33, 24, 0.12);
+  --shadow: 0 24px 70px rgba(14, 33, 24, 0.10);
   --body-bg: var(--bg);
   --body-fg: var(--text);
   --body-quiet-color: var(--muted);
   --body-loud-color: var(--text);
   --header-bg: rgba(255, 255, 255, 0.9);
   --header-color: var(--text);
-  --breadcrumbs-bg: #edf0f7;
+  --breadcrumbs-bg: #f3f0e8;
   --breadcrumbs-fg: var(--muted);
-  --link-fg: #5b2be8;
-  --link-hover-color: #4218b6;
+  --link-fg: #206f4a;
+  --link-hover-color: #123b2a;
   --hairline-color: var(--border);
   --border-color: var(--border);
   --darkened-bg: var(--panel);
-  --selected-bg: rgba(111, 61, 255, 0.10);
-  --selected-row: rgba(111, 61, 255, 0.08);
+  --selected-bg: rgba(32, 111, 74, 0.10);
+  --selected-row: rgba(32, 111, 74, 0.08);
   --button-bg: var(--primary);
   --button-hover-bg: var(--secondary);
   --default-button-bg: var(--primary);
@@ -70,13 +74,13 @@
 html,
 body {
   background:
-    radial-gradient(circle at 18% 0%, rgba(155, 92, 255, 0.20), transparent 26rem),
-    radial-gradient(circle at 88% 8%, rgba(34, 197, 94, 0.10), transparent 20rem),
+    radial-gradient(circle at 18% 0%, rgba(53, 184, 121, 0.18), transparent 26rem),
+    radial-gradient(circle at 88% 8%, rgba(247, 165, 31, 0.12), transparent 20rem),
     var(--bg);
 }
 
 body {
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: "DM Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 #header {
@@ -101,8 +105,8 @@ body {
   color: #fff !important;
   font-weight: 900;
   text-decoration: none;
-  background: linear-gradient(135deg, var(--primary), #22c55e);
-  box-shadow: 0 16px 36px rgba(111, 61, 255, 0.38);
+  background: linear-gradient(135deg, var(--secondary), var(--accent));
+  box-shadow: 0 16px 36px rgba(32, 111, 74, 0.34);
 }
 
 .verifin-brand h1,
@@ -169,7 +173,7 @@ div.form-row,
 .inline-group h2 {
   border-radius: 14px 14px 0 0;
   color: var(--text);
-  background: linear-gradient(135deg, rgba(155, 92, 255, 0.22), rgba(34, 197, 94, 0.10));
+  background: linear-gradient(135deg, rgba(32, 111, 74, 0.20), rgba(245, 158, 11, 0.12));
 }
 
 a:link,
@@ -210,7 +214,7 @@ input:focus,
 textarea:focus,
 select:focus {
   border-color: var(--primary) !important;
-  box-shadow: 0 0 0 3px rgba(155, 92, 255, 0.22);
+  box-shadow: 0 0 0 3px rgba(32, 111, 74, 0.20);
   outline: none;
 }
 
@@ -235,6 +239,18 @@ a.button {
   gap: 22px;
 }
 
+.verifin-page-title {
+  margin-bottom: 18px;
+}
+
+.verifin-page-title h1 {
+  margin: 0;
+  color: var(--text);
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
 .verifin-hero,
 .verifin-panel,
 .verifin-admin-modules {
@@ -252,7 +268,7 @@ a.button {
   padding: 28px;
   overflow: hidden;
   background:
-    linear-gradient(135deg, rgba(155, 92, 255, 0.25), rgba(34, 197, 94, 0.08)),
+    linear-gradient(135deg, rgba(32, 111, 74, 0.34), rgba(245, 158, 11, 0.12)),
     var(--panel);
 }
 
@@ -323,19 +339,19 @@ a.button {
 }
 
 .verifin-metric--violet {
-  background: linear-gradient(135deg, rgba(155, 92, 255, 0.60), rgba(155, 92, 255, 0.12)), var(--panel);
+  background: linear-gradient(135deg, rgba(32, 111, 74, 0.62), rgba(32, 111, 74, 0.12)), var(--panel);
 }
 
 .verifin-metric--emerald {
-  background: linear-gradient(135deg, rgba(34, 197, 94, 0.32), rgba(34, 197, 94, 0.08)), var(--panel);
+  background: linear-gradient(135deg, rgba(53, 184, 121, 0.34), rgba(53, 184, 121, 0.08)), var(--panel);
 }
 
 .verifin-metric--amber {
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.34), rgba(245, 158, 11, 0.08)), var(--panel);
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.40), rgba(245, 158, 11, 0.08)), var(--panel);
 }
 
 .verifin-metric--sky {
-  background: linear-gradient(135deg, rgba(14, 165, 233, 0.34), rgba(14, 165, 233, 0.08)), var(--panel);
+  background: linear-gradient(135deg, rgba(20, 59, 44, 0.48), rgba(53, 184, 121, 0.10)), var(--panel);
 }
 
 .verifin-metric__top,
@@ -413,7 +429,7 @@ a.button {
   display: block;
   min-height: 10px;
   border-radius: 999px 999px 6px 6px;
-  background: linear-gradient(180deg, var(--primary), rgba(34, 197, 94, 0.72));
+  background: linear-gradient(180deg, var(--primary), var(--accent));
 }
 
 .verifin-chart small,
@@ -460,9 +476,96 @@ a.button {
   overflow: hidden;
 }
 
+.verifin-admin-modules .app-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.verifin-admin-modules .app-list .app {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--bg-soft);
+  box-shadow: none;
+}
+
+.verifin-admin-modules .app-list .app table {
+  margin: 0;
+}
+
+.verifin-admin-modules .app-list .app th {
+  padding: 14px 16px;
+  background: linear-gradient(135deg, rgba(32, 111, 74, 0.20), rgba(245, 158, 11, 0.10));
+}
+
+.verifin-admin-modules .app-list .model-row,
+.verifin-admin-modules .app-list tr {
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+
+.verifin-admin-modules .app-list tr:hover {
+  background: var(--selected-row);
+}
+
+#nav-sidebar {
+  border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-soft) 92%, transparent);
+}
+
+#nav-sidebar .module th,
+#nav-sidebar .module caption {
+  background: transparent;
+}
+
+#nav-filter {
+  border: 1px solid var(--border);
+  border-radius: 999px !important;
+  margin: 12px;
+  padding: 9px 14px !important;
+}
+
+.change-list .filtered .results,
+.change-list .filtered .paginator,
+#changelist-filter {
+  border-radius: 14px;
+}
+
+#changelist-filter {
+  border-left: 1px solid var(--border);
+  background: var(--panel);
+}
+
+#changelist-filter h2 {
+  border-radius: 14px 14px 0 0;
+  background: linear-gradient(135deg, rgba(32, 111, 74, 0.22), rgba(245, 158, 11, 0.12));
+}
+
+#toolbar {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  margin-bottom: 16px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+#toolbar form input[type="submit"] {
+  border-radius: 999px;
+  background: var(--primary);
+}
+
+.selector .selector-filter,
+.calendarbox,
+.clockbox {
+  border-color: var(--border);
+  border-radius: 14px;
+  background: var(--panel);
+}
+
 @media (max-width: 1100px) {
   .verifin-metrics,
-  .verifin-dashboard-grid {
+  .verifin-dashboard-grid,
+  .verifin-admin-modules .app-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -474,7 +577,8 @@ a.button {
 
   .verifin-hero,
   .verifin-dashboard-grid,
-  .verifin-metrics {
+  .verifin-metrics,
+  .verifin-admin-modules .app-list {
     grid-template-columns: 1fr;
   }
 
