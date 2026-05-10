@@ -148,6 +148,7 @@ export async function registerRequest(body: {
   password: string;
   phone?: string;
   business_name?: string;
+  referral_code?: string;
 }) {
   return apiFetch<{ access: string; refresh: string; user: ApiUser }>("/api/v1/accounts/register/", {
     method: "POST",
@@ -906,6 +907,28 @@ export type BillingOverview = {
   available_actions: string[];
 };
 
+export type ReferralRewardToken = {
+  id: number;
+  code: string;
+  plan_code: PlanCode;
+  referrals_required: number;
+  reward_days: number;
+  status: "unused" | "redeemed" | "expired";
+  expires_at: string | null;
+  redeemed_at: string | null;
+  created_at: string;
+};
+
+export type ReferralProgress = {
+  code: string;
+  target: number;
+  qualified_count: number;
+  pending_count: number;
+  remaining: number;
+  reward_days: number;
+  tokens: ReferralRewardToken[];
+};
+
 export type PricingCountry = {
   country_code: string;
   country_name: string;
@@ -1137,6 +1160,17 @@ export async function mockCheckoutApi(payload: { plan: PlanCode; billing_period:
   return apiFetch<{ detail: string; subscription: BillingSubscription; billing: BillingOverview }>("/api/v1/billing/subscriptions/mock-checkout/", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export async function getReferralProgressApi() {
+  return apiFetch<ReferralProgress>("/api/v1/billing/referrals/");
+}
+
+export async function redeemReferralRewardApi(token?: string) {
+  return apiFetch<{ detail: string; billing: BillingOverview; referrals: ReferralProgress }>("/api/v1/billing/referrals/redeem/", {
+    method: "POST",
+    body: JSON.stringify({ token: token || "" }),
   });
 }
 

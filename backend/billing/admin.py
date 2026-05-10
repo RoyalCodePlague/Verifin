@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import BillingCycle, FeatureLimit, Payment, Plan, RegionPrice, Subscription, SubscriptionEvent, TrialPeriod, UsageTracking
+from .models import BillingCycle, FeatureLimit, Payment, Plan, ReferralCode, ReferralRewardToken, ReferralSignup, RegionPrice, Subscription, SubscriptionEvent, TrialPeriod, UsageTracking
 from .services import activate_plan, cancel_subscription, renew_subscription, sync_plan_catalog
 
 
@@ -92,3 +92,23 @@ class SubscriptionEventAdmin(admin.ModelAdmin):
 class PaymentAdmin(admin.ModelAdmin):
     list_display = ["subscription", "amount", "currency", "status", "provider", "created_at"]
     list_filter = ["status", "provider", "currency"]
+
+
+@admin.register(ReferralCode)
+class ReferralCodeAdmin(admin.ModelAdmin):
+    list_display = ["user", "code", "created_at"]
+    search_fields = ["user__email", "user__business_name", "code"]
+
+
+@admin.register(ReferralSignup)
+class ReferralSignupAdmin(admin.ModelAdmin):
+    list_display = ["referrer", "referred_user", "status", "qualified_at", "created_at"]
+    list_filter = ["status"]
+    search_fields = ["referrer__email", "referred_user__email", "code__code"]
+
+
+@admin.register(ReferralRewardToken)
+class ReferralRewardTokenAdmin(admin.ModelAdmin):
+    list_display = ["user", "code", "plan_code", "status", "reward_days", "expires_at", "redeemed_at"]
+    list_filter = ["status", "plan_code"]
+    search_fields = ["user__email", "user__business_name", "code"]

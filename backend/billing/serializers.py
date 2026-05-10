@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import BillingCycle, FeatureLimit, Payment, Plan, RegionPrice, Subscription, SubscriptionEvent, TrialPeriod, UsageTracking
+from .models import BillingCycle, FeatureLimit, Payment, Plan, ReferralRewardToken, RegionPrice, Subscription, SubscriptionEvent, TrialPeriod, UsageTracking
 
 
 class FeatureLimitSerializer(serializers.ModelSerializer):
@@ -98,6 +98,22 @@ class PaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Payment
         fields = ["id", "amount", "currency", "status", "provider_payment_id", "provider", "created_at"]
+
+
+class ReferralRewardTokenSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReferralRewardToken
+        fields = ["id", "code", "plan_code", "referrals_required", "reward_days", "status", "expires_at", "redeemed_at", "created_at"]
+
+
+class ReferralProgressSerializer(serializers.Serializer):
+    code = serializers.CharField()
+    target = serializers.IntegerField()
+    qualified_count = serializers.IntegerField()
+    pending_count = serializers.IntegerField()
+    remaining = serializers.IntegerField()
+    reward_days = serializers.IntegerField()
+    tokens = ReferralRewardTokenSerializer(many=True)
 
 
 class BillingOverviewSerializer(serializers.Serializer):

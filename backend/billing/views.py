@@ -4,7 +4,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from .models import Payment, Plan, RegionPrice, Subscription, SubscriptionEvent
-from .serializers import BillingOverviewSerializer, PaymentSerializer, PlanSerializer, PricingContextSerializer, RegionPriceSerializer, SubscriptionEventSerializer, SubscriptionSerializer
+from .serializers import BillingOverviewSerializer, PaymentSerializer, PlanSerializer, PricingContextSerializer, ReferralProgressSerializer, RegionPriceSerializer, SubscriptionEventSerializer, SubscriptionSerializer
 from .services import (
     activate_plan,
     cancel_subscription,
@@ -16,6 +16,8 @@ from .services import (
     resume_subscription,
     feature_access_payload,
     pricing_context,
+    redeem_referral_reward,
+    referral_progress,
     subscription_payload,
     sync_plan_catalog,
 )
@@ -152,3 +154,22 @@ class SubscriptionEventViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         return SubscriptionEvent.objects.filter(subscription__user=self.request.user, is_deleted=False)
+
+
+class ReferralViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        return Response(ReferralProgressSerializer(referral_progress(request.user)).data)
+
+    @action(detail=False, methods=["post"])
+    def redeem(self, request):
+        subscription, token = redeem_referral_reward(request.user, request.data.get("token", ""))
+        return Response(
+            {
+                "detail": f"Growth unlocked for {token.reward_days} days.",
+                "billing": BillingOverviewSerializer(subscription_payload(subscription.user)).data,
+                "referrals": ReferralProgressSerializer(referral_progress(request.user)).data,
+            },
+            status=status.HTTP_200_OK,
+        )

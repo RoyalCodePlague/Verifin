@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, Crown, Lock, RefreshCw, ShieldCheck, Sparkles, Zap } from "lucide-react";
+import { AlertTriangle, Check, Copy, Crown, Gift, Lock, RefreshCw, ShieldCheck, Sparkles, Ticket, Zap } from "lucide-react";
 import { toast } from "sonner";
 import {
   getBillingOverviewApi,
   getPricingContextApi,
+  getReferralProgressApi,
   mockCheckoutApi,
+  redeemReferralRewardApi,
   subscriptionActionApi,
   type BillingPeriod,
   type BillingPlan,
@@ -107,13 +109,21 @@ const Billing = () => {
   const online = typeof navigator === "undefined" || navigator.onLine;
   const billingQuery = useQuery({ queryKey: ["billing-overview"], queryFn: getBillingOverviewApi, staleTime: 60_000, enabled: online });
   const pricingQuery = useQuery({ queryKey: ["pricing-context"], queryFn: () => getPricingContextApi(), staleTime: 5 * 60_000, enabled: online });
+  const referralsQuery = useQuery({ queryKey: ["referrals"], queryFn: getReferralProgressApi, staleTime: 60_000, enabled: online });
 
   const billing = billingQuery.data;
+  const referrals = referralsQuery.data;
   const currentCode = billing?.plan.code;
   const usageLimits = useMemo(() => billing?.limits.filter((limit) => visibleLimits.includes(limit.key)) ?? [], [billing]);
   const pricing = pricingQuery.data;
   const regionalByPlan = useMemo(() => new Map((pricing?.prices ?? []).map((price) => [price.plan.code, price])), [pricing]);
   const plans = useMemo(() => (pricing?.prices ?? []).map((price) => price.plan), [pricing]);
+  const referralLink = useMemo(() => {
+    if (!referrals?.code || typeof window === "undefined") return "";
+    return `${window.location.origin}/login?signup=1&ref=${encodeURIComponent(referrals.code)}`;
+  }, [referrals?.code]);
+  const unusedReferralToken = referrals?.tokens.find((token) => token.status === "unused");
+  const referralPct = referrals ? Math.min(100, Math.round((referrals.qualified_count / referrals.target) * 100)) : 0;
 
   const refreshBilling = async () => {
     await queryClient.invalidateQueries({ queryKey: ["billing-overview"] });
@@ -137,6 +147,22 @@ const Billing = () => {
     },
     onError: (error) => toast.error(error.message),
   });
+
+  const redeemReferralMutation = useMutation({
+    mutationFn: () => redeemReferralRewardApi(unusedReferralToken?.code),
+    onSuccess: async (res) => {
+      toast.success(res.detail);
+      await queryClient.invalidateQueries({ queryKey: ["billing-overview"] });
+      await queryClient.invalidateQueries({ queryKey: ["referrals"] });
+    },
+    onError: (error) => toast.error(error.message),
+  });
+
+  const copyReferralLink = async () => {
+    if (!referralLink) return;
+    await navigator.clipboard.writeText(referralLink);
+    toast.success("Referral link copied");
+  };
 
   return (
     <div className="space-y-8">
@@ -183,6 +209,65 @@ const Billing = () => {
             {usageLimits.map((limit) => (
               <UsageRow key={limit.key} limit={limit} />
             ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-border bg-background p-6 dark:bg-card">
+        <div className="grid gap-6 lg:grid-cols-[1fr_0.8fr]">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-md bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                <Gift className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold">Referral Growth Reward</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Invite {referrals?.target ?? 15} verified businesses and unlock Growth for {referrals?.reward_days ?? 90} days.</p>
+              </div>
+            </div>
+
+            <div className="mt-6 space-y-3">
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="font-medium text-foreground">{referrals?.qualified_count ?? 0}/{referrals?.target ?? 15} qualified referrals</span>
+                <span className="text-muted-foreground">{referrals?.pending_count ?? 0} pending</span>
+              </div>
+              <div className="h-3 overflow-hidden rounded bg-muted dark:bg-muted/40">
+                <div className="h-full rounded bg-emerald-500 transition-all" style={{ width: `${referralPct}%` }} />
+              </div>
+            </div>
+
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={copyReferralLink}
+                disabled={!referralLink}
+                className="inline-flex items-center justify-center gap-2 rounded-md border border-border px-4 py-2 text-sm font-semibold hover:bg-muted disabled:opacity-60 dark:hover:bg-muted/30"
+              >
+                <Copy className="h-4 w-4" />
+                Copy invite link
+              </button>
+              <button
+                type="button"
+                onClick={() => redeemReferralMutation.mutate()}
+                disabled={!unusedReferralToken || redeemReferralMutation.isPending}
+                className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
+              >
+                <Ticket className="h-4 w-4" />
+                {unusedReferralToken ? "Redeem Growth token" : "No token ready yet"}
+              </button>
+            </div>
+          </div>
+
+          <div className="rounded-md border border-border bg-muted/20 p-4 dark:bg-muted/10">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Your code</p>
+            <p className="mt-2 break-all text-2xl font-bold">{referrals?.code ?? "Loading..."}</p>
+            <p className="mt-3 text-sm text-muted-foreground">
+              {unusedReferralToken
+                ? `Token ready: ${unusedReferralToken.code}`
+                : referrals
+                  ? `${referrals.remaining} more qualified referral${referrals.remaining === 1 ? "" : "s"} until your next token.`
+                  : "Checking referral progress."}
+            </p>
           </div>
         </div>
       </section>

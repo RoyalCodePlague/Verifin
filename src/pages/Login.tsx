@@ -39,6 +39,7 @@ const Login = () => {
   const [loginMode, setLoginMode] = useState<"owner" | "staff">("owner");
   const [showPassword, setShowPassword] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", password: "" });
+  const [referralCode, setReferralCode] = useState("");
   const [staffForm, setStaffForm] = useState({ businessCode: "", username: "", password: "" });
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -47,6 +48,11 @@ const Login = () => {
 
   useEffect(() => {
     if (searchParams.get("signup") === "1") setIsSignUp(true);
+    const ref = searchParams.get("ref") || "";
+    if (ref) {
+      setReferralCode(ref.trim().toUpperCase());
+      setIsSignUp(true);
+    }
   }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -69,7 +75,7 @@ const Login = () => {
         toast.success("Welcome back!");
         navigate("/dashboard");
       } else if (isSignUp) {
-        await register(form.email, form.password, form.name.trim() || undefined);
+        await register(form.email, form.password, form.name.trim() || undefined, referralCode);
         toast.success("Account created. Welcome!");
         navigate("/dashboard");
       } else {
@@ -192,13 +198,21 @@ const Login = () => {
               ) : (
                 <>
                   {isSignUp && (
-                    <div>
-                      <Label>Full Name</Label>
-                      <div className="relative mt-1.5">
-                        <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input placeholder="John Doe" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="pl-9" />
+                    <>
+                      <div>
+                        <Label>Full Name</Label>
+                        <div className="relative mt-1.5">
+                          <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                          <Input placeholder="John Doe" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="pl-9" />
+                        </div>
                       </div>
-                    </div>
+                      {referralCode && (
+                        <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:border-emerald-800/70 dark:bg-emerald-950/30 dark:text-emerald-200">
+                          <BadgeCheck className="h-4 w-4 flex-none" />
+                          Referral code applied: <span className="font-semibold">{referralCode}</span>
+                        </div>
+                      )}
+                    </>
                   )}
                   <div>
                     <Label>Email</Label>

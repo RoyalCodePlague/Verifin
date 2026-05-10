@@ -54,10 +54,11 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
+    referral_code = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
     class Meta:
         model = User
-        fields = ["id", "email", "password", "phone", "business_name"]
+        fields = ["id", "email", "password", "phone", "business_name", "referral_code"]
 
     def validate_email(self, value):
         email = value.strip().lower()
@@ -65,8 +66,19 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("An account with this email already exists.")
         return email
 
+    def validate_referral_code(self, value):
+        code = (value or "").strip().upper()
+        if not code:
+            return ""
+        from billing.models import ReferralCode
+
+        if not ReferralCode.objects.filter(code__iexact=code, is_deleted=False).exists():
+            raise serializers.ValidationError("Referral code is invalid.")
+        return code
+
     def create(self, validated_data):
         password = validated_data.pop("password")
+        referral_code = validated_data.pop("referral_code", "")
         email = validated_data["email"].strip().lower()
         validated_data["email"] = email
         validated_data.setdefault("username", email)
@@ -78,6 +90,10 @@ class RegisterSerializer(serializers.ModelSerializer):
         user.email_verification_sent_at = None
         user.save()
         Profile.objects.get_or_create(user=user)
+        if referral_code:
+            from billing.services import record_referral_signup
+
+            record_referral_signup(user, referral_code)
         return user
 
 

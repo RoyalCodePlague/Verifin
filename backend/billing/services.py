@@ -1,17 +1,21 @@
 from datetime import timedelta
 from decimal import Decimal
+import secrets
 
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
-from .models import BillingCycle, FeatureLimit, Payment, Plan, RegionPrice, Subscription, SubscriptionEvent, TrialPeriod, UsageTracking
+from .models import BillingCycle, FeatureLimit, Payment, Plan, ReferralCode, ReferralRewardToken, ReferralSignup, RegionPrice, Subscription, SubscriptionEvent, TrialPeriod, UsageTracking
 from .features import FEATURE_METADATA
 from .plans import PLAN_DEFINITIONS
 from .regional_pricing import COUNTRY_PRICING, DEFAULT_COUNTRY, normalize_country_code
 
 
 GRACE_PERIOD_DAYS = 7
+REFERRAL_TARGET = 15
+REFERRAL_REWARD_DAYS = 90
+REFERRAL_TOKEN_TTL_DAYS = 180
 _CATALOG_SYNCED = False
 
 
@@ -346,6 +350,176 @@ def change_plan(user, plan_code, billing_period=Subscription.MONTHLY, actor=None
     subscription = activate_plan(user, plan_code, billing_period, trial_days=0, actor=actor or user)
     record_event(subscription, event_type, {"from": current.plan.code, "to": target.code}, actor=actor or user)
     return subscription
+
+
+def _new_referral_code(user):
+    base = "".join(ch for ch in (user.business_name or user.email.split("@")[0]).upper() if ch.isalnum())[:8] or "VERIFIN"
+    for _ in range(20):
+        token = secrets.token_urlsafe(4).upper().replace("-", "").replace("_", "")[:6]
+        code = f"VF-{base}-{token}"
+        if not ReferralCode.objects.filter(code=code).exists():
+            return code
+    return f"VF-{user.id}-{secrets.token_hex(4).upper()}"
+
+
+def get_or_create_referral_code(user):
+    referral_code = getattr(user, "referral_code", None)
+    if referral_code and not referral_code.is_deleted:
+        return referral_code
+    code = _new_referral_code(user)
+    referral_code, _ = ReferralCode.objects.update_or_create(
+        user=user,
+        defaults={"code": code, "is_deleted": False},
+    )
+    return referral_code
+
+
+def _new_reward_token():
+    for _ in range(20):
+        code = f"GROWTH-{secrets.token_urlsafe(8).upper().replace('-', '').replace('_', '')[:12]}"
+        if not ReferralRewardToken.objects.filter(code=code).exists():
+            return code
+    return f"GROWTH-{secrets.token_hex(8).upper()}"
+
+
+@transaction.atomic
+def maybe_issue_referral_reward(user):
+    qualified_count = ReferralSignup.objects.filter(referrer=user, status=ReferralSignup.QUALIFIED, is_deleted=False).count()
+    earned_count = qualified_count // REFERRAL_TARGET
+    existing_count = ReferralRewardToken.objects.filter(user=user, is_deleted=False).count()
+    created = []
+    while existing_count < earned_count:
+        token = ReferralRewardToken.objects.create(
+            user=user,
+            code=_new_reward_token(),
+            plan_code=Plan.GROWTH,
+            referrals_required=REFERRAL_TARGET,
+            reward_days=REFERRAL_REWARD_DAYS,
+            expires_at=timezone.now() + timedelta(days=REFERRAL_TOKEN_TTL_DAYS),
+            metadata={"qualified_referrals": qualified_count, "milestone": existing_count + 1},
+        )
+        created.append(token)
+        subscription = get_or_create_subscription(user)
+        record_event(
+            subscription,
+            "referral_reward_issued",
+            {"token": token.code, "qualified_referrals": qualified_count, "reward_days": token.reward_days},
+            actor=user,
+        )
+        existing_count += 1
+    return created
+
+
+@transaction.atomic
+def record_referral_signup(referred_user, referral_code_value):
+    code_value = (referral_code_value or "").strip().upper()
+    if not code_value:
+        return None
+    referral_code = ReferralCode.objects.filter(code__iexact=code_value, is_deleted=False).select_related("user").first()
+    if not referral_code or referral_code.user_id == referred_user.id:
+        return None
+    if ReferralSignup.objects.filter(referred_user=referred_user, is_deleted=False).exists():
+        return None
+    is_qualified = bool(getattr(referred_user, "email_verified", False) and getattr(referred_user, "is_active", False))
+    signup = ReferralSignup.objects.create(
+        referrer=referral_code.user,
+        referred_user=referred_user,
+        code=referral_code,
+        status=ReferralSignup.QUALIFIED if is_qualified else ReferralSignup.PENDING,
+        qualified_at=timezone.now() if is_qualified else None,
+    )
+    if is_qualified:
+        maybe_issue_referral_reward(referral_code.user)
+    return signup
+
+
+@transaction.atomic
+def qualify_referral_for_user(user):
+    signup = ReferralSignup.objects.filter(referred_user=user, status=ReferralSignup.PENDING, is_deleted=False).select_related("referrer").first()
+    if not signup:
+        return None
+    signup.status = ReferralSignup.QUALIFIED
+    signup.qualified_at = timezone.now()
+    signup.save(update_fields=["status", "qualified_at", "updated_at"])
+    maybe_issue_referral_reward(signup.referrer)
+    return signup
+
+
+def referral_progress(user):
+    code = get_or_create_referral_code(user)
+    qualified_count = ReferralSignup.objects.filter(referrer=user, status=ReferralSignup.QUALIFIED, is_deleted=False).count()
+    pending_count = ReferralSignup.objects.filter(referrer=user, status=ReferralSignup.PENDING, is_deleted=False).count()
+    tokens = ReferralRewardToken.objects.filter(user=user, is_deleted=False).order_by("status", "-created_at")
+    has_unused_token = tokens.filter(status=ReferralRewardToken.UNUSED).exists()
+    remainder = qualified_count % REFERRAL_TARGET
+    remaining = 0 if has_unused_token else (REFERRAL_TARGET - remainder if remainder else REFERRAL_TARGET)
+    return {
+        "code": code.code,
+        "target": REFERRAL_TARGET,
+        "qualified_count": qualified_count,
+        "pending_count": pending_count,
+        "remaining": remaining,
+        "reward_days": REFERRAL_REWARD_DAYS,
+        "tokens": tokens,
+    }
+
+
+@transaction.atomic
+def redeem_referral_reward(user, token_code=""):
+    now = timezone.now()
+    tokens = ReferralRewardToken.objects.select_for_update().filter(user=user, status=ReferralRewardToken.UNUSED, is_deleted=False)
+    if token_code:
+        tokens = tokens.filter(code__iexact=token_code.strip())
+    token = tokens.order_by("expires_at", "created_at").first()
+    if not token:
+        raise ValidationError({"token": "No unused referral reward token was found."})
+    if token.expires_at and token.expires_at < now:
+        token.status = ReferralRewardToken.EXPIRED
+        token.save(update_fields=["status", "updated_at"])
+        raise ValidationError({"token": "This referral reward token has expired."})
+
+    sync_plan_catalog()
+    plan = Plan.objects.get(code=token.plan_code, is_deleted=False)
+    subscription = get_or_create_subscription(user)
+    country_code = subscription.billing_country_code or DEFAULT_COUNTRY
+    region_price = region_price_for(plan, country_code)
+    end_at = now + timedelta(days=token.reward_days)
+
+    subscription.plan = plan
+    subscription.billing_period = Subscription.MONTHLY
+    subscription.status = Subscription.ACTIVE
+    subscription.billing_country_code = region_price.country_code
+    subscription.billing_currency = region_price.currency
+    subscription.current_period_start = now
+    subscription.current_period_end = end_at
+    subscription.trial_ends_at = None
+    subscription.grace_period_ends_at = None
+    subscription.cancel_at_period_end = False
+    subscription.cancelled_at = None
+    subscription.ended_at = None
+    subscription.save()
+
+    cycle = BillingCycle.objects.create(
+        subscription=subscription,
+        period_start=now,
+        period_end=end_at,
+        amount=Decimal("0"),
+        currency=region_price.currency,
+        paid_at=now,
+        status="referral_reward",
+        provider_invoice_id=token.code,
+    )
+    token.status = ReferralRewardToken.REDEEMED
+    token.redeemed_at = now
+    token.save(update_fields=["status", "redeemed_at", "updated_at"])
+    record_event(
+        subscription,
+        "referral_reward_redeemed",
+        {"token": token.code, "cycle_id": cycle.id, "plan": plan.code, "reward_days": token.reward_days},
+        actor=user,
+    )
+    refresh_usage_snapshot(user)
+    return subscription, token
 
 
 def _count_for(user, key):

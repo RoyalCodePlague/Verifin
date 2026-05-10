@@ -166,6 +166,9 @@ class VerifyEmailView(APIView):
         user.is_active = True
         user.email_verification_token = ""
         user.save(update_fields=["email_verified", "is_active", "email_verification_token"])
+        from billing.services import qualify_referral_for_user
+
+        qualify_referral_for_user(user)
         return Response({"detail": "Email verified. You can now sign in."})
 
 

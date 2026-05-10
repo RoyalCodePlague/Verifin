@@ -80,7 +80,7 @@ type AuthContextValue = {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   staffLogin: (businessCode: string, username: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name?: string) => Promise<void>;
+  register: (email: string, password: string, name?: string, referralCode?: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   canAccess: (permission: string) => boolean;
@@ -184,11 +184,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const register = useCallback(
-    async (email: string, password: string, name?: string) => {
+    async (email: string, password: string, name?: string, referralCode?: string) => {
       const res = await registerRequest({
         email,
         password,
         business_name: name || "",
+        referral_code: referralCode || "",
       });
       setTokens(res.access, res.refresh);
       localStorage.removeItem(STAFF_SESSION_KEY);

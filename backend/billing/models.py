@@ -166,3 +166,65 @@ class Payment(TimeStampedSoftDeleteModel):
     status = models.CharField(max_length=20, default="paid")
     provider_payment_id = models.CharField(max_length=255, blank=True)
     provider = models.CharField(max_length=30, default=Subscription.PROVIDER_MOCK)
+
+
+class ReferralCode(TimeStampedSoftDeleteModel):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="referral_code")
+    code = models.CharField(max_length=32, unique=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user} - {self.code}"
+
+
+class ReferralSignup(TimeStampedSoftDeleteModel):
+    PENDING = "pending"
+    QUALIFIED = "qualified"
+    DISQUALIFIED = "disqualified"
+    STATUS_CHOICES = [
+        (PENDING, "pending"),
+        (QUALIFIED, "qualified"),
+        (DISQUALIFIED, "disqualified"),
+    ]
+
+    referrer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="referrals_made")
+    referred_user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="referral_signup")
+    code = models.ForeignKey(ReferralCode, on_delete=models.PROTECT, related_name="signups")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=PENDING)
+    qualified_at = models.DateTimeField(blank=True, null=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.referrer} referred {self.referred_user} ({self.status})"
+
+
+class ReferralRewardToken(TimeStampedSoftDeleteModel):
+    UNUSED = "unused"
+    REDEEMED = "redeemed"
+    EXPIRED = "expired"
+    STATUS_CHOICES = [
+        (UNUSED, "unused"),
+        (REDEEMED, "redeemed"),
+        (EXPIRED, "expired"),
+    ]
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="referral_reward_tokens")
+    code = models.CharField(max_length=40, unique=True, db_index=True)
+    plan_code = models.CharField(max_length=30, default=Plan.GROWTH)
+    referrals_required = models.PositiveIntegerField(default=15)
+    reward_days = models.PositiveIntegerField(default=90)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=UNUSED)
+    expires_at = models.DateTimeField(blank=True, null=True)
+    redeemed_at = models.DateTimeField(blank=True, null=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["status", "-created_at"]
+
+    def __str__(self):
+        return f"{self.user} - {self.code} ({self.status})"
