@@ -45,7 +45,7 @@ const VerifyEmail = () => {
       <p className="text-sm" role="status">{message}</p>
       <>
         {state?.email && <p className="text-sm">Account: {state.email}</p>}
-        <p className="text-sm text-muted-foreground">Email signup accounts remain pending until verified. Check your spam folder too. Your promotion still ends 30 days after signup.</p>
+        <p className="text-sm text-muted-foreground">Email signup accounts remain pending until verified. Check your spam folder too.</p>
         {token && <Button onClick={() => void confirm()} disabled={busy || isLoading} className="w-full">{busy ? "Verifying and signing in..." : "Verify my email & sign in"}</Button>}
         <form onSubmit={resend} className="space-y-3">
           <label htmlFor="verification-email" className="text-sm">Email address</label>

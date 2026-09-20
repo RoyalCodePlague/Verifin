@@ -7,7 +7,7 @@ const highlights = [
   "Use Verifin only for lawful business purposes.",
   "You are responsible for users, staff permissions, and data entered under your account.",
   "You own your business data; Verifin owns the platform, software, brand, and product design.",
-  "The launch promotion ends automatically without a charge; continued premium access requires a paid upgrade.",
+  "The launch promotion ends automatically without a charge; continued Business plan access requires a paid upgrade.",
 ];
 
 const sections = [
@@ -41,7 +41,7 @@ const sections = [
       "Some features are free; others require a paid plan or trial.",
       "Trial access may be limited, changed, or ended if abused or if you are not eligible.",
       "Subscription fees, included features, limits, taxes, and billing cycles are shown during checkout or in the app.",
-      "The launch promotion provides Business for 30 days from signup, followed by free Starter. No card is required and there are no automatic charges.",
+      "The launch promotion provides Business for 30 days from signup, followed by free Starter. There are no automatic charges.",
       "You can switch to Starter before the promotion ends. Paid upgrades are unavailable until payment setup is complete.",
       "We may change prices or plan features with reasonable notice where required.",
       "Refunds are provided only where required by law, stated in the app, or approved by Verifin in writing.",

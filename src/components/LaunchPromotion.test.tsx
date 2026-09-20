@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { LaunchPromotion } from "./LaunchPromotion";
 
 vi.mock("@/lib/api", () => ({ getPricingContextApi: vi.fn() }));
-afterEach(cleanup);
+vi.mock("sonner", () => ({ toast: { info: vi.fn(() => "signup-business-promotion"), dismiss: vi.fn() } }));
+afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 function show(enabled: boolean) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -12,16 +14,19 @@ function show(enabled: boolean) {
   return render(<QueryClientProvider client={client}><LaunchPromotion /></QueryClientProvider>);
 }
 
-describe("launch promotion disclosure", () => {
-  it("explains duration, automatic downgrade and no automatic charge", () => {
-    show(true);
-    expect(screen.getByRole("note")).toHaveTextContent("30 days of premium free");
-    expect(screen.getByRole("note")).toHaveTextContent("automatically moves to the free Starter plan");
-    expect(screen.getByRole("note")).toHaveTextContent("requires a paid upgrade");
-    expect(screen.getByRole("note")).toHaveTextContent("No automatic charges");
+describe("signup promotion notification", () => {
+  it("announces the Business plan and Starter transition without a banner", () => {
+    const { container, unmount } = show(true);
+    expect(container).toBeEmptyDOMElement();
+    expect(toast.info).toHaveBeenCalledWith("Get 30 days of the Business plan free", expect.objectContaining({
+      description: "Your Business plan starts when you sign up. After 30 days, your account moves to the free Starter plan.",
+      closeButton: true,
+    }));
+    unmount();
+    expect(toast.dismiss).toHaveBeenCalledWith("signup-business-promotion");
   });
-  it("does not advertise an offer disabled by the server", () => {
+  it("does not announce an offer disabled by the server", () => {
     show(false);
-    expect(screen.queryByRole("note")).not.toBeInTheDocument();
+    expect(toast.info).not.toHaveBeenCalled();
   });
 });

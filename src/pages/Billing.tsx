@@ -107,11 +107,11 @@ const Billing = () => {
       {billing?.subscription.provider === "launch_promo" && (
         <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 text-sm" role="status">
           <p className="font-semibold">Your free Business launch promotion ends {formatDate(billing.subscription.launch_promo_ends_at)}.</p>
-          <p className="mt-2">You will automatically move to free Starter. Your saved business data stays in your account. Premium features will require a paid upgrade. No automatic charges.</p>
+          <p className="mt-2">You will automatically move to free Starter. Your saved business data stays in your account. Business plan features will require a paid upgrade. No automatic charges.</p>
         </div>
       )}
       {billing?.subscription.launch_promo_ends_at && billing.subscription.provider === "free" && (
-        <p className="rounded-lg border p-4 text-sm">Your account is on free Starter. Your launch promotion cannot be restarted. Premium features require a paid upgrade.</p>
+        <p className="rounded-lg border p-4 text-sm">Your account is on free Starter. Your launch promotion cannot be restarted. Business plan features require a paid upgrade.</p>
       )}
       {!online && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200">
@@ -263,7 +263,7 @@ const Billing = () => {
                   onClick={() => actionMutation.mutate({ action: "downgrade", payload: { plan: "starter" } })}
                   className={`mt-6 w-full rounded-md px-4 py-2 text-sm font-bold transition-colors ${isCurrent ? "bg-muted text-muted-foreground dark:bg-muted/40" : "bg-primary text-primary-foreground hover:bg-primary/90"} disabled:opacity-70`}
                 >
-                  {isCurrent ? "Current plan" : plan.code === "starter" ? "End premium and switch to Starter now" : "Paid upgrades coming soon"}
+                  {isCurrent ? "Current plan" : plan.code === "starter" ? "Switch to Starter now" : "Paid upgrades coming soon"}
                 </button>
               </article>
             );

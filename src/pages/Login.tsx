@@ -127,7 +127,7 @@ const Login = () => {
 
         <Card className="shadow-elevated backdrop-blur-sm bg-card/95">
           <CardContent className="p-6">
-            {(isSignUp || loginMode === "owner") && <LaunchPromotion />}
+            {isSignUp && <LaunchPromotion />}
             {!isSignUp && (
               <div className="mb-4 grid grid-cols-2 rounded-lg bg-muted p-1">
                 <button

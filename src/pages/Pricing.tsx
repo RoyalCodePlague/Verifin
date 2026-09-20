@@ -1,4 +1,3 @@
-import { LaunchPromotion } from "@/components/LaunchPromotion";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
@@ -24,7 +23,6 @@ const comparison = [
 ];
 
 const faqs = [
-  ["Do I need a card today?", "No card is required. Promotional access ends automatically and there are no automatic charges."],
   ["Can I switch plans?", "You can switch to free Starter. Paid upgrades will become available when payment setup is complete."],
   ["What happens at a limit?", "The app blocks the action, explains the limit, and points the user to the plan that unlocks it."],
   ["Can this move to real payments later?", "Yes. The backend already stores provider IDs, events, payments, billing cycles, and webhook-ready records."],
@@ -60,7 +58,7 @@ const Pricing = () => {
   const prices = (pricing.prices.length ? pricing.prices : fallbackPricingContext.prices).sort((a, b) => a.plan.sort_order - b.plan.sort_order);
 
   const startPlan = () => {
-    navigate(isAuthenticated ? "/billing" : "/login");
+    navigate(isAuthenticated ? "/billing" : "/login?signup=1");
   };
 
   return (
@@ -71,10 +69,9 @@ const Pricing = () => {
           <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
             <div className="max-w-3xl">
               <p className="text-sm font-bold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-400">Pricing</p>
-              <LaunchPromotion />
               <h1 className="mt-4 text-4xl font-bold tracking-tight sm:text-5xl">Start free. Upgrade when the business needs more power.</h1>
               <p className="mt-5 text-lg text-muted-foreground">
-                Clear limits, test billing controls, and premium features that unlock only when the plan allows them.
+                Compare Starter, Growth, and Business plans to find the tools your business needs.
               </p>
             </div>
             <div className="mt-8 inline-flex rounded-md border border-border bg-background/90 p-1 dark:bg-card">
