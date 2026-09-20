@@ -18,6 +18,7 @@ def default_api_key_permissions():
 
 class User(AbstractUser, TimeStampedSoftDeleteModel):
     email = models.EmailField(unique=True)
+    google_subject = models.CharField(max_length=255, unique=True, null=True, blank=True, editable=False)
     phone = models.CharField(max_length=30, blank=True)
     business_name = models.CharField(max_length=255, blank=True)
     currency = models.CharField(max_length=10, default="ZAR")
@@ -27,6 +28,7 @@ class User(AbstractUser, TimeStampedSoftDeleteModel):
     dark_mode = models.BooleanField(default=False)
     onboarding_complete = models.BooleanField(default=False)
     email_verified = models.BooleanField(default=True)
+    email_verification_pending = models.BooleanField(default=False)
     email_verification_token = models.CharField(max_length=128, blank=True)
     email_verification_sent_at = models.DateTimeField(blank=True, null=True)
 
@@ -124,3 +126,9 @@ class ApiKey(TimeStampedSoftDeleteModel):
     def set_key(self, raw_key):
         self.key_prefix = raw_key[:18]
         self.key_hash = make_password(raw_key)
+
+
+class AuthThrottleBucket(models.Model):
+    key = models.CharField(max_length=64, unique=True)
+    attempts = models.PositiveIntegerField(default=0)
+    expires_at = models.DateTimeField(db_index=True)

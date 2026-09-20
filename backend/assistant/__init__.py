@@ -1,2 +1,1 @@
-# Assistant App - AI-powered inventory and business management
-default_app_config = 'assistant.apps.AssistantConfig'
+# Retired models and migrations; no assistant runtime or routes.

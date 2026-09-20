@@ -17,7 +17,7 @@ const loyaltyEarnRate = formatRegionalSampleAmount(10, detectedCountry);
 const categories = [
   { icon: BookOpen, label: "Getting Started", articles: [
     { title: "How to set up your business profile", content: "Navigate to Settings from the dashboard sidebar. Enter your business name, select your currency, and add your product categories. You can also complete the onboarding wizard at /onboarding which guides you step-by-step through the entire setup process." },
-    { title: "Understanding the dashboard", content: "The dashboard shows your key metrics: today's sales, inventory value, low stock alerts, and expenses. Use Quick Actions to navigate to common tasks. The AI Insights panel provides automated recommendations based on your data." },
+    { title: "Understanding the dashboard", content: "The dashboard shows your key metrics: today's sales, inventory value, low stock alerts, and expenses. Use Quick Actions to navigate to common tasks. The Business Insights panel provides automated recommendations based on your data." },
     { title: "Adding your first products", content: "Go to the Inventory tab and click 'Add Product'. Enter the product name, category, stock quantity, reorder level, and price. The SKU is generated automatically. You can optionally add a barcode for faster scanning." },
     { title: "Recording your first sale", content: "Navigate to the Sales tab and click 'Record Sale'. Select products from your inventory, set quantities, choose the payment method, and confirm. Stock levels are automatically updated." },
   ]},
@@ -30,13 +30,12 @@ const categories = [
   ]},
   { icon: ShoppingCart, label: "Sales & Expenses", articles: [
     { title: "Recording sales manually", content: "In the Sales tab, click 'Record Sale'. Add products by selecting from your inventory, specify quantities, choose the payment method (Cash, EFT, or Card), and confirm. The sale is logged and stock is deducted automatically." },
-    { title: "Using the Admin Assistant for sales", content: `On the Dashboard, type natural commands like '${helpSaleExample}' into the Admin Assistant. It parses your input, records the sale, and updates inventory - no forms needed.` },
     { title: "Tracking expenses by category", content: "In the Expenses tab, add expenses with a description, amount, and category (Transport, Utilities, Rent, etc.). Use search to filter expenses. All expenses appear in reports and affect your profit calculations." },
     { title: "Payment method tracking", content: "Each sale records the payment method. This helps you track cash vs digital payments. Reports break down sales by payment method for reconciliation." },
   ]},
   { icon: BarChart3, label: "Reports & Analytics", articles: [
     { title: "Exporting reports as CSV/Excel", content: "Go to the Reports tab and click 'Export CSV' on any report type. Files are downloaded as UTF-8 CSV that opens directly in Excel or Google Sheets. Available reports include daily sales, stock movement, expenses, customers, and profit/loss." },
-    { title: "Understanding AI insights", content: "AI Insights appear on the dashboard and analyze your data automatically. They highlight trends (sales up/down), low stock warnings, top-selling products, and customer loyalty opportunities." },
+    { title: "Understanding business insights", content: "Business Insights appear on the dashboard and analyze your data automatically. They highlight trends (sales up/down), low stock warnings, top-selling products, and customer loyalty opportunities." },
     { title: "Sales trend analysis", content: "The Sales This Week chart on the dashboard shows daily sales volumes. Reports provide weekly performance breakdowns comparing sales vs expenses across the period." },
     { title: "Profit & loss overview", content: "The Profit & Loss report calculates: Revenue (total sales) minus Costs (total expenses) = Net Profit. Export this report for your accountant or tax records." },
   ]},
@@ -70,7 +69,6 @@ const baseFaqs = [
   { q: "Can I use Verifin without internet?", a: "Yes. Verifin works offline-first. You can record sales, update stock, and log expenses without internet. Data is stored locally and will sync automatically when you reconnect." },
   { q: "How do I scan barcodes?", a: "Go to the Inventory tab and click the 'Scan' button. Grant camera access and point your device at a barcode. The system will recognize known products or let you save new ones with full product details." },
   { q: "Can I export my data?", a: "Yes. Go to the Reports tab and click 'Export' on any report type. Reports are downloaded as CSV files that open directly in Excel or Google Sheets with proper formatting." },
-  { q: "How does the AI Assistant work?", a: `The Admin Assistant on the dashboard accepts natural language commands like '${helpSaleExample}' or 'What's my inventory value?'. It automatically records transactions, updates stock, and answers business questions.` },
   { q: "Is my data secure?", a: "Your data is protected with secure authentication, HTTPS in production, and access-controlled infrastructure. We are continuing to strengthen encryption, backup, and compliance controls. Your business data is never sold." },
 ];
 
@@ -91,7 +89,7 @@ const HelpCenter = () => {
   const faqs = [
     {
       q: "Is Verifin free to use?",
-      a: `Yes! The Starter plan is free forever and includes core features for 1 user with up to 50 products. Paid plans start at ${monthlyPrice(growthPrice)} for your region, with additional features like AI insights, barcode scanning, and WhatsApp reports.`,
+      a: `Yes! The Starter plan is free forever and includes core features for 1 user with up to 50 products. Paid plans start at ${monthlyPrice(growthPrice)} for your region, with additional features like business insights, barcode scanning, and WhatsApp reports.`,
     },
     ...baseFaqs,
   ];

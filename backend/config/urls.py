@@ -29,7 +29,6 @@ urlpatterns = [
     path('health/', lambda request: JsonResponse({'status': 'ok'})),
     path('favicon.ico', favicon),
     path('admin/', admin.site.urls),
-    path('api/v1/assistant/', include('assistant.urls')),
     path("api/v1/accounts/", include("accounts.urls")),
     path("api/v1/inventory/", include("inventory.urls")),
     path("api/v1/sales/", include("sales.urls")),
@@ -38,7 +37,6 @@ urlpatterns = [
     path("api/v1/customers/", include("customers.urls")),
     path("api/v1/reports/", include("reports.urls")),
     path("api/v1/notifications/", include("notifications.urls")),
-    path("api/v1/assistant/", include("assistant.urls")),
     path("api/v1/billing/", include("billing.urls")),
     path("api/v1/sync/", include("sync.urls")),
 ]

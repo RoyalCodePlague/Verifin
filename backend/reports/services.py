@@ -1,3 +1,4 @@
+from decimal import Decimal
 from datetime import timedelta
 
 from django.db import models
@@ -5,7 +6,7 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from expenses.models import Expense
-from inventory.models import Product
+from inventory.models import Product, SupplyEntry
 from sales.models import Sale
 
 
@@ -22,6 +23,11 @@ def advanced_analytics(user):
     profit = month_sales.aggregate(total=Sum("gross_profit"))["total"] or 0
     previous_revenue = previous_sales.aggregate(total=Sum("total"))["total"] or 0
     expenses_total = expenses.filter(date__gte=month_start).aggregate(total=Sum("amount_base"))["total"] or 0
+    supply_revenue, supply_cost = supply_totals(user, month_start)
+    revenue += supply_revenue
+    cost += supply_cost
+    profit += supply_revenue - supply_cost
+    previous_revenue += supply_totals(user, previous_start, month_start)[0]
     margin = (profit / revenue * 100) if revenue else 0
     growth = ((revenue - previous_revenue) / previous_revenue * 100) if previous_revenue else None
     return {
@@ -68,3 +74,14 @@ def automation_alerts(user):
     if not Sale.objects.filter(created_by=user, date=today, is_deleted=False).exists():
         alerts.append({"rule": "no_sales_today", "severity": "info", "message": "No sales have been recorded today."})
     return {"alerts": alerts, "evaluated_at": timezone.now()}
+
+
+def supply_totals(user, start=None, end=None):
+    entries = SupplyEntry.objects.filter(user=user, is_deleted=False, direction="outgoing", payment_status="paid")
+    if start:
+        entries = entries.filter(movement_date__gte=start)
+    if end:
+        entries = entries.filter(movement_date__lt=end)
+    revenue = sum((entry.quantity * entry.unit_price * entry.fx_rate_to_base for entry in entries), Decimal("0"))
+    cost = sum((entry.quantity * entry.unit_cost * entry.fx_rate_to_base for entry in entries), Decimal("0"))
+    return revenue.quantize(Decimal("0.01")), cost.quantize(Decimal("0.01"))

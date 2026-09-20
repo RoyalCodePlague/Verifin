@@ -1,3 +1,6 @@
+from accounts.authentication import require_area
+from rest_framework.exceptions import ValidationError
+from django.db import transaction
 from django.utils.dateparse import parse_datetime
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -5,7 +8,7 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from .models import SyncConflict
+from .models import ProcessedSyncAction, SyncConflict
 from .serializers import SyncConflictSerializer
 from audits.models import Audit, Discrepancy
 from sales.serializers import SaleSerializer
@@ -92,12 +95,29 @@ class SyncPushView(APIView):
                 "product": product_id,
                 "quantity": item.get("quantity"),
                 "unit_price": item.get("unit_price"),
-                "subtotal": item.get("subtotal"),
+                **({"subtotal": item["subtotal"]} if item.get("subtotal") is not None else {}),
             })
         return resolved
 
+    @transaction.atomic
     def post(self, request):
+        from django.contrib.auth import get_user_model
+        get_user_model().objects.select_for_update().get(pk=request.user.pk)
         actions = request.data.get("actions", [])
+        if not isinstance(actions, list):
+            raise ValidationError({"actions": "Expected a list."})
+        # Authorize the entire batch before any writes, including cached/replayed actions.
+        for queued in actions:
+            if not isinstance(queued, dict) or not isinstance(queued.get("payload", {}), dict) or not isinstance(queued.get("type"), str):
+                raise ValidationError({"actions": "Each action needs a type and an object payload."})
+            kind = queued.get("type", "")
+            area = {"sale": "sales", "expense": "expenses", "restock": "inventory"}.get(kind)
+            if area is None:
+                prefix = kind.split("_")[0]
+                area = {"product": "inventory", "customer": "customers", "staff": "staff", "supplier": "suppliers", "supply": "suppliers", "audit": "audits", "discrepancy": "audits"}.get(prefix)
+            if area is None:
+                raise ValidationError({"actions": "Unsupported sync action type."})
+            require_area(request, area)
         processed = 0
         conflicts = []
         errors = []
@@ -105,6 +125,18 @@ class SyncPushView(APIView):
         local_product_ids = {}
 
         for action in actions:
+            action_id = str(action.get("id", "")).strip()
+            previous = ProcessedSyncAction.objects.filter(user=request.user, action_id=action_id).first() if action_id else None
+            if previous:
+                local_id = str(action.get("payload", {}).get("local_id", ""))
+                if previous.result_id and previous.action_type == "product_create":
+                    local_product_ids[local_id] = previous.result_id
+                if previous.result_id and previous.action_type == "audit_create":
+                    local_audit_ids[local_id] = previous.result_id
+                continue
+            result_id = None
+
+            processed_before = processed
             action_type = action.get("type")
             payload = action.get("payload", {})
 
@@ -125,8 +157,13 @@ class SyncPushView(APIView):
 
                 serializer = SaleSerializer(data=sale_payload, context={"request": request})
                 if serializer.is_valid():
-                    serializer.save(created_by=request.user)
-                    processed += 1
+                    try:
+                        with transaction.atomic():
+                            serializer.save(created_by=request.user)
+                        processed += 1
+                    except ValidationError as exc:
+                        errors.append({"action": action, "detail": exc.detail})
+                        conflicts.append(record_conflict(request.user, action, "Transaction sync failed").id)
                 else:
                     errors.append({"action": action, "errors": serializer.errors})
                     conflicts.append(record_conflict(request.user, action, "Sale sync failed").id)
@@ -138,8 +175,13 @@ class SyncPushView(APIView):
                     payload["category"] = category.id
                 serializer = ExpenseSerializer(data=payload, context={"request": request})
                 if serializer.is_valid():
-                    serializer.save(created_by=request.user)
-                    processed += 1
+                    try:
+                        with transaction.atomic():
+                            serializer.save(created_by=request.user)
+                        processed += 1
+                    except ValidationError as exc:
+                        errors.append({"action": action, "detail": exc.detail})
+                        conflicts.append(record_conflict(request.user, action, "Transaction sync failed").id)
                 else:
                     errors.append({"action": action, "errors": serializer.errors})
                     conflicts.append(record_conflict(request.user, action, "Expense sync failed").id)
@@ -150,6 +192,7 @@ class SyncPushView(APIView):
                     "barcode": payload.get("barcode", ""),
                     "category": self._inventory_category_id(request, payload),
                     "stock": payload.get("stock", 0),
+                    "preferred_supplier": payload.get("preferred_supplier"),
                     "reorder_level": payload.get("reorder_level", payload.get("reorder", 0)),
                     "cost_price": payload.get("cost_price", 0),
                     "price": payload.get("price", 0),
@@ -158,6 +201,7 @@ class SyncPushView(APIView):
                 serializer = ProductSerializer(data=product_payload, context={"request": request})
                 if serializer.is_valid():
                     product = serializer.save(user=request.user)
+                    result_id = product.id
                     local_id = payload.get("local_id")
                     if local_id:
                         local_product_ids[str(local_id)] = product.id
@@ -167,17 +211,26 @@ class SyncPushView(APIView):
                     conflicts.append(record_conflict(request.user, action, "Product create sync failed").id)
             elif action_type == "product_update":
                 try:
-                    product = Product.objects.get(id=payload.get("id"), user=request.user, is_deleted=False)
+                    product = Product.objects.select_for_update().get(id=payload.get("id") or local_product_ids.get(str(payload.get("local_id"))), user=request.user, is_deleted=False)
                 except Product.DoesNotExist:
                     errors.append({"action": action, "detail": "Product not found"})
                     conflicts.append(record_conflict(request.user, action, "Product update target missing").id)
+                    continue
+
+                expected_stock = payload.get("expected_stock")
+                if expected_stock is not None and payload.get("stock") == expected_stock:
+                    payload = {key: value for key, value in payload.items() if key != "stock"}
+                elif "stock" in payload and (expected_stock is None or product.stock != expected_stock):
+                    errors.append({"action": action, "detail": "Stock changed since this offline edit. Review the current stock before applying it."})
+                    conflicts.append(record_conflict(request.user, action, "Stock changed since offline edit").id)
                     continue
 
                 product_payload = {
                     "name": payload.get("name", product.name),
                     "sku": payload.get("sku", product.sku),
                     "barcode": payload.get("barcode", product.barcode),
-                    "category": self._inventory_category_id(request, payload),
+                    "category": self._inventory_category_id(request, payload) if any(k in payload for k in ("category", "categoryName", "category_name")) else product.category_id,
+                    "preferred_supplier": payload.get("preferred_supplier", product.preferred_supplier_id),
                     "stock": payload.get("stock", product.stock),
                     "reorder_level": payload.get("reorder_level", payload.get("reorder", product.reorder_level)),
                     "cost_price": payload.get("cost_price", product.cost_price),
@@ -264,18 +317,56 @@ class SyncPushView(APIView):
                 else:
                     errors.append({"action": action, "errors": serializer.errors})
                     conflicts.append(record_conflict(request.user, action, "Supplier create sync failed").id)
+            elif action_type in ("supply_create", "supply_update"):
+                from inventory.supply import SupplyEntrySerializer
+                from inventory.models import SupplyEntry
+                supply_payload = dict(payload)
+                instance = None
+                if action_type == "supply_update":
+                    instance = SupplyEntry.objects.filter(user=request.user, request_id=supply_payload.pop("requestId", ""), is_deleted=False).first()
+                    if instance is None:
+                        errors.append({"action": action, "detail": "Supply entry not found"})
+                        conflicts.append(record_conflict(request.user, action, "Supply entry not found").id)
+                        continue
+                else:
+                    local_id = str(supply_payload.get("productId", ""))
+                    if local_id in local_product_ids:
+                        supply_payload["productId"] = local_product_ids[local_id]
+                serializer = SupplyEntrySerializer(instance, data=supply_payload, partial=instance is not None, context={"request": request})
+                try:
+                    serializer.is_valid(raise_exception=True)
+                    serializer.save()
+                    processed += 1
+                except ValidationError as exc:
+                    errors.append({"action": action, "detail": exc.detail})
+                    conflicts.append(record_conflict(request.user, action, "Supply sync failed").id)
+
             elif action_type == "audit_create":
-                audit = Audit.objects.create(
-                    conductor=request.user,
-                    status=payload.get("status", "in_progress"),
-                    items_counted=payload.get("items_counted", 0),
-                    discrepancies_found=payload.get("discrepancies_found", 0),
-                    completed_at=timezone.now() if payload.get("status") == "completed" else None,
-                )
+                from audits.serializers import AuditSerializer
+                enforce_feature(request.user, "audits")
+                serializer = AuditSerializer(data=payload, context={"request": request})
+                if not serializer.is_valid():
+                    errors.append({"action": action, "errors": serializer.errors})
+                    conflicts.append(record_conflict(request.user, action, "Audit create failed").id)
+                    continue
+                audit = serializer.save(conductor=request.user)
+                result_id = audit.id
                 local_id = payload.get("local_id")
                 if local_id:
                     local_audit_ids[str(local_id)] = audit.id
                 processed += 1
+            elif action_type == "audit_complete":
+                from audits.services import complete_audit
+                audit_id = payload.get("id") or local_audit_ids.get(str(payload.get("local_id")))
+                counts = payload.get("counts")
+                if counts is not None:
+                    counts = [{**row, "product": local_product_ids.get(str(row.get("product")), row.get("product"))} for row in counts]
+                try:
+                    complete_audit(request, audit_id, counts)
+                    processed += 1
+                except (ValidationError, Audit.DoesNotExist) as exc:
+                    errors.append({"action": action, "detail": str(exc)})
+                    conflicts.append(record_conflict(request.user, action, "Audit completion failed").id)
             elif action_type == "audit_update":
                 audit_id = payload.get("id") or local_audit_ids.get(str(payload.get("local_id")))
                 try:
@@ -285,16 +376,20 @@ class SyncPushView(APIView):
                     conflicts.append(record_conflict(request.user, action, "Audit update target missing").id)
                     continue
 
-                if payload.get("status"):
-                    audit.status = payload["status"]
-                    if audit.status == "completed" and not audit.completed_at:
-                        audit.completed_at = timezone.now()
-                if payload.get("items_counted") is not None:
-                    audit.items_counted = payload["items_counted"]
-                if payload.get("discrepancies_found") is not None:
-                    audit.discrepancies_found = payload["discrepancies_found"]
-                audit.save()
-                processed += 1
+                from audits.serializers import AuditSerializer
+                from audits.services import complete_audit
+                try:
+                    enforce_feature(request.user, "audits")
+                    if payload.get("status") == "completed":
+                        complete_audit(request, audit.id)
+                    else:
+                        serializer = AuditSerializer(audit, data=payload, partial=True, context={"request": request})
+                        serializer.is_valid(raise_exception=True)
+                        serializer.save()
+                    processed += 1
+                except ValidationError as exc:
+                    errors.append({"action": action, "detail": str(exc)})
+                    conflicts.append(record_conflict(request.user, action, "Audit update failed").id)
             elif action_type == "discrepancy_create":
                 audit_id = payload.get("audit") or local_audit_ids.get(str(payload.get("audit_local_id")))
                 product_id = payload.get("product")
@@ -329,6 +424,13 @@ class SyncPushView(APIView):
             else:
                 errors.append({"action": action, "detail": "Unsupported sync action type"})
                 conflicts.append(record_conflict(request.user, action, "Unsupported sync action").id)
+
+            if action_id and processed > processed_before:
+                ProcessedSyncAction.objects.get_or_create(
+                    user=request.user,
+                    action_id=action_id,
+                    defaults={"action_type": str(action_type or ""), "result_id": result_id},
+                )
 
         response_data = {
             "processed": processed,

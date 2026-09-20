@@ -1,8 +1,9 @@
+from accounts.authentication import require_area
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from urllib.parse import quote
-from assistant.services import generate_whatsapp_summary, make_json_safe
+from reports.business_services import generate_whatsapp_summary, make_json_safe
 from billing.services import enforce_feature
 from .models import Feedback, FeedbackVote, NotificationLog, NotificationPreference
 from .serializers import FeedbackSerializer, NotificationLogSerializer, NotificationPreferenceSerializer
@@ -33,6 +34,7 @@ class NotificationLogViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=["post"], url_path="whatsapp-report")
     def whatsapp_report(self, request):
+        require_area(request, "reports")
         enforce_feature(request.user, "whatsapp_reports")
         payload = make_json_safe(generate_whatsapp_summary(request.user))
         message = payload.get("message", "")

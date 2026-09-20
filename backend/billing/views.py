@@ -1,9 +1,13 @@
+from django.conf import settings
+from rest_framework.exceptions import PermissionDenied
+from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from .models import Payment, Plan, RegionPrice, Subscription, SubscriptionEvent
+from .providers import get_checkout_provider, get_provider_status
 from .serializers import BillingOverviewSerializer, PaymentSerializer, PlanSerializer, PricingContextSerializer, ReferralProgressSerializer, RegionPriceSerializer, SubscriptionEventSerializer, SubscriptionSerializer
 from .services import (
     activate_plan,
@@ -51,6 +55,16 @@ class SubscriptionViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = SubscriptionSerializer
     permission_classes = [IsAuthenticated]
 
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        # Payment verification is not integrated yet. Never grant paid access from a public test action.
+        if self.action == "pesepay_checkout":
+            raise PermissionDenied("Paid upgrades are coming soon. No payment has been taken.")
+        if self.action in {"mock_checkout", "mock_trial", "renew", "upgrade", "resume", "expire", "cancel"} and not settings.BILLING_TEST_MODE:
+            raise PermissionDenied("Test billing is disabled. Paid upgrades are coming soon.")
+        if self.action == "downgrade" and request.data.get("plan", "starter") != "starter" and not settings.BILLING_TEST_MODE:
+            raise PermissionDenied("Only the free Starter plan is available without payment.")
+
     def get_queryset(self):
         if not self.request.user.is_authenticated:
             return Subscription.objects.none()
@@ -97,6 +111,73 @@ class SubscriptionViewSet(viewsets.ReadOnlyModelViewSet):
             actor=request.user,
         )
         return Response(BillingOverviewSerializer(subscription_payload(subscription.user)).data)
+
+    @action(detail=False, methods=["get"], url_path="providers")
+    def provider_status(self, request):
+        return Response({"providers": get_provider_status()})
+
+    @action(detail=False, methods=["post"], url_path="pesepay-checkout")
+    def pesepay_checkout(self, request):
+        provider = get_checkout_provider("pesepay")
+        plan_code = request.data.get("plan", "growth")
+        billing_period = request.data.get("billing_period", "monthly")
+        country_code = request.data.get("country_code") or "ZA"
+        amount = float(request.data.get("amount") or 0)
+        if amount <= 0:
+            plan = Plan.objects.filter(code=plan_code, is_deleted=False).first()
+            if plan is None:
+                return Response({"detail": "Plan not found."}, status=status.HTTP_400_BAD_REQUEST)
+            amount = float(plan.monthly_price if billing_period == "monthly" else plan.yearly_price)
+
+        plan_name = Plan.objects.filter(code=plan_code, is_deleted=False).first()
+        return_url = request.data.get("return_url") or getattr(request, "META", {}).get("HTTP_REFERER") or "http://localhost:8080/billing"
+        result_url = request.data.get("result_url") or "http://localhost:8080/billing"
+        payload = provider.initiate_checkout(
+            plan_name=(plan_name.name if plan_name else plan_code),
+            amount=amount,
+            currency="ZAR",
+            reference=f"verifin-{request.user.id}-{plan_code}-{billing_period}-{timezone.now().strftime('%Y%m%d%H%M%S')}",
+            return_url=return_url,
+            result_url=result_url,
+            customer_email=getattr(request.user, "email", None),
+            customer_name=getattr(request.user, "business_name", None) or getattr(request.user, "username", None),
+            phone_number=getattr(request.user, "phone", None),
+        )
+
+        if payload.get("mode") in {"demo", "disabled", "unconfigured"}:
+            if payload.get("mode") == "demo":
+                activate_plan(
+                    request.user,
+                    plan_code,
+                    billing_period,
+                    actor=request.user,
+                    country_code=country_code,
+                )
+            return Response(
+                {
+                    "detail": payload.get("message") or "Checkout was not started.",
+                    "provider": payload.get("provider", "pesepay"),
+                    "reference": payload.get("reference"),
+                    "redirect_url": payload.get("redirect_url"),
+                    "status": payload.get("status", "disabled"),
+                    "transaction_status": payload.get("status", "disabled"),
+                    "billing": BillingOverviewSerializer(subscription_payload(request.user)).data,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        return Response(
+            {
+                "detail": payload.get("message") or "Pesepay checkout available.",
+                "provider": payload.get("provider", "pesepay"),
+                "reference": payload.get("reference"),
+                "redirect_url": payload.get("redirect_url"),
+                "status": payload.get("status"),
+                "transaction_status": payload.get("transaction_status"),
+                "billing": BillingOverviewSerializer(subscription_payload(request.user)).data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @action(detail=False, methods=["post"])
     def renew(self, request):

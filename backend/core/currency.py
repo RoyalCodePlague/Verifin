@@ -5,7 +5,10 @@ from rest_framework import serializers
 
 def as_decimal(value, field_name="value"):
     try:
-        return Decimal(str(value))
+        result = Decimal(str(value))
+        if not result.is_finite():
+            raise ValueError("Non-finite value")
+        return result
     except (InvalidOperation, TypeError, ValueError) as exc:
         raise serializers.ValidationError({field_name: "Enter a valid number."}) from exc
 

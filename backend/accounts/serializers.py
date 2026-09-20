@@ -1,4 +1,5 @@
 from django.contrib.auth import authenticate, get_user_model, password_validation
+from django.db import transaction
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import ApiKey, Profile, Staff, StaffActivityLog
@@ -32,15 +33,8 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         # Authenticate using email and password
         user = authenticate(username=existing_user.email if existing_user else email, password=password)
         
-        if user is None:
-            # Check if user exists
-            if not existing_user:
-                raise serializers.ValidationError({
-                    'detail': 'User Not Found. Please sign up to create an account.'
-                })
-            raise serializers.ValidationError({
-                'detail': 'Invalid email or password.'
-            })
+        if user is None or user.is_deleted or not user.email_verified:
+            raise serializers.ValidationError({'detail': 'Unable to sign in. Check your credentials and verify your email.'})
 
         # Return refresh and access tokens
         from rest_framework_simplejwt.tokens import RefreshToken
@@ -76,6 +70,7 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Referral code is invalid.")
         return code
 
+    @transaction.atomic
     def create(self, validated_data):
         password = validated_data.pop("password")
         referral_code = validated_data.pop("referral_code", "")
@@ -84,12 +79,15 @@ class RegisterSerializer(serializers.ModelSerializer):
         validated_data.setdefault("username", email)
         user = User(**validated_data)
         user.set_password(password)
-        user.is_active = True
-        user.email_verified = True
+        user.is_active = False
+        user.email_verified = False
+        user.email_verification_pending = True
         user.email_verification_token = ""
         user.email_verification_sent_at = None
         user.save()
         Profile.objects.get_or_create(user=user)
+        from billing.services import start_launch_promotion
+        start_launch_promotion(user)
         if referral_code:
             from billing.services import record_referral_signup
 
@@ -104,6 +102,8 @@ class UserSerializer(serializers.ModelSerializer):
         return f"VF-{obj.id}"
 
     def validate(self, attrs):
+        if self.instance and "email" in attrs and attrs["email"].lower() != self.instance.email.lower():
+            raise serializers.ValidationError({"email": "Email changes require a separate verification flow and are not available here."})
         currency = attrs.get("currency", getattr(self.instance, "currency", "ZAR"))
         enabled = attrs.get("enabled_currencies", getattr(self.instance, "enabled_currencies", [currency])) or [currency]
         normalized_enabled = []
@@ -146,7 +146,7 @@ class UserSerializer(serializers.ModelSerializer):
             "email_verified",
             "business_code",
         ]
-        read_only_fields = ["business_code"]
+        read_only_fields = ["business_code", "email_verified"]
 
 
 class ChangePasswordSerializer(serializers.Serializer):
@@ -243,7 +243,7 @@ class StaffLoginSerializer(serializers.Serializer):
             owner = User.objects.filter(email__iexact=business_code, is_active=True).first()
         if owner is None:
             owner = User.objects.filter(business_name__iexact=business_code, is_active=True).first()
-        if owner is None:
+        if owner is None or not owner.email_verified or owner.is_deleted:
             raise serializers.ValidationError({"detail": "Business account not found."})
 
         staff = Staff.objects.filter(user=owner, username__iexact=username, is_deleted=False).first()

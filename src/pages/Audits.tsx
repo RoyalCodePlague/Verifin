@@ -1,3 +1,5 @@
+import { useFeatureAccess, useUpgradePrompt } from "@/lib/features";
+import { useAuth } from "@/lib/auth-context";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { ClipboardCheck, AlertTriangle, CheckCircle, XCircle, Check, Square, PlayCircle, Loader2, Zap, Search, Eye } from "lucide-react";
@@ -10,7 +12,7 @@ import { addToOfflineQueue, canQueueOfflineAction, isOnline } from "@/lib/offlin
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { createAuditApi, createDiscrepancyApi, resolveDiscrepancyApi, updateAuditApi } from "@/lib/api";
+import { completeAuditApi, createAuditApi, createDiscrepancyApi, resolveDiscrepancyApi, updateAuditApi } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
 
 function formatAuditDate(value: string) {
@@ -53,6 +55,10 @@ function mapApiDiscrepancyToRecord(discrepancy: {
 }
 
 const Audits = () => {
+  const { refreshUser, canAccess } = useAuth();
+  const access = useFeatureAccess();
+  const promptUpgrade = useUpgradePrompt();
+  const auditsEnabled = access.canUse("audits");
   const {
     audits,
     discrepancies,
@@ -164,6 +170,8 @@ const Audits = () => {
   }, []);
 
   const startAudit = async () => {
+    if (!auditsEnabled) { promptUpgrade("audits"); return; }
+    if (!products.length) { toast.info("Add products to inventory before starting a stock audit."); return; }
     const localAudit: Omit<AuditRecord, "id"> = {
       date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
       status: "in_progress",
@@ -248,7 +256,7 @@ const Audits = () => {
   };
 
   const filteredAudits = audits.filter((a) => {
-    const matchesSearch = a.date.toLowerCase().includes(search.toLowerCase()) || a.conductor.toLowerCase().includes(search.toLowerCase());
+    const matchesSearch = String(a.date ?? "").toLowerCase().includes(search.toLowerCase()) || String(a.conductor ?? "You").toLowerCase().includes(search.toLowerCase());
     const matchesStatus = statusFilter === "all" || a.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -272,125 +280,52 @@ const Audits = () => {
   };
 
   const handleSubmitCounts = async (auditId: string) => {
-    const onlineAudit = /^\d+$/.test(auditId) && isOnline() && !canQueueOfflineAction();
-    let discCount = 0;
-
-    for (const p of products) {
-      const actualStr = stockCounts[p.id];
-      if (actualStr === "" || actualStr === undefined) continue;
-
-      const actual = parseInt(actualStr, 10);
-      if (isNaN(actual) || actual === p.stock) continue;
-
-      if (onlineAudit && /^\d+$/.test(p.id)) {
-        try {
-          const created = await createDiscrepancyApi({
-            audit: parseInt(auditId, 10),
-            product: parseInt(p.id, 10),
-            expected_stock: p.stock,
-            actual_stock: actual,
-            difference: actual - p.stock,
-            status: "unresolved",
-          });
-          upsertDiscrepancy(mapApiDiscrepancyToRecord(created));
-        } catch (error) {
-          toast.error(`Could not save discrepancy for ${p.name}.`, {
-            description: error instanceof Error ? error.message : "Please try again.",
-          });
-          return;
-        }
-      } else {
-        addDiscrepancy({ auditId: auditId, product: p.name, expected: p.stock, actual, diff: actual - p.stock, status: "unresolved" });
-      }
-
+    const counts = products.filter(p => stockCounts[p.id] !== "" && stockCounts[p.id] !== undefined).map(p => ({ product: p.id, counted_quantity: Number(stockCounts[p.id]) }));
+    if (!counts.length || counts.some(row => !Number.isInteger(row.counted_quantity) || row.counted_quantity < 0)) {
+      toast.error("Enter at least one valid, nonnegative stock count.");
+      return;
+    }
+    try {
       if (canQueueOfflineAction()) {
-        addToOfflineQueue({
-          type: "discrepancy_create",
-          payload: {
-            audit_local_id: auditId,
-            audit: /^\d+$/.test(auditId) ? parseInt(auditId, 10) : undefined,
-            product: /^\d+$/.test(p.id) ? parseInt(p.id, 10) : undefined,
-            product_name: p.name,
-            expected_stock: p.stock,
-            actual_stock: actual,
-            difference: actual - p.stock,
-          },
-        });
+        addToOfflineQueue({ type: "audit_complete", payload: { id: /^\d+$/.test(auditId) ? Number(auditId) : undefined, local_id: auditId, counts } });
+        updateAudit(auditId, { status: "completed", items: counts.length });
+        toast.success("Stock counts saved locally and queued for sync.");
+      } else {
+        await completeAuditApi(auditId, counts.map(row => ({ ...row, product: Number(row.product) })));
+        await refreshUser();
+        toast.success("Audit completed and stock counts saved.");
       }
-
-      discCount++;
+      setCountOpen(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not complete audit.");
     }
-
-    updateAudit(auditId, { discrepancies: discCount, status: "completed" });
-
-    if (onlineAudit) {
-      try {
-        const updated = await updateAuditApi(auditId, {
-          status: "completed",
-          items_counted: products.length,
-          discrepancies_found: discCount,
-        });
-        const existingAudit = audits.find((audit) => audit.id === auditId);
-        upsertAudit(mapApiAuditToRecord(updated, existingAudit));
-      } catch (error) {
-        toast.error("Could not finish this audit.", {
-          description: error instanceof Error ? error.message : "Please try again.",
-        });
-        return;
-      }
-    } else if (canQueueOfflineAction()) {
-      addToOfflineQueue({
-        type: "audit_update",
-        payload: {
-          local_id: auditId,
-          id: /^\d+$/.test(auditId) ? parseInt(auditId, 10) : undefined,
-          status: "completed",
-          items_counted: products.length,
-          discrepancies_found: discCount,
-        },
-      });
-    }
-
-    addActivity({ text: `Audit completed: ${discCount} discrepancies found`, time: "Just now", type: "alert" });
-    setCountOpen(null);
-    toast.success(canQueueOfflineAction() ? `Audit saved locally. ${discCount} discrepancies will sync when online.` : `Audit completed! ${discCount} discrepancies found.`);
   };
 
   const handleCompleteAudit = async (auditId: string) => {
-    updateAudit(auditId, { status: "completed" });
-
-    if (/^\d+$/.test(auditId) && isOnline() && !canQueueOfflineAction()) {
-      try {
-        const updated = await updateAuditApi(auditId, { status: "completed" });
-        const existingAudit = audits.find((audit) => audit.id === auditId);
-        upsertAudit(mapApiAuditToRecord(updated, existingAudit));
-      } catch (error) {
-        toast.error("Could not update this audit.", {
-          description: error instanceof Error ? error.message : "Please try again.",
-        });
-        return;
+    try {
+      if (canQueueOfflineAction()) {
+        addToOfflineQueue({ type: "audit_complete", payload: { id: /^\d+$/.test(auditId) ? Number(auditId) : undefined, local_id: auditId } });
+        updateAudit(auditId, { status: "completed" });
+      } else {
+        await completeAuditApi(auditId);
+        await refreshUser();
       }
-    } else if (canQueueOfflineAction()) {
-      addToOfflineQueue({
-        type: "audit_update",
-        payload: {
-          local_id: auditId,
-          id: /^\d+$/.test(auditId) ? parseInt(auditId, 10) : undefined,
-          status: "completed",
-        },
-      });
+      setCompleteId(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Record stock counts before completing this audit.");
     }
-
-    addActivity({ text: "Audit marked as completed", time: "Just now", type: "alert" });
-    setCompleteId(null);
-    toast.success(canQueueOfflineAction() ? "Audit update saved locally. It will sync when you are back online." : "Audit marked as completed!");
   };
 
   return (
     <div className="space-y-6">
+      {access.isError && <p role="alert" className="rounded-lg border p-4 text-sm">Could not check audit access. <button className="underline" onClick={() => void access.refetch()}>Try again</button></p>}
+      {access.isSuccess && !auditsEnabled && <div className="rounded-lg border p-4 text-sm" role="status">
+        <p>Stock audits require Growth or Business. Your saved audit history is still available below.</p>
+        {canAccess("billing") && <Button variant="outline" className="mt-3" onClick={() => navigate("/billing")}>View plans</Button>}
+      </div>}
       <div className="flex items-center justify-between">
         <p className="text-muted-foreground text-sm">Track stock accuracy and resolve discrepancies</p>
-        <Button onClick={() => void startAudit()} className="bg-gradient-hero text-primary-foreground"><ClipboardCheck className="mr-2 h-4 w-4" /> Start New Audit</Button>
+        <Button disabled={access.isPending || !auditsEnabled || products.length === 0} onClick={() => void startAudit()} className="bg-gradient-hero text-primary-foreground"><ClipboardCheck className="mr-2 h-4 w-4" /> Start New Audit</Button>
       </div>
 
       <div className="grid grid-cols-3 gap-4">
@@ -529,7 +464,7 @@ const Audits = () => {
                       <p className="font-display font-bold text-destructive">{d.diff}</p>
                       <Badge className={d.status === "unresolved" ? "bg-destructive/10 text-destructive hover:bg-destructive/10" : "bg-warning/10 text-warning hover:bg-warning/10"}>{d.status}</Badge>
                     </div>
-                    <Button size="sm" variant="outline" onClick={() => setResolveId(d.id)}><Check className="mr-1 h-3.5 w-3.5" /> Resolve</Button>
+                    <Button size="sm" variant="outline" disabled={!auditsEnabled} onClick={() => setResolveId(d.id)}><Check className="mr-1 h-3.5 w-3.5" /> Resolve</Button>
                   </div>
                 </motion.div>
               ))}
@@ -546,7 +481,7 @@ const Audits = () => {
               <div key={a.id} className="flex items-center justify-between p-4">
                 <div>
                   <p className="text-sm font-medium">{a.date}</p>
-                  <p className="text-xs text-muted-foreground">By {a.conductor} - {a.items} items</p>
+                  <p className="text-xs text-muted-foreground">By {String(a.conductor ?? "You")} - {a.items} items</p>
                   {a.autoFindings && a.autoFindings.length > 0 && (
                     <button onClick={() => setViewFindings(a.id)} className="mt-0.5 flex items-center gap-1 text-xs text-primary hover:underline">
                       <Eye className="h-3 w-3" /> {a.autoFindings.length} auto-findings
@@ -566,8 +501,8 @@ const Audits = () => {
                     ) : null}
                   {a.status === "in_progress" && (
                     <div className="flex gap-1">
-                      <Button size="sm" variant="outline" onClick={() => openStockCount(a.id)}><PlayCircle className="mr-1 h-3.5 w-3.5" /> Count</Button>
-                      <Button size="sm" variant="outline" onClick={() => setCompleteId(a.id)}><Square className="mr-1 h-3.5 w-3.5" /> Close</Button>
+                      <Button size="sm" variant="outline" disabled={!auditsEnabled} onClick={() => openStockCount(a.id)}><PlayCircle className="mr-1 h-3.5 w-3.5" /> Count</Button>
+                      <Button size="sm" variant="outline" disabled={!auditsEnabled} onClick={() => setCompleteId(a.id)}><Square className="mr-1 h-3.5 w-3.5" /> Close</Button>
                     </div>
                   )}
                   </div>
@@ -575,7 +510,7 @@ const Audits = () => {
               </div>
             ))}
             {filteredAudits.length === 0 && (
-              <p className="p-6 text-center text-sm text-muted-foreground">No audits match your search.</p>
+              <p className="p-6 text-center text-sm text-muted-foreground">{audits.length === 0 ? (products.length === 0 ? "No audits yet. Add products to inventory to begin counting stock." : "No audits yet. Start a new audit to count your stock.") : "No audits match your search."}</p>
             )}
           </div>
         </CardContent>

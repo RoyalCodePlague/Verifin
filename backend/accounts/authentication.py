@@ -13,6 +13,14 @@ ROLE_DEFAULT_PERMISSIONS = {
 
 PATH_PERMISSIONS = (
     ("/api/v1/accounts/staff", "staff"),
+    ("/api/v1/sync/conflicts", "settings"),
+    ("/api/v1/sync/pull", "settings"),
+    ("/api/v1/accounts/api-keys", "settings"),
+    ("/api/v1/accounts/profiles", "settings"),
+    ("/api/v1/accounts/change-password", "settings"),
+    ("/api/v1/accounts/logout-other-devices", "settings"),
+    ("/api/v1/accounts/activity-logs", "staff"),
+    ("/api/v1/inventory/supply-entries", "suppliers"),
     ("/api/v1/billing", "billing"),
     ("/api/v1/reports", "reports"),
     ("/api/v1/audits", "audits"),
@@ -32,11 +40,24 @@ class StaffAwareJWTAuthentication(JWTAuthentication):
             return self.authenticate_api_key(request)
 
         user, token = result
+        if user.is_deleted or not user.email_verified:
+            raise PermissionDenied("Verify your email before accessing this account.")
         staff_id = token.get("staff_id")
         if not staff_id:
             return result
 
+        from .models import Staff
+        staff = Staff.objects.filter(pk=staff_id, user=user, is_deleted=False, status=Staff.ACTIVE, login_enabled=True).first()
+        if staff is None:
+            raise PermissionDenied("This staff account is no longer active.")
+        token["staff_permissions"] = staff.permissions
+        token["staff_role"] = staff.role
+        request.staff_member = staff
         permission = self.permission_for_path(request.path)
+        if request.path == "/api/v1/billing/subscriptions/features/" and request.method in ("GET", "HEAD", "OPTIONS"):
+            permission = None
+        if request.path.startswith("/api/v1/accounts/me/") and request.method not in ("GET", "HEAD", "OPTIONS"):
+            permission = "settings"
         if permission and not self.staff_can_access(token, permission):
             raise PermissionDenied("This staff account does not have access to this area.")
         return result
@@ -50,7 +71,9 @@ class StaffAwareJWTAuthentication(JWTAuthentication):
 
     @staticmethod
     def staff_can_access(token, permission):
-        permissions = token.get("staff_permissions") or ROLE_DEFAULT_PERMISSIONS.get(token.get("staff_role"), [])
+        permissions = token.get("staff_permissions")
+        if permissions is None:
+            permissions = ROLE_DEFAULT_PERMISSIONS.get(token.get("staff_role"), [])
         return "*" in permissions or permission in permissions
 
     def authenticate_api_key(self, request):
@@ -69,6 +92,8 @@ class StaffAwareJWTAuthentication(JWTAuthentication):
             status=ApiKey.ACTIVE,
             is_deleted=False,
             user__is_active=True,
+            user__email_verified=True,
+            user__is_deleted=False,
         )
         for api_key in candidates:
             if not api_key.verify(raw_key):
@@ -86,3 +111,10 @@ class StaffAwareJWTAuthentication(JWTAuthentication):
             request.api_key = api_key
             return (api_key.user, api_key)
         return None
+
+
+def require_area(request, permission):
+    token = request.auth
+    if token is not None and hasattr(token, "get") and token.get("staff_id"):
+        if not StaffAwareJWTAuthentication.staff_can_access(token, permission):
+            raise PermissionDenied("This staff account does not have access to this area.")

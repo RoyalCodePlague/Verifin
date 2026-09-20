@@ -1,9 +1,10 @@
+import { useAuth } from "@/lib/auth-context";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Lock } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { getAccessToken, getBillingOverviewApi, type FeatureAccess } from "@/lib/api";
+import { getAccessToken, getBillingOverviewApi, getFeatureAccessApi, type FeatureAccess, type BillingOverview } from "@/lib/api";
 
 export const FEATURE_LABELS: Record<string, string> = {
   barcode_scanning: "Barcode scanning",
@@ -12,7 +13,6 @@ export const FEATURE_LABELS: Record<string, string> = {
   advanced_analytics: "Advanced analytics",
   forecasting: "Forecasting",
   whatsapp_reports: "WhatsApp summaries",
-  command_assistant: "Command assistant",
   receipt_ocr: "Receipt OCR",
   receipt_scan_simulator: "Receipt scan simulator",
   offline_sync: "Offline sync",
@@ -21,10 +21,12 @@ export const FEATURE_LABELS: Record<string, string> = {
 };
 
 export function useFeatureAccess() {
-  const query = useQuery({
-    queryKey: ["billing-overview"],
-    queryFn: getBillingOverviewApi,
+  const { canAccess, user, staffSession } = useAuth();
+  const query = useQuery<Partial<BillingOverview>>({
+    queryKey: ["feature-access", user?.id, staffSession?.id],
+    queryFn: async () => canAccess("billing") ? getBillingOverviewApi() : getFeatureAccessApi(),
     staleTime: 60_000,
+    refetchInterval: 60_000,
     enabled: !!getAccessToken(),
     retry: false,
   });

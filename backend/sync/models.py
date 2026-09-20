@@ -12,3 +12,15 @@ class SyncConflict(TimeStampedSoftDeleteModel):
     reason = models.CharField(max_length=255, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="open")
     resolution_note = models.CharField(max_length=255, blank=True)
+
+
+class ProcessedSyncAction(TimeStampedSoftDeleteModel):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="processed_sync_actions")
+    action_id = models.CharField(max_length=40)
+    action_type = models.CharField(max_length=40)
+    result_id = models.PositiveBigIntegerField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["user", "action_id"], name="unique_processed_sync_action_per_user"),
+        ]

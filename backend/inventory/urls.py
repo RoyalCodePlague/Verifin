@@ -2,7 +2,10 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from .views import BranchViewSet, CategoryViewSet, ProductViewSet, PurchaseOrderViewSet, StockMovementViewSet, StockTransferViewSet, SupplierViewSet
 
+from .supply import SupplyEntryViewSet
+
 router = DefaultRouter()
+router.register("supply-entries", SupplyEntryViewSet, basename="supply-entries")
 router.register("branches", BranchViewSet, basename="inventory-branches")
 router.register("suppliers", SupplierViewSet, basename="inventory-suppliers")
 router.register("purchase-orders", PurchaseOrderViewSet, basename="inventory-purchase-orders")

@@ -5,7 +5,6 @@ COMMON_LIMITS = {
     "basic_expenses": ("Basic expense logging", True, None, ""),
     "onboarding_checklist": ("Onboarding checklist", True, None, ""),
     "usage_indicators": ("Usage indicators", True, None, ""),
-    "ai_assistant": ("AI/Admin Assistance System", False, 0, ""),
     "audits": ("Inventory audits", False, 0, ""),
     "barcode_scanning": ("Barcode scanning", True, None, ""),
     "receipt_ocr": ("Receipt OCR", False, 0, ""),
@@ -17,7 +16,6 @@ COMMON_LIMITS = {
     "advanced_reports": ("Advanced reports with charts", False, 0, ""),
     "rule_insights": ("Rule-based insights", False, 0, ""),
     "reorder_suggestions": ("Automatic reorder suggestions", False, 0, ""),
-    "command_assistant": ("Command assistant", False, 0, ""),
     "receipt_scan_simulator": ("Receipt scan simulator", False, 0, ""),
     "forecasting": ("Forecasting", False, 0, ""),
     "advanced_analytics": ("Advanced analytics", False, 0, ""),
@@ -41,19 +39,12 @@ STARTER_LIMITS = {
     "reports": ("Basic reports", True, 2, "reports"),
 }
 
-# Testing mode: Starter gets access to every feature while subscription flows are being tested.
-# To restore package-specific access later, remove this loop and keep STARTER_LIMITS as the
-# limited free plan above.
-for _key, (_label, _enabled, _limit, _unit) in list(STARTER_LIMITS.items()):
-    STARTER_LIMITS[_key] = (_label, True, None, _unit)
-
 GROWTH_LIMITS = {
     **COMMON_LIMITS,
     "users": ("Users", True, 3, "users"),
     "products": ("Products", True, None, "unlimited"),
     "customers": ("Customers", True, None, "unlimited"),
     "reports": ("Reports with charts", True, 8, "reports"),
-    "ai_assistant": ("AI/Admin Assistance System", True, None, ""),
     "audits": ("Inventory audits", True, None, ""),
     "barcode_scanning": ("Barcode scanning", True, None, ""),
     "receipt_ocr": ("Receipt OCR", True, None, ""),
@@ -65,7 +56,6 @@ GROWTH_LIMITS = {
     "advanced_reports": ("Advanced reports with charts", True, None, ""),
     "rule_insights": ("Rule-based insights", True, None, ""),
     "reorder_suggestions": ("Automatic reorder suggestions", True, None, ""),
-    "command_assistant": ("Command assistant", True, None, ""),
     "receipt_scan_simulator": ("Receipt scan simulator", True, None, ""),
 }
 

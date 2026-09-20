@@ -82,7 +82,7 @@ const HeroSection = () => {
             </motion.div>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.2 }} className="flex items-center gap-6 mt-8 justify-center lg:justify-start text-sm text-muted-foreground">
               <div className="flex items-center gap-1.5"><Shield className="h-4 w-4 text-primary" /> Offline-first</div>
-              <div className="flex items-center gap-1.5"><TrendingUp className="h-4 w-4 text-primary" /> AI-powered</div>
+              <div className="flex items-center gap-1.5"><TrendingUp className="h-4 w-4 text-primary" /> Stock tracking</div>
             </motion.div>
           </motion.div>
           <motion.div 
@@ -122,7 +122,7 @@ const HeroSection = () => {
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.4 }}
                 className="rounded-lg bg-primary/5 p-3 border border-primary/10"
               >
-                <p className="text-xs text-primary font-medium flex items-center gap-1.5"><Sparkles className="h-3 w-3 flex-shrink-0" /> AI: "Bread is your top seller. Consider restocking — only 5 left."</p>
+                <p className="text-xs text-primary font-medium flex items-center gap-1.5"><Sparkles className="h-3 w-3 flex-shrink-0" /> Stock alert: "Bread is your top seller. Consider restocking — only 5 left."</p>
               </motion.div>
             </div>
           </motion.div>

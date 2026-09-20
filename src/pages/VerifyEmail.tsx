@@ -1,51 +1,60 @@
 import { useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { CheckCircle, XCircle } from "lucide-react";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { verifyEmailRequest } from "@/lib/api";
+import { Input } from "@/components/ui/input";
+import { resendVerificationRequest } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+import { toast } from "sonner";
 
 const VerifyEmail = () => {
-  const [searchParams] = useSearchParams();
-  const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
-  const [message, setMessage] = useState("Verifying your email...");
-
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const { verifyEmail, isLoading } = useAuth();
   useEffect(() => {
-    const token = searchParams.get("token") || "";
-    if (!token) {
-      setStatus("error");
-      setMessage("Verification link is missing a token.");
-      return;
-    }
-    verifyEmailRequest(token)
-      .then((res) => {
-        setStatus("success");
-        setMessage(res.detail);
-      })
-      .catch((err) => {
-        setStatus("error");
-        setMessage(err instanceof Error ? err.message : "Verification failed.");
-      });
-  }, [searchParams]);
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md shadow-elevated">
-        <CardContent className="p-6 text-center space-y-4">
-          <div className="mx-auto h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center">
-            {status === "error" ? <XCircle className="h-6 w-6 text-destructive" /> : <CheckCircle className="h-6 w-6 text-primary" />}
-          </div>
-          <div>
-            <h1 className="font-display font-bold text-xl">{status === "success" ? "Email verified" : status === "error" ? "Verification failed" : "Checking link"}</h1>
-            <p className="text-sm text-muted-foreground mt-2">{message}</p>
-          </div>
-          <Button asChild className="w-full bg-gradient-hero text-primary-foreground">
-            <Link to="/login">Go to sign in</Link>
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
-  );
+    const policy = document.createElement("meta");
+    policy.name = "referrer";
+    policy.content = "no-referrer";
+    document.head.appendChild(policy);
+    return () => policy.remove();
+  }, []);
+  const state = useLocation().state as { email?: string; emailSent?: boolean; detail?: string } | null;
+  const [token] = useState(() => params.get("token") || "");
+  const [email, setEmail] = useState(state?.email || "");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState(state?.detail || (token ? "Confirm your email to activate your account and sign in." : "Enter your signup email to request a verification link."));
+  const confirm = async () => {
+    setBusy(true);
+    try {
+      await verifyEmail(token);
+      toast.success("Email verified. Welcome to Verifin!");
+      navigate("/dashboard", { replace: true });
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Verification failed."); }
+    finally { setBusy(false); }
+  };
+  const resend = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    try { setMessage((await resendVerificationRequest(email)).detail); }
+    catch (error) { setMessage(error instanceof Error ? error.message : "Could not send email."); }
+    finally { setBusy(false); }
+  };
+  return <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <Card className="w-full max-w-md"><CardContent className="p-6 space-y-4">
+      <h1 className="text-xl font-bold">Verify your email</h1>
+      <p className="text-sm" role="status">{message}</p>
+      <>
+        {state?.email && <p className="text-sm">Account: {state.email}</p>}
+        <p className="text-sm text-muted-foreground">Email signup accounts remain pending until verified. Check your spam folder too. Your promotion still ends 30 days after signup.</p>
+        {token && <Button onClick={() => void confirm()} disabled={busy || isLoading} className="w-full">{busy ? "Verifying and signing in..." : "Verify my email & sign in"}</Button>}
+        <form onSubmit={resend} className="space-y-3">
+          <label htmlFor="verification-email" className="text-sm">Email address</label>
+          <Input id="verification-email" type="email" autoComplete="email" required value={email} onChange={event => setEmail(event.target.value)} />
+          <Button type="submit" variant="outline" disabled={busy} className="w-full">Resend verification email</Button>
+        </form>
+      </>
+      <Button asChild variant="outline" className="w-full"><Link to="/login">Go to sign in</Link></Button>
+    </CardContent></Card>
+  </div>;
 };
-
 export default VerifyEmail;

@@ -89,7 +89,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
           clearOfflineQueue();
           setLastSuccessfulSync(new Date().toISOString());
         }
-        if (result.processed > 0 && syncSucceeded) {
+        if (syncSucceeded) {
           toast.success(`Synced ${result.processed} offline changes`);
           await refreshUser();
         }

@@ -53,7 +53,7 @@ class SubscriptionAdmin(admin.ModelAdmin):
     list_display = ["user", "plan", "status", "billing_period", "current_period_end", "trial_ends_at", "cancel_at_period_end"]
     list_filter = ["status", "billing_period", "plan"]
     search_fields = ["user__email", "user__business_name"]
-    readonly_fields = ["provider", "provider_customer_id", "provider_subscription_id"]
+    readonly_fields = ["provider", "provider_customer_id", "provider_subscription_id", "launch_promo_started_at", "launch_promo_ends_at"]
     actions = [activate_growth, activate_business, renew_selected, cancel_selected]
 
 

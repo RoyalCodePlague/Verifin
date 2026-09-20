@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/lib/auth-context";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FileText, PackagePlus, Plus, ShoppingBag, Truck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -74,6 +75,9 @@ function writeCache(key: string, value: unknown) {
 }
 
 const Suppliers = () => {
+  const { refreshUser } = useAuth();
+  const supplyRequestId = useRef(crypto.randomUUID());
+  const [savingEntry, setSavingEntry] = useState(false);
   const { products, profile, supplyEntries, addSupplyEntry } = useStore();
   const [suppliers, setSuppliers] = useState<ApiSupplier[]>([]);
   const [orders, setOrders] = useState<ApiPurchaseOrder[]>([]);
@@ -211,7 +215,8 @@ const Suppliers = () => {
     }
   };
 
-  const saveEntry = () => {
+  const saveEntry = async () => {
+    if (savingEntry) return;
     const quantity = Number(entryForm.quantity) || 0;
     const unitPrice = Number(entryForm.unitPrice) || 0;
     const unitCost = Number(entryForm.unitCost) || 0;
@@ -224,7 +229,9 @@ const Suppliers = () => {
       return;
     }
 
-    const result = addSupplyEntry({
+    setSavingEntry(true);
+    const result = await addSupplyEntry({
+      requestId: supplyRequestId.current,
       direction: entryForm.direction,
       paymentStatus: entryForm.paymentStatus,
       partnerName: entryForm.partnerName.trim(),
@@ -241,11 +248,13 @@ const Suppliers = () => {
       notes: entryForm.notes.trim(),
     });
 
+    setSavingEntry(false);
     if (!result.ok) {
       toast.error(result.message || "Could not save this supply entry");
       return;
     }
 
+    supplyRequestId.current = crypto.randomUUID();
     setEntryForm({
       direction: "incoming",
       paymentStatus: "paid",
@@ -261,6 +270,9 @@ const Suppliers = () => {
       movementTime: timeNow(),
       notes: "",
     });
+    if (!canQueueOfflineAction()) {
+      try { await refreshUser(); } catch { toast.warning("Supply saved. Refresh to reload the latest stock."); }
+    }
     toast.success(result.entry?.direction === "incoming" ? "Supply received and inventory updated" : "Supply sale recorded and inventory updated");
     setActiveTab("invoices");
   };
@@ -294,6 +306,7 @@ const Suppliers = () => {
     try {
       const updated = await receivePurchaseOrderApi(order.id);
       setOrders((prev) => prev.map((item) => item.id === updated.id ? updated : item));
+      await refreshUser();
       toast.success("Stock received and inventory updated");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not receive order");
@@ -601,7 +614,7 @@ const Suppliers = () => {
 
                 <Button
                   onClick={saveEntry}
-                  disabled={!entryForm.partnerName.trim() || !entryForm.productId}
+                  disabled={savingEntry || !entryForm.partnerName.trim() || !entryForm.productId}
                   className="w-full bg-gradient-hero text-primary-foreground"
                 >
                   Save Supply Entry

@@ -41,6 +41,7 @@ class PricingContextSerializer(serializers.Serializer):
     currency = serializers.CharField()
     currency_symbol = serializers.CharField()
     detected_by = serializers.CharField()
+    launch_promotion = serializers.DictField()
     prices = PricingContextPriceSerializer(many=True)
     available_countries = serializers.ListField()
 
@@ -61,6 +62,8 @@ class SubscriptionSerializer(serializers.ModelSerializer):
             "current_period_start",
             "current_period_end",
             "trial_ends_at",
+            "launch_promo_started_at",
+            "launch_promo_ends_at",
             "grace_period_ends_at",
             "cancel_at_period_end",
             "cancelled_at",

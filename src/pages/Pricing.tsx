@@ -1,3 +1,4 @@
+import { LaunchPromotion } from "@/components/LaunchPromotion";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
@@ -10,7 +11,7 @@ import { fallbackPricingContextForCountry } from "@/lib/pricing";
 
 const features: Record<PlanCode, string[]> = {
   starter: ["1 user", "50 products", "100 customers", "Basic sales", "Daily summaries", "2 basic reports"],
-  growth: ["3 users", "Unlimited products", "AI admin assistant", "Audits and barcode scanning", "Receipt OCR", "8 reports with charts"],
+  growth: ["3 users", "Unlimited products", "Sales and expense tracking", "Audits and barcode scanning", "Receipt OCR", "8 reports with charts"],
   business: ["Unlimited users", "Forecasting", "Advanced analytics", "Role-based access", "Offline auto-sync", "Excel exports and API access"],
 };
 
@@ -18,14 +19,13 @@ const comparison = [
   ["Users", "1", "3", "Unlimited"],
   ["Products", "50", "Unlimited", "Unlimited"],
   ["Customers", "100", "Unlimited", "Unlimited"],
-  ["AI assistance", "Locked", "Included", "Included"],
   ["Forecasting", "Locked", "Locked", "Included"],
   ["Exports", "Basic", "Reports", "Excel and API"],
 ];
 
 const faqs = [
-  ["Do I need a card today?", "No. The current checkout is a local mock flow for testing subscriptions before a real payment provider is connected."],
-  ["Can I switch plans?", "Yes. Upgrades, downgrades, renewals, cancellations, trials, and grace periods are handled by the backend billing engine."],
+  ["Do I need a card today?", "No card is required. Promotional access ends automatically and there are no automatic charges."],
+  ["Can I switch plans?", "You can switch to free Starter. Paid upgrades will become available when payment setup is complete."],
   ["What happens at a limit?", "The app blocks the action, explains the limit, and points the user to the plan that unlocks it."],
   ["Can this move to real payments later?", "Yes. The backend already stores provider IDs, events, payments, billing cycles, and webhook-ready records."],
 ];
@@ -71,6 +71,7 @@ const Pricing = () => {
           <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
             <div className="max-w-3xl">
               <p className="text-sm font-bold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-400">Pricing</p>
+              <LaunchPromotion />
               <h1 className="mt-4 text-4xl font-bold tracking-tight sm:text-5xl">Start free. Upgrade when the business needs more power.</h1>
               <p className="mt-5 text-lg text-muted-foreground">
                 Clear limits, test billing controls, and premium features that unlock only when the plan allows them.
@@ -116,7 +117,7 @@ const Pricing = () => {
                 </div>
                 {period === "yearly" && plan.code !== "starter" && <p className="mt-2 text-sm font-semibold text-emerald-700 dark:text-emerald-400">Two months included</p>}
                 <button type="button" onClick={startPlan} className="mt-6 w-full rounded-md bg-primary px-4 py-3 text-sm font-bold text-primary-foreground hover:bg-primary/90">
-                  {plan.code === "starter" ? "Start free" : "Test upgrade"}
+                  {plan.code === "starter" ? "Start free" : "Create account"}
                 </button>
                 <ul className="mt-6 space-y-3 text-sm">
                   {features[plan.code].map((feature) => (

@@ -1,3 +1,5 @@
+from datetime import timedelta
+from django.utils import timezone
 from decimal import Decimal
 from django.db.models import Sum
 from django.http import HttpResponse
@@ -15,7 +17,9 @@ class DailySalesView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        total = Sale.objects.filter(created_by=request.user).aggregate(total=Sum("total"))["total"] or 0
+        today = timezone.localdate()
+        total = Sale.objects.filter(created_by=request.user, is_deleted=False, date=today).aggregate(total=Sum("total"))["total"] or 0
+        total += services.supply_totals(request.user, today, today + timedelta(days=1))[0]
         return Response({"daily_sales": total})
 
 
@@ -40,7 +44,7 @@ class ExpenseAnalysisView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        total = Expense.objects.filter(created_by=request.user).aggregate(total=Sum("amount_base"))["total"] or 0
+        total = Expense.objects.filter(created_by=request.user, is_deleted=False).aggregate(total=Sum("amount_base"))["total"] or 0
         return Response({"total_expenses": total})
 
 
@@ -49,11 +53,15 @@ class ProfitLossView(APIView):
 
     def get(self, request):
         enforce_feature(request.user, "advanced_analytics")
-        sales = Sale.objects.filter(created_by=request.user)
+        sales = Sale.objects.filter(created_by=request.user, is_deleted=False)
         sales_total = sales.aggregate(total=Sum("total"))["total"] or 0
         cost_total = sales.aggregate(total=Sum("total_cost"))["total"] or 0
         gross_profit = sales.aggregate(total=Sum("gross_profit"))["total"] or 0
-        expense_total = Expense.objects.filter(created_by=request.user).aggregate(total=Sum("amount_base"))["total"] or 0
+        expense_total = Expense.objects.filter(created_by=request.user, is_deleted=False).aggregate(total=Sum("amount_base"))["total"] or 0
+        supply_revenue, supply_cost = services.supply_totals(request.user)
+        sales_total += supply_revenue
+        cost_total += supply_cost
+        gross_profit += supply_revenue - supply_cost
         margin = (gross_profit / sales_total * 100) if sales_total else 0
         return Response({
             "sales": sales_total,
@@ -72,8 +80,8 @@ class MarginReportView(APIView):
         enforce_feature(request.user, "advanced_analytics")
         rows = []
         for product in Product.objects.filter(user=request.user, is_deleted=False):
-            revenue = Sale.objects.filter(created_by=request.user, sale_items__product=product).aggregate(total=Sum("sale_items__subtotal"))["total"] or 0
-            cost = Sale.objects.filter(created_by=request.user, sale_items__product=product).aggregate(total=Sum("sale_items__cost_total"))["total"] or 0
+            revenue = Sale.objects.filter(created_by=request.user, is_deleted=False, sale_items__product=product).aggregate(total=Sum("sale_items__subtotal"))["total"] or 0
+            cost = Sale.objects.filter(created_by=request.user, is_deleted=False, sale_items__product=product).aggregate(total=Sum("sale_items__cost_total"))["total"] or 0
             profit = revenue - cost
             margin = (profit / revenue * 100) if revenue else 0
             rows.append({
@@ -127,8 +135,8 @@ class ProfitLeakView(APIView):
                         "suggested_action": "Review discount approvals and cashier pricing rules.",
                     })
 
-        expense_total = Expense.objects.filter(created_by=request.user).aggregate(total=Sum("amount_base"))["total"] or 0
-        gross_profit = Sale.objects.filter(created_by=request.user).aggregate(total=Sum("gross_profit"))["total"] or 0
+        expense_total = Expense.objects.filter(created_by=request.user, is_deleted=False).aggregate(total=Sum("amount_base"))["total"] or 0
+        gross_profit = Sale.objects.filter(created_by=request.user, is_deleted=False).aggregate(total=Sum("gross_profit"))["total"] or 0
         if gross_profit and expense_total > gross_profit * Decimal("0.35"):
             leaks.append({
                 "type": "expense_drag",

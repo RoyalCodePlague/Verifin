@@ -8,7 +8,24 @@ applySystemThemeClass();
 setupAdaptiveAppIcons();
 
 // Register service worker for PWA
-if ('serviceWorker' in navigator) {
+if ('serviceWorker' in navigator && import.meta.env.DEV) {
+  // Vite modules use stable URLs; a cache-first worker can serve incompatible old pages.
+  void navigator.serviceWorker.getRegistrations().then(async (registrations) => {
+    let removed = false;
+    for (const registration of registrations) {
+      const worker = registration.active || registration.waiting || registration.installing;
+      if (worker && new URL(worker.scriptURL).pathname === '/service-worker.js') {
+        removed = await registration.unregister() || removed;
+      }
+    }
+    for (const key of await caches.keys()) {
+      if (key.startsWith('verifin-cache-')) await caches.delete(key);
+    }
+    if (removed && navigator.serviceWorker.controller) window.location.reload();
+  }).catch(console.warn);
+}
+
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
 	window.addEventListener('load', () => {
 		let refreshing = false;
 		navigator.serviceWorker.addEventListener('controllerchange', () => {

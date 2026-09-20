@@ -1,0 +1,320 @@
+chnage <!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Verifin | Business control, without the paperwork</title>
+  <meta name="description" content="A printable Verifin marketing flyer for African SMEs.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #10231d;
+      --green: #206f4a;
+      --deep-green: #123c2c;
+      --mint: #dff1e8;
+      --amber: #e89b12;
+      --paper: #fbfaf9;
+      --line: #d8e3dd;
+      --muted: #5e6f67;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      background: #dce5df;
+      color: var(--ink);
+      font-family: "DM Sans", sans-serif;
+      padding: 28px;
+    }
+    .flyer {
+      width: min(100%, 794px);
+      min-height: 1123px;
+      margin: 0 auto;
+      overflow: hidden;
+      position: relative;
+      background: var(--paper);
+      box-shadow: 0 20px 60px rgba(16, 35, 29, .18);
+    }
+    .flyer::before {
+      content: "";
+      position: absolute;
+      width: 430px;
+      height: 430px;
+      border: 1px solid rgba(232, 155, 18, .35);
+      border-radius: 50%;
+      right: -230px;
+      top: 130px;
+    }
+    .flyer::after {
+      content: "";
+      position: absolute;
+      width: 260px;
+      height: 260px;
+      border: 1px solid rgba(32, 111, 74, .18);
+      border-radius: 50%;
+      left: -155px;
+      bottom: 170px;
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 30px 54px;
+      position: relative;
+      z-index: 1;
+    }
+    .brand { display: flex; align-items: center; gap: 11px; }
+    .brand img { width: 42px; height: 42px; object-fit: contain; }
+    .brand-name {
+      font-family: "Space Grotesk", sans-serif;
+      font-size: 23px;
+      font-weight: 700;
+      letter-spacing: .12em;
+    }
+    .edition {
+      color: var(--green);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+    .hero {
+      background: var(--deep-green);
+      color: white;
+      margin: 0 26px;
+      padding: 48px 48px 42px;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      right: -105px;
+      top: -138px;
+      width: 390px;
+      height: 390px;
+      border: 2px solid rgba(232, 155, 18, .55);
+      border-radius: 50%;
+    }
+    .eyebrow {
+      color: #f4bf51;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      position: relative;
+      z-index: 1;
+    }
+    h1, h2, h3 { font-family: "Space Grotesk", sans-serif; margin: 0; }
+    h1 {
+      font-size: clamp(42px, 7vw, 66px);
+      line-height: .98;
+      letter-spacing: -.045em;
+      max-width: 560px;
+      margin-top: 16px;
+      position: relative;
+      z-index: 1;
+    }
+    h1 span { color: #f4bf51; }
+    .hero-copy {
+      color: #d6e4dd;
+      font-size: 17px;
+      line-height: 1.55;
+      max-width: 490px;
+      margin: 22px 0 0;
+      position: relative;
+      z-index: 1;
+    }
+    .hero-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid rgba(255,255,255,.22);
+      color: #eff8f3;
+      font-size: 12px;
+      font-weight: 600;
+      margin-top: 28px;
+      padding: 9px 12px;
+      position: relative;
+      z-index: 1;
+    }
+    .hero-tag b { color: #f4bf51; font-size: 16px; }
+    .content { padding: 42px 54px 0; position: relative; z-index: 1; }
+    .section-label {
+      color: var(--green);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+    .intro {
+      display: grid;
+      grid-template-columns: 1.15fr .85fr;
+      gap: 34px;
+      align-items: end;
+    }
+    .intro h2 { font-size: 31px; line-height: 1.08; letter-spacing: -.035em; margin-top: 10px; max-width: 420px; }
+    .intro p { color: var(--muted); line-height: 1.55; margin: 0; font-size: 14px; }
+    .features { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-top: 27px; }
+    .feature {
+      background: white;
+      border: 1px solid var(--line);
+      min-height: 104px;
+      padding: 17px;
+    }
+    .feature:nth-child(2) { border-top: 3px solid var(--amber); }
+    .feature:nth-child(3) { border-top: 3px solid var(--green); }
+    .feature:nth-child(4) { border-top: 3px solid var(--amber); }
+    .feature:nth-child(5) { border-top: 3px solid var(--green); }
+    .feature:nth-child(6) { border-top: 3px solid var(--amber); }
+    .feature-icon { color: var(--green); font-size: 20px; font-weight: 700; line-height: 1; }
+    .feature h3 { font-size: 15px; margin-top: 9px; }
+    .feature p { color: var(--muted); font-size: 12px; line-height: 1.4; margin: 5px 0 0; }
+    .workflow {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+      margin-top: 38px;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      padding: 22px 0;
+    }
+    .step { padding: 0 15px; border-right: 1px solid var(--line); }
+    .step:first-child { padding-left: 0; }
+    .step:last-child { border-right: 0; }
+    .step-number { color: var(--amber); font-family: "Space Grotesk", sans-serif; font-size: 13px; font-weight: 700; }
+    .step h3 { font-size: 14px; margin-top: 8px; }
+    .step p { color: var(--muted); font-size: 11px; line-height: 1.4; margin: 5px 0 0; }
+    .cta {
+      background: var(--mint);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 30px;
+      margin: 42px 26px 0;
+      padding: 28px 30px;
+      position: relative;
+      z-index: 1;
+    }
+    .cta h2 { color: var(--deep-green); font-size: 27px; line-height: 1.05; letter-spacing: -.035em; max-width: 380px; }
+    .cta p { color: #456459; font-size: 13px; line-height: 1.45; margin: 10px 0 0; max-width: 370px; }
+    .qr { background: white; padding: 8px; width: 108px; height: 108px; flex: 0 0 auto; }
+    .qr img { width: 100%; height: 100%; display: block; }
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 25px 54px 32px;
+      color: var(--muted);
+      font-size: 11px;
+      position: relative;
+      z-index: 1;
+    }
+    .footer strong { color: var(--green); }
+    .url { font-weight: 700; color: var(--deep-green); }
+    @media (max-width: 620px) {
+      body { padding: 0; background: var(--paper); }
+      .flyer { min-height: 100vh; box-shadow: none; }
+      .topbar, .content, .footer { padding-left: 24px; padding-right: 24px; }
+      .hero { margin: 0; padding: 38px 24px 34px; }
+      .intro, .cta { grid-template-columns: 1fr; display: grid; }
+      .features { grid-template-columns: 1fr; }
+      .workflow { grid-template-columns: repeat(2, 1fr); gap: 20px 0; }
+      .step:nth-child(2) { border-right: 0; }
+      .step:nth-child(3) { padding-left: 0; }
+      .cta { margin: 32px 0 0; }
+    }
+    @media print {
+      @page { size: A4; margin: 0; }
+      body { background: white; padding: 0; }
+      .flyer { width: 210mm; min-height: 297mm; box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="flyer">
+    <header class="topbar">
+      <div class="brand">
+        <img src="/favicomatic-LIGHT/favicon-128.png" alt="">
+        <div class="brand-name">VERIFIN</div>
+      </div>
+      <div class="edition">Built for African SMEs</div>
+    </header>
+
+    <section class="hero">
+      <div class="eyebrow">Your business, in control</div>
+      <h1>Stop guessing.<br><span>Start growing.</span></h1>
+      <p class="hero-copy">Verifin brings inventory, sales, expenses, audits, and business insights into one practical operating system.</p>
+      <div class="hero-tag"><b>✦</b> Simple enough for today. Powerful enough for tomorrow.</div>
+    </section>
+
+    <section class="content">
+      <div class="intro">
+        <div>
+          <div class="section-label">Everything in one place</div>
+          <h2>Less paperwork. Fewer stock surprises. Better decisions.</h2>
+        </div>
+        <p>Built around the realities of small and growing businesses: mobile-first workflows, WhatsApp-connected reporting, and reliable work even when the internet drops.</p>
+      </div>
+
+      <div class="features">
+        <article class="feature">
+          <div class="feature-icon">▦</div>
+          <h3>Smart stock audits</h3>
+          <p>Scan barcodes, compare counts, and spot discrepancies before they become losses.</p>
+        </article>
+        <article class="feature">
+          <div class="feature-icon">▤</div>
+          <h3>Sales & expenses</h3>
+          <p>Record daily activity clearly and keep your business numbers in one view.</p>
+        </article>
+        <article class="feature">
+          <div class="feature-icon">✦</div>
+          <h3>Business insights</h3>
+          <p>Get practical alerts for low stock, falling sales, and unusual expense spikes.</p>
+        </article>
+        <article class="feature">
+          <div class="feature-icon">◌</div>
+          <h3>Receipt OCR</h3>
+          <p>Snap a receipt and extract the amount, date, and category automatically.</p>
+        </article>
+        <article class="feature">
+          <div class="feature-icon">↯</div>
+          <h3>Works offline</h3>
+          <p>Keep working without internet. Your data syncs automatically when you reconnect.</p>
+        </article>
+        <article class="feature">
+          <div class="feature-icon">◎</div>
+          <h3>Customer loyalty</h3>
+          <p>Track visits, QR codes, store credit, and points so repeat buyers are easy to reward.</p>
+        </article>
+      </div>
+
+      <div class="workflow">
+        <div class="step"><div class="step-number">01</div><h3>Set up</h3><p>Add your business and first products.</p></div>
+        <div class="step"><div class="step-number">02</div><h3>Record</h3><p>Capture sales and expenses as they happen.</p></div>
+        <div class="step"><div class="step-number">03</div><h3>Control</h3><p>Audit stock and act on smart alerts.</p></div>
+        <div class="step"><div class="step-number">04</div><h3>Grow</h3><p>Use reports to make the next decision.</p></div>
+      </div>
+    </section>
+
+    <section class="cta">
+      <div>
+        <h2>Run your business with a clearer view.</h2>
+        <p>Start free, explore the interactive demo, and upgrade when your business needs more power.</p>
+        <p class="url">verifin-tau.vercel.app</p>
+      </div>
+      <div class="qr" aria-label="QR code linking to Verifin">
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=https%3A%2F%2Fverifin-tau.vercel.app" alt="Scan to visit Verifin">
+      </div>
+    </section>
+
+    <footer class="footer">
+      <div><strong>Verifin</strong> &nbsp; Smart business operations for African SMEs.</div>
+      <div>Inventory · Sales · Insights · Control</div>
+    </footer>
+  </main>
+</body>
+</html>

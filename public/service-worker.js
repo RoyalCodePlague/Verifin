@@ -1,4 +1,4 @@
-const CACHE_NAME = 'verifin-cache-v10';
+const CACHE_NAME = 'verifin-cache-v11';
 const APP_SHELL = '/index.html';
 const OFFLINE_FALLBACK = '<!doctype html><title>Verifin</title><p>Verifin is offline. Reconnect and try again.</p>';
 const STATIC_ASSETS = [
@@ -59,7 +59,7 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)))
+      Promise.all(keys.filter(key => key.startsWith('verifin-cache-') && key !== CACHE_NAME).map(key => caches.delete(key)))
     )
   );
   self.clients.claim();
@@ -69,7 +69,7 @@ self.addEventListener('fetch', event => {
   const { request } = event;
   const url = new URL(request.url);
 
-  if (request.method !== 'GET' || url.pathname.startsWith('/api/')) {
+  if (request.method !== 'GET' || url.pathname.startsWith('/api/') || /^\/(src|node_modules|@vite|@id|@fs)\//.test(url.pathname) || url.pathname === '/@react-refresh') {
     return;
   }
 

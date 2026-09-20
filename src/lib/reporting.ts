@@ -268,7 +268,7 @@ function saleUnitsByProduct(sales: Sale[], days = 30, reference = new Date()) {
       sale.items.split(",").forEach((item) => {
         const trimmed = item.trim();
         if (!trimmed) return;
-        const parsed = trimmed.match(/^(\d+)\s*(.+)$/);
+        const parsed = trimmed.match(/^(\d+)\s*x?\s+(.+)$/i);
         const quantity = parsed ? Number(parsed[1]) : 1;
         const name = parsed ? parsed[2].trim() : trimmed;
         if (!name) return;
@@ -299,7 +299,7 @@ export function buildReorderSuggestions(products: Product[], sales: Sale[], refe
         suggestedOrder,
       };
     })
-    .filter((item) => item.suggestedOrder > 0 && (item.stock <= item.reorder || (item.daysLeft != null && item.daysLeft <= 14)))
+    .filter((item) => item.suggestedOrder > 0 && (item.stock <= item.reorderLevel || (item.daysLeft != null && item.daysLeft <= 14)))
     .sort((a, b) => {
       const aDays = a.daysLeft ?? 999;
       const bDays = b.daysLeft ?? 999;

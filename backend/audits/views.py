@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import viewsets, permissions
 from rest_framework.decorators import action
@@ -7,7 +8,14 @@ from .models import Audit, Discrepancy, StockCount
 from .serializers import AuditSerializer, DiscrepancySerializer, StockCountSerializer
 
 
-class AuditViewSet(viewsets.ModelViewSet):
+class AuditFeatureMixin:
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if request.method not in ("GET", "HEAD", "OPTIONS"):
+            enforce_feature(request.user, "audits")
+
+
+class AuditViewSet(AuditFeatureMixin, viewsets.ModelViewSet):
     serializer_class = AuditSerializer
     filterset_fields = ["status", "date"]
     permission_classes = [permissions.IsAuthenticated]
@@ -25,30 +33,21 @@ class AuditViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="complete")
     def complete(self, request, pk=None):
         enforce_feature(request.user, "audits")
-        audit = self.get_object()
-        discrepancies_count = 0
-        for count in audit.stock_counts.all():
-            expected = count.product.stock
-            actual = count.counted_quantity
-            diff = actual - expected
-            if diff != 0:
-                discrepancies_count += 1
-                Discrepancy.objects.create(
-                    audit=audit,
-                    product=count.product,
-                    expected_stock=expected,
-                    actual_stock=actual,
-                    difference=diff,
-                )
-        audit.status = "completed"
-        audit.completed_at = timezone.now()
-        audit.items_counted = audit.stock_counts.count()
-        audit.discrepancies_found = discrepancies_count
-        audit.save()
+        from .services import complete_audit
+        audit = complete_audit(request, self.get_object().pk, request.data.get("counts"))
         return Response(AuditSerializer(audit).data)
 
+    def perform_update(self, serializer):
+        if serializer.validated_data.get("status") == "completed" and serializer.instance.status != "completed":
+            from .services import complete_audit
+            complete_audit(self.request, serializer.instance.pk)
+            serializer.instance.refresh_from_db()
+        else:
+            serializer.save()
 
-class StockCountViewSet(viewsets.ModelViewSet):
+
+
+class StockCountViewSet(AuditFeatureMixin, viewsets.ModelViewSet):
     serializer_class = StockCountSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -59,7 +58,7 @@ class StockCountViewSet(viewsets.ModelViewSet):
         serializer.save(counted_by=self.request.user)
 
 
-class DiscrepancyViewSet(viewsets.ModelViewSet):
+class DiscrepancyViewSet(AuditFeatureMixin, viewsets.ModelViewSet):
     serializer_class = DiscrepancySerializer
     filterset_fields = ["status", "audit"]
     permission_classes = [permissions.IsAuthenticated]

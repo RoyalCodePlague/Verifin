@@ -1,7 +1,8 @@
+from .google_auth import GoogleSignInView
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
-from .views import ApiKeyViewSet, ChangePasswordView, CustomTokenObtainPairView, GoogleOAuthPlaceholderView, LogoutOtherDevicesView, LogoutView, MeView, ProfileViewSet, RegisterView, ResendVerificationEmailView, StaffActivityLogViewSet, StaffLoginView, StaffViewSet, VerifyEmailView
+from .views import ApiKeyViewSet, ChangePasswordView, CustomTokenObtainPairView, LogoutOtherDevicesView, LogoutView, MeView, ProfileViewSet, RegisterView, ResendVerificationEmailView, StaffActivityLogViewSet, StaffLoginView, StaffViewSet, VerifyEmailView
 
 router = DefaultRouter()
 router.register("profiles", ProfileViewSet, basename="profile")
@@ -21,5 +22,5 @@ urlpatterns = [
     path("change-password/", ChangePasswordView.as_view(), name="change_password"),
     path("logout-other-devices/", LogoutOtherDevicesView.as_view(), name="logout_other_devices"),
     path("me/", MeView.as_view(), name="me"),
-    path("google/", GoogleOAuthPlaceholderView.as_view(), name="google_oauth"),
+    path("google/", GoogleSignInView.as_view(), name="google_oauth"),
 ]

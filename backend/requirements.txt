@@ -10,7 +10,6 @@ django-cors-headers==4.9.0
 django-filter==25.2
 djangorestframework==3.17.1
 djangorestframework_simplejwt==5.5.1
-groq==1.1.2
 gunicorn==25.3.0
 h11==0.16.0
 httpcore==1.0.9
@@ -21,6 +20,7 @@ pillow==12.2.0
 psycopg2-binary==2.9.11
 pydantic==2.13.2
 pydantic_core==2.46.2
+pycryptodome==3.20.0
 PyJWT==2.12.1
 python-dotenv==1.2.2
 pytesseract==0.3.13
@@ -34,3 +34,4 @@ typing_extensions==4.15.0
 tzdata==2026.1
 urllib3==2.6.3
 whitenoise==6.12.0
+google-auth==2.58.0

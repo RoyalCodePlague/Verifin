@@ -48,7 +48,7 @@ const sections = [
       "Sync offline records, generate reports, track usage limits, and manage subscriptions.",
       "Provide support, respond to requests, and send product, billing, security, and service messages.",
       "Improve reliability, performance, onboarding, analytics, and product features.",
-      "Generate AI-assisted insights or suggestions where you choose to use those features.",
+      "Generate business insights or suggestions where you choose to use those features.",
       "Comply with legal, tax, accounting, fraud prevention, and regulatory obligations.",
     ],
   },
@@ -57,7 +57,7 @@ const sections = [
     title: "4. When We Share Information",
     content: "We do not sell your data. We only share information where needed to provide the service, comply with law, or protect Verifin and its users.",
     items: [
-      "Service providers that help with hosting, database infrastructure, analytics, email, payments, support, logging, security, and AI-assisted features.",
+      "Service providers that help with hosting, database infrastructure, analytics, email, payments, support, logging, and security.",
       "Your authorized staff users, based on the permissions you configure.",
       "Law enforcement, regulators, courts, or other parties where legally required or necessary to protect rights, safety, and security.",
       "A successor organization if Verifin is involved in a merger, acquisition, restructuring, financing, or sale of assets, subject to appropriate confidentiality safeguards.",

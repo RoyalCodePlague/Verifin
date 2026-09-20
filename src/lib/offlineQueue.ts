@@ -9,6 +9,9 @@ const CACHED_USER_KEY = "sp_cached_user";
 export const LAST_SUCCESSFUL_SYNC_KEY = "sp_last_successful_sync_at";
 
 export type OfflineActionType =
+  | "supply_create"
+  | "supply_update"
+  | "audit_complete"
   | "sale"
   | "expense"
   | "product_create"

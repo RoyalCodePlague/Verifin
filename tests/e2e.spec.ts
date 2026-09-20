@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
-const BASE_URL = 'http://localhost:8081';
-const API_URL = 'http://localhost:8080';
+const BASE_URL = 'http://localhost:4489';
+const API_URL = 'http://localhost:8000';
 
 test.describe('Verifin - Complete E2E Tests', () => {
   

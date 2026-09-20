@@ -1,6 +1,7 @@
 from decimal import Decimal
 import qrcode
 from urllib.parse import quote
+from django.db import transaction
 from django.utils import timezone
 from django.core.files.base import ContentFile
 from io import BytesIO
@@ -34,11 +35,14 @@ class CustomerViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="add-credit")
     def add_credit(self, request, pk=None):
         enforce_feature(request.user, "qr_loyalty")
-        customer = self.get_object()
         amount = Decimal(str(request.data.get("amount", "0")))
-        customer.credits += amount
-        customer.save()
-        CreditTransaction.objects.create(customer=customer, amount=amount, type="add", reason=request.data.get("reason", ""))
+        if amount <= 0:
+            return Response({"detail": "Amount must be greater than zero."}, status=400)
+        with transaction.atomic():
+            customer = Customer.objects.select_for_update().get(pk=self.get_object().pk, user=request.user, is_deleted=False)
+            customer.credits += amount
+            customer.save(update_fields=["credits", "updated_at"])
+            CreditTransaction.objects.create(customer=customer, amount=amount, type="add", reason=request.data.get("reason", ""))
         return Response(CustomerSerializer(customer).data)
 
     @action(detail=False, methods=["get"], url_path="collections")
@@ -88,17 +92,18 @@ class CustomerViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="record-payment")
     def record_payment(self, request, pk=None):
         enforce_feature(request.user, "customer_credit")
-        customer = self.get_object()
         amount = Decimal(str(request.data.get("amount", "0")))
         if amount <= 0:
             return Response({"detail": "Amount must be greater than zero."}, status=400)
-        payment = min(amount, customer.debt_amount)
-        customer.debt_amount -= payment
-        customer.debt_updated_at = timezone.now()
-        if customer.debt_amount <= 0:
-            customer.debt_started_at = None
-        customer.save(update_fields=["debt_amount", "debt_started_at", "debt_updated_at", "updated_at"])
-        CreditTransaction.objects.create(customer=customer, amount=payment, type="payment", reason=request.data.get("reason", "Debt payment"))
+        with transaction.atomic():
+            customer = Customer.objects.select_for_update().get(pk=self.get_object().pk, user=request.user, is_deleted=False)
+            payment = min(amount, customer.debt_amount)
+            customer.debt_amount -= payment
+            customer.debt_updated_at = timezone.now()
+            if customer.debt_amount <= 0:
+                customer.debt_started_at = None
+            customer.save(update_fields=["debt_amount", "debt_started_at", "debt_updated_at", "updated_at"])
+            CreditTransaction.objects.create(customer=customer, amount=payment, type="payment", reason=request.data.get("reason", "Debt payment"))
         log_staff_activity(request.user, "customer_payment_recorded", f"Recorded payment from {customer.name}", actor=request.user, object_type="customer", object_id=customer.id, metadata={"amount": str(payment)})
         return Response(CustomerSerializer(customer).data)
 
@@ -117,13 +122,16 @@ class CustomerViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="redeem-credit")
     def redeem_credit(self, request, pk=None):
         enforce_feature(request.user, "qr_loyalty")
-        customer = self.get_object()
         amount = Decimal(str(request.data.get("amount", "0")))
-        if amount > customer.credits:
-            return Response({"detail": "Insufficient credit."}, status=400)
-        customer.credits -= amount
-        customer.save()
-        CreditTransaction.objects.create(customer=customer, amount=amount, type="redeem", reason=request.data.get("reason", ""))
+        if amount <= 0:
+            return Response({"detail": "Amount must be greater than zero."}, status=400)
+        with transaction.atomic():
+            customer = Customer.objects.select_for_update().get(pk=self.get_object().pk, user=request.user, is_deleted=False)
+            if amount > customer.credits:
+                return Response({"detail": "Insufficient credit."}, status=400)
+            customer.credits -= amount
+            customer.save(update_fields=["credits", "updated_at"])
+            CreditTransaction.objects.create(customer=customer, amount=amount, type="redeem", reason=request.data.get("reason", ""))
         return Response(CustomerSerializer(customer).data)
 
     @action(detail=True, methods=["get"], url_path="qr")

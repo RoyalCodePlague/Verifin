@@ -1,19 +1,16 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, Copy, Crown, Gift, Lock, RefreshCw, ShieldCheck, Sparkles, Ticket, Zap } from "lucide-react";
+import { AlertTriangle, Check, Copy, Gift, Lock, Ticket } from "lucide-react";
 import { toast } from "sonner";
 import {
   getBillingOverviewApi,
   getPricingContextApi,
   getReferralProgressApi,
-  mockCheckoutApi,
   redeemReferralRewardApi,
   subscriptionActionApi,
   type BillingPeriod,
-  type BillingPlan,
   type FeatureLimit,
   type PlanCode,
-  type PricingContext,
 } from "@/lib/api";
 
 const planTone: Record<PlanCode, string> = {
@@ -34,7 +31,6 @@ const formatDate = (value: string | null) => {
 };
 
 const visibleLimits = ["users", "products", "customers", "reports"];
-const SHOW_BILLING_TEST_CONTROLS = false;
 
 function UsageRow({ limit }: { limit: FeatureLimit }) {
   const used = limit.used ?? 0;
@@ -53,61 +49,11 @@ function UsageRow({ limit }: { limit: FeatureLimit }) {
   );
 }
 
-const CheckoutModal = ({
-  plan,
-  period,
-  pricing,
-  onConfirm,
-  onClose,
-  pending,
-}: {
-  plan: BillingPlan;
-  period: BillingPeriod;
-  pricing: PricingContext | undefined;
-  onConfirm: () => void;
-  onClose: () => void;
-  pending: boolean;
-}) => (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 p-4">
-    <div className="w-full max-w-md rounded-lg border border-border bg-background p-6 shadow-xl dark:bg-card">
-      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-400">Test checkout</p>
-      <h2 className="mt-2 text-2xl font-bold">Activate {plan.name}</h2>
-      <p className="mt-2 text-sm text-muted-foreground">
-        This mock checkout updates your local subscription only. No card is charged and no payment gateway is contacted.
-      </p>
-      <div className="mt-5 rounded-md border border-border bg-muted/30 p-4 dark:bg-muted/15">
-        <div className="flex items-center justify-between">
-          <span className="font-medium">{plan.name}</span>
-          <span className="font-bold">
-            {formatMoney(
-              period === "yearly"
-                ? pricing?.prices.find((price) => price.plan.code === plan.code)?.yearly_price ?? plan.yearly_price
-                : pricing?.prices.find((price) => price.plan.code === plan.code)?.monthly_price ?? plan.monthly_price,
-              period,
-              pricing?.currency_symbol
-            )}
-          </span>
-        </div>
-        <p className="mt-2 text-xs text-muted-foreground">Provider: mock. Ready to swap for Stripe, Paystack, or another gateway later.</p>
-      </div>
-      <div className="mt-6 flex gap-3">
-        <button type="button" onClick={onClose} className="flex-1 rounded-md border border-border px-4 py-2 text-sm font-semibold hover:bg-muted dark:hover:bg-muted/30">
-          Back
-        </button>
-        <button type="button" disabled={pending} onClick={onConfirm} className="flex-1 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
-          {pending ? "Activating..." : "Confirm test plan"}
-        </button>
-      </div>
-    </div>
-  </div>
-);
-
 const Billing = () => {
   const [period, setPeriod] = useState<BillingPeriod>("monthly");
-  const [checkoutPlan, setCheckoutPlan] = useState<BillingPlan | null>(null);
   const queryClient = useQueryClient();
   const online = typeof navigator === "undefined" || navigator.onLine;
-  const billingQuery = useQuery({ queryKey: ["billing-overview"], queryFn: getBillingOverviewApi, staleTime: 60_000, enabled: online });
+  const billingQuery = useQuery({ queryKey: ["billing-overview"], queryFn: getBillingOverviewApi, staleTime: 60_000, refetchInterval: 60_000, enabled: online });
   const pricingQuery = useQuery({ queryKey: ["pricing-context"], queryFn: () => getPricingContextApi(), staleTime: 5 * 60_000, enabled: online });
   const referralsQuery = useQuery({ queryKey: ["referrals"], queryFn: getReferralProgressApi, staleTime: 60_000, enabled: online });
 
@@ -127,20 +73,11 @@ const Billing = () => {
 
   const refreshBilling = async () => {
     await queryClient.invalidateQueries({ queryKey: ["billing-overview"] });
+    await queryClient.invalidateQueries({ queryKey: ["feature-access"] });
   };
 
-  const checkoutMutation = useMutation({
-    mutationFn: (plan: BillingPlan) => mockCheckoutApi({ plan: plan.code, billing_period: period, country_code: pricing?.country_code }),
-    onSuccess: async () => {
-      toast.success("Subscription updated", { description: "Mock billing changed your plan for local testing." });
-      setCheckoutPlan(null);
-      await refreshBilling();
-    },
-    onError: (error) => toast.error(error.message),
-  });
-
   const actionMutation = useMutation({
-    mutationFn: ({ action, payload }: { action: "renew" | "cancel" | "resume"; payload?: Record<string, unknown> }) => subscriptionActionApi(action, payload),
+    mutationFn: ({ action, payload }: { action: "downgrade"; payload?: Record<string, unknown> }) => subscriptionActionApi(action, payload),
     onSuccess: async () => {
       toast.success("Billing status updated");
       await refreshBilling();
@@ -153,6 +90,7 @@ const Billing = () => {
     onSuccess: async (res) => {
       toast.success(res.detail);
       await queryClient.invalidateQueries({ queryKey: ["billing-overview"] });
+    await queryClient.invalidateQueries({ queryKey: ["feature-access"] });
       await queryClient.invalidateQueries({ queryKey: ["referrals"] });
     },
     onError: (error) => toast.error(error.message),
@@ -166,6 +104,15 @@ const Billing = () => {
 
   return (
     <div className="space-y-8">
+      {billing?.subscription.provider === "launch_promo" && (
+        <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 text-sm" role="status">
+          <p className="font-semibold">Your free Business launch promotion ends {formatDate(billing.subscription.launch_promo_ends_at)}.</p>
+          <p className="mt-2">You will automatically move to free Starter. Your saved business data stays in your account. Premium features will require a paid upgrade. No automatic charges.</p>
+        </div>
+      )}
+      {billing?.subscription.launch_promo_ends_at && billing.subscription.provider === "free" && (
+        <p className="rounded-lg border p-4 text-sm">Your account is on free Starter. Your launch promotion cannot be restarted. Premium features require a paid upgrade.</p>
+      )}
       {!online && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200">
           Billing needs an internet connection. Your cached business data still works offline, but plan changes and usage checks will resume when you reconnect.
@@ -187,7 +134,7 @@ const Billing = () => {
               <p className="mt-1 font-semibold capitalize">{billing?.subscription.billing_period ?? period}</p>
             </div>
             <div className="rounded-md border border-border bg-muted/20 p-4 dark:bg-muted/10">
-              <p className="text-xs text-muted-foreground">Renewal</p>
+              <p className="text-xs text-muted-foreground">{billing?.subscription.provider === "launch_promo" ? "Promotion ends" : "Period ends"}</p>
               <p className="mt-1 font-semibold">{formatDate(billing?.subscription.current_period_end ?? null)}</p>
             </div>
             <div className="rounded-md border border-border bg-muted/20 p-4 dark:bg-muted/10">
@@ -277,7 +224,7 @@ const Billing = () => {
           <div>
             <h2 className="text-xl font-bold">Change Plan</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Use the mock checkout to test upgrades, downgrades, renewals, and cancellations. Prices are shown for {pricing?.country_name ?? "your region"}.
+              Paid upgrades are coming soon. No payments are being collected. Prices are shown for {pricing?.country_name ?? "your region"}.
             </p>
           </div>
           <div className="rounded-md border border-border bg-muted/20 p-1 dark:bg-muted/10">
@@ -312,11 +259,11 @@ const Billing = () => {
                 </ul>
                 <button
                   type="button"
-                  disabled={checkoutMutation.isPending || isCurrent}
-                  onClick={() => setCheckoutPlan(plan)}
+                  disabled={actionMutation.isPending || !billing || isCurrent || plan.code !== "starter"}
+                  onClick={() => actionMutation.mutate({ action: "downgrade", payload: { plan: "starter" } })}
                   className={`mt-6 w-full rounded-md px-4 py-2 text-sm font-bold transition-colors ${isCurrent ? "bg-muted text-muted-foreground dark:bg-muted/40" : "bg-primary text-primary-foreground hover:bg-primary/90"} disabled:opacity-70`}
                 >
-                  {isCurrent ? "Current plan" : plan.sort_order > (billing?.plan.sort_order ?? 0) ? "Upgrade" : "Downgrade"}
+                  {isCurrent ? "Current plan" : plan.code === "starter" ? "End premium and switch to Starter now" : "Paid upgrades coming soon"}
                 </button>
               </article>
             );
@@ -337,41 +284,8 @@ const Billing = () => {
             {billing?.locked_features.length === 0 && <p className="text-sm text-muted-foreground">Everything is unlocked on this plan.</p>}
           </div>
         </div>
-        {SHOW_BILLING_TEST_CONTROLS && (
-          <div className="rounded-lg border border-border bg-background p-6 dark:bg-card">
-            <h2 className="text-xl font-bold">Billing Controls</h2>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <button type="button" onClick={() => actionMutation.mutate({ action: "renew" })} className="flex items-center justify-center gap-2 rounded-md border border-border px-4 py-3 text-sm font-semibold hover:bg-muted dark:hover:bg-muted/30">
-                <RefreshCw className="h-4 w-4" /> Renew now
-              </button>
-              <button type="button" onClick={() => actionMutation.mutate({ action: "resume" })} className="flex items-center justify-center gap-2 rounded-md border border-border px-4 py-3 text-sm font-semibold hover:bg-muted dark:hover:bg-muted/30">
-                <ShieldCheck className="h-4 w-4" /> Resume
-              </button>
-              <button type="button" onClick={() => actionMutation.mutate({ action: "cancel", payload: { at_period_end: true } })} className="flex items-center justify-center gap-2 rounded-md border border-amber-300 px-4 py-3 text-sm font-semibold text-amber-800 hover:bg-amber-50 dark:border-amber-700/60 dark:text-amber-300 dark:hover:bg-amber-950/30">
-                <Zap className="h-4 w-4" /> Cancel at renewal
-              </button>
-              <button type="button" onClick={() => actionMutation.mutate({ action: "cancel", payload: { at_period_end: false } })} className="flex items-center justify-center gap-2 rounded-md border border-rose-300 px-4 py-3 text-sm font-semibold text-rose-700 hover:bg-rose-50 dark:border-rose-700/60 dark:text-rose-300 dark:hover:bg-rose-950/30">
-                <Crown className="h-4 w-4" /> Cancel now
-              </button>
-            </div>
-            <p className="mt-4 flex gap-2 text-xs text-muted-foreground">
-              <Sparkles className="h-4 w-4 flex-none" />
-              These actions are local test controls. A real provider can later drive the same subscription events through webhooks.
-            </p>
-          </div>
-        )}
       </section>
 
-      {checkoutPlan && (
-        <CheckoutModal
-          plan={checkoutPlan}
-          period={period}
-          pending={checkoutMutation.isPending}
-          pricing={pricing}
-          onClose={() => setCheckoutPlan(null)}
-          onConfirm={() => checkoutMutation.mutate(checkoutPlan)}
-        />
-      )}
     </div>
   );
 };

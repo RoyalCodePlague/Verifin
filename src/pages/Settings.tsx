@@ -239,12 +239,13 @@ const SettingsPage = () => {
   const detectedDefaults = getRegionalCurrencyDefaults(detectedCountry);
 
   useEffect(() => {
-    setName(profile.name);
     setCurrency(profile.currency);
     const existingSecondary = (profile.enabledCurrencies || []).find((code) => code !== profile.currency) || "";
     setSecondaryCurrency(existingSecondary);
     setSecondaryRate(existingSecondary ? String(profile.exchangeRates?.[existingSecondary] ?? "") : "");
-  }, [profile.name, profile.currency, profile.enabledCurrencies, profile.exchangeRates]);
+  }, [profile.currency, profile.enabledCurrencies, profile.exchangeRates]);
+
+  useEffect(() => { setName(profile.name); }, [profile.name]);
 
   useEffect(() => {
     const refreshStatus = () => {
@@ -383,15 +384,26 @@ const SettingsPage = () => {
     }
   };
 
-  const applyRegionDefaults = () => {
-    setCurrency(detectedDefaults.baseCurrency);
-    if (detectedDefaults.secondaryCurrency && detectedDefaults.secondaryCurrency !== detectedDefaults.baseCurrency) {
-      setSecondaryCurrency(detectedDefaults.secondaryCurrency);
-      setSecondaryRate(String(profile.exchangeRates?.[detectedDefaults.secondaryCurrency] ?? ""));
-    } else {
+  const applyRegionDefaults = async () => {
+    const baseCurrency = detectedDefaults.baseCurrency;
+    if (!online) { toast.error("Connect to the internet to save regional defaults."); return; }
+    if (profile.currency === baseCurrency && currency === baseCurrency && !secondaryCurrency && (profile.enabledCurrencies || []).length <= 1) {
+      toast.info(`Already using the ${detectedCountry} default: ${baseCurrency}.`);
+      return;
+    }
+    setSaving(true);
+    try {
+      const savedUser = await patchMe({ currency: baseCurrency, currency_symbol: symbolForCurrency(baseCurrency), enabled_currencies: [baseCurrency], exchange_rates: {} });
+      setProfile({ ...profile, currency: savedUser.currency, currencySymbol: savedUser.currency_symbol, enabledCurrencies: savedUser.enabled_currencies, exchangeRates: savedUser.exchange_rates });
+      setCurrency(savedUser.currency);
       setSecondaryCurrency("");
       setSecondaryRate("");
-    }
+      localStorage.setItem("sp_cached_user", JSON.stringify(savedUser));
+      await refreshUser();
+      toast.success(`Region default saved: ${baseCurrency} (${detectedCountry}).`);
+    } catch (error) {
+      toast.error("Could not save the region default.", { description: error instanceof Error ? error.message : "Please try again." });
+    } finally { setSaving(false); }
   };
 
   const handleToggle = (key: "whatsappDaily" | "lowStockAlerts" | "discrepancyAlerts") => {
@@ -625,9 +637,9 @@ const SettingsPage = () => {
             </select>
             <div className="mt-2 flex items-center justify-between gap-3">
               <p className="text-xs text-muted-foreground">
-                Region detected: {detectedCountry}. Base currency suggestion: {detectedDefaults.baseCurrency}.
+                Region detected: {detectedCountry}. Base currency suggestion: {detectedDefaults.baseCurrency}. Applying it saves this currency and removes the second currency.
               </p>
-              <Button type="button" variant="outline" size="sm" onClick={applyRegionDefaults}>
+              <Button type="button" variant="outline" size="sm" disabled={saving} onClick={() => void applyRegionDefaults()}>
                 Use Region Default
               </Button>
             </div>

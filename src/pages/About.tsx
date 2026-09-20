@@ -10,7 +10,7 @@ const values = [
   { icon: Target, title: "Built for Africa", desc: "Designed for the realities of SME operations across South Africa, Zimbabwe, Kenya, Nigeria, and beyond." },
   { icon: Users, title: "Human-Centered", desc: "Every feature starts with a real business owner's pain point. We build what matters, not what's trendy." },
   { icon: Globe, title: "Offline-First", desc: "Your business doesn't stop when the internet does. Verifin works offline and syncs when you're back online." },
-  { icon: Lightbulb, title: "AI-Powered", desc: "Smart automation that handles admin so you can focus on growing your business." },
+  { icon: Lightbulb, title: "Built for Business", desc: "Smart automation that handles admin so you can focus on growing your business." },
 ];
 
 const team = [

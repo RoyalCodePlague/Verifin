@@ -1,5 +1,6 @@
 import { fetchAllPages, fetchNotificationPreferencesApi } from "@/lib/api";
 import type {
+  SupplyEntry,
   Branch,
   Product,
   Sale,
@@ -191,6 +192,7 @@ export async function loadServerData(user: {
   customers: Customer[];
   staff: StaffMember[];
   branches: Branch[];
+  supplyEntries: SupplyEntry[];
   audits: AuditRecord[];
   discrepancies: Discrepancy[];
 }> {
@@ -203,6 +205,7 @@ export async function loadServerData(user: {
     try {
       return await fetchAllPages<T>(url);
     } catch (error) {
+      if ((error as { status?: number }).status === 403) return [];
       console.warn(`Failed to fetch ${url}:`, error);
       return cached;
     }
@@ -217,7 +220,7 @@ export async function loadServerData(user: {
     }
   };
 
-  const [rawBranches, rawProducts, rawSales, rawExpenses, rawCustomers, rawStaff, rawAudits, rawDiscrepancies, rawNotificationPreferences] =
+  const [rawBranches, rawProducts, rawSales, rawExpenses, rawCustomers, rawStaff, rawAudits, rawDiscrepancies, rawNotificationPreferences, supplyEntries] =
     await Promise.all([
       safeFetch<ApiBranch>("/api/v1/inventory/branches/", "branches"),
       safeFetch<ApiProduct>("/api/v1/inventory/products/", "products"),
@@ -228,6 +231,7 @@ export async function loadServerData(user: {
       safeFetch<ApiAudit>("/api/v1/audits/", "audits"),
       safeFetch<ApiDiscrepancy>("/api/v1/audits/discrepancies/", "discrepancies"),
       safeFetchNotificationPreferences(),
+      safeFetch<SupplyEntry>("/api/v1/inventory/supply-entries/", "supplyEntries"),
     ]);
 
   const productNameById = new Map<number, string>();
@@ -279,6 +283,8 @@ export async function loadServerData(user: {
       amountBase: parseFloat(String(row.amount_base || (row as { amountBase?: number }).amountBase || "0")),
     })),
     branchId: s.branch ? String(s.branch) : undefined,
+    customerId: (s as ApiSale & { customer?: number }).customer ? String((s as ApiSale & { customer?: number }).customer) : undefined,
+    saleItems: (s as ApiSale & { line_items?: Array<{ product_name: string; quantity: number; unit_price: string }> }).line_items?.map(item => ({ productName: item.product_name, quantity: item.quantity, unitPrice: Number(item.unit_price) })),
   }));
 
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -334,7 +340,7 @@ export async function loadServerData(user: {
     status: a.status,
     items: a.items_counted ?? (a as ApiAudit & Partial<AuditRecord>).items ?? 0,
     discrepancies: a.discrepancies_found ?? (a as ApiAudit & Partial<AuditRecord>).discrepancies ?? 0,
-    conductor: (a as ApiAudit & Partial<AuditRecord>).conductor || "",
+    conductor: typeof (a as ApiAudit & { conductor?: unknown }).conductor === "string" ? String((a as ApiAudit & { conductor?: unknown }).conductor) : "You",
     autoFindings: (a as ApiAudit & Partial<AuditRecord>).autoFindings || [],
   }));
 
@@ -365,5 +371,5 @@ export async function loadServerData(user: {
     darkMode: user.dark_mode,
   };
 
-  return { profile, branches, products, sales, expenses, customers, staff, audits, discrepancies };
+  return { profile, branches, products, sales, expenses, customers, staff, audits, discrepancies, supplyEntries };
 }

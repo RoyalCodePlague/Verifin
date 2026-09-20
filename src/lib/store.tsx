@@ -1,3 +1,5 @@
+import { createSupplyEntryApi, updateSupplyEntryApi } from "@/lib/api";
+import { addToOfflineQueue, canQueueOfflineAction } from "@/lib/offlineQueue";
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
 import { isSameBusinessDay } from "@/lib/reporting";
 
@@ -143,6 +145,7 @@ export interface ActivityItem {
 
 export interface SupplyEntry {
   id: string;
+  requestId?: string;
   direction: "incoming" | "outgoing";
   paymentStatus: "pending" | "partial" | "paid";
   partnerName: string;
@@ -195,8 +198,8 @@ interface StoreState {
   updateBranch: (id: string, b: Partial<Branch>) => void;
   deleteBranch: (id: string) => void;
   addActivity: (a: Omit<ActivityItem, "id">) => void;
-  addSupplyEntry: (entry: Omit<SupplyEntry, "id" | "recordedAt" | "invoiceNumber" | "movementTime"> & { movementTime?: string }) => { ok: boolean; message?: string; entry?: SupplyEntry };
-  updateSupplyEntry: (id: string, updates: Partial<SupplyEntry>) => void;
+  addSupplyEntry: (entry: Omit<SupplyEntry, "id" | "recordedAt" | "invoiceNumber" | "movementTime"> & { movementTime?: string }) => Promise<{ ok: boolean; message?: string; entry?: SupplyEntry }>;
+  updateSupplyEntry: (id: string, updates: Partial<SupplyEntry>) => Promise<void>;
   resolveDiscrepancy: (id: string) => void;
   addAudit: (a: Omit<AuditRecord, "id">) => string;
   upsertAudit: (audit: AuditRecord) => void;
@@ -214,6 +217,7 @@ interface StoreState {
     customers: Customer[];
     staff: StaffMember[];
     branches: Branch[];
+    supplyEntries: SupplyEntry[];
   }) => void;
   resetForLogout: () => void;
 }
@@ -543,7 +547,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }, ...prev].slice(0, 50));
   }, []);
 
-  const addSupplyEntry = useCallback((entry: Omit<SupplyEntry, "id" | "recordedAt" | "invoiceNumber" | "movementTime"> & { movementTime?: string }) => {
+  const addSupplyEntry = useCallback(async (entry: Omit<SupplyEntry, "id" | "recordedAt" | "invoiceNumber" | "movementTime"> & { movementTime?: string }) => {
     const existingProduct = products.find((product) => product.id === entry.productId);
     if (!existingProduct) {
       return { ok: false, message: "Select a valid product." };
@@ -558,7 +562,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
 
     const recordedAt = new Date().toISOString();
-    const nextEntry: SupplyEntry = {
+    let nextEntry: SupplyEntry = {
       ...entry,
       id: uid(),
       productName: existingProduct.name,
@@ -566,8 +570,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       movementTime: entry.movementTime || nowTime(),
       recordedAt,
       invoiceNumber: formatInvoiceNumber(entry.direction),
+      requestId: entry.requestId || crypto.randomUUID(),
     };
 
+    try {
+      if (canQueueOfflineAction()) {
+        addToOfflineQueue({ type: "supply_create", payload: { ...nextEntry } });
+      } else {
+        nextEntry = await createSupplyEntryApi(nextEntry);
+      }
+    } catch (error) {
+      return { ok: false, message: error instanceof Error ? error.message : "Could not save supply entry." };
+    }
     setSupplyEntries(prev => [nextEntry, ...prev]);
     setProducts(prev => prev.map((product) => {
       if (product.id !== entry.productId) return product;
@@ -577,7 +591,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return {
         ...product,
         stock: nextStock,
-        costPrice: entry.direction === "incoming" ? entry.unitCost : product.costPrice,
+        costPrice: entry.direction === "incoming" ? entry.unitCost * (nextEntry.fxRateToBase || 1) : product.costPrice,
         costCurrency: entry.direction === "incoming" ? entry.currency : product.costCurrency,
         costFxRateToBase: entry.direction === "incoming"
           ? (entry.currency === profile.currency ? 1 : entry.fxRateToBase || profile.exchangeRates?.[entry.currency] || 0)
@@ -600,9 +614,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return { ok: true, entry: nextEntry };
   }, [addActivity, products, profile.currency, profile.exchangeRates]);
 
-  const updateSupplyEntry = useCallback((id: string, updates: Partial<SupplyEntry>) => {
-    setSupplyEntries((prev) => prev.map((entry) => entry.id === id ? { ...entry, ...updates, id: entry.id } : entry));
-  }, []);
+  const updateSupplyEntry = useCallback(async (id: string, updates: Partial<SupplyEntry>) => {
+    const entry = supplyEntries.find(item => item.id === id);
+    if (!entry) throw new Error("Supply entry not found.");
+    let saved = { ...entry, ...updates };
+    if (canQueueOfflineAction()) {
+      if (!entry.requestId) throw new Error("Connect to the internet to save this older invoice first.");
+      addToOfflineQueue({ type: "supply_update", payload: { requestId: entry.requestId, ...updates } });
+    } else if (!entry.requestId) {
+      // Import a legacy browser-only invoice once before editing its payment status.
+      saved = await createSupplyEntryApi({ ...saved, requestId: `legacy-${entry.id}` });
+    } else {
+      saved = await updateSupplyEntryApi(id, updates);
+    }
+    setSupplyEntries(prev => prev.map(item => item.id === id ? saved : item));
+  }, [supplyEntries]);
 
   const resolveDiscrepancy = useCallback((id: string) => {
     setDiscrepancies(prev => prev.map(d => d.id === id ? { ...d, status: "resolved" as const } : d));
@@ -681,9 +707,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       customers: Customer[];
       staff: StaffMember[];
       branches: Branch[];
+      supplyEntries: SupplyEntry[];
     }) => {
       setProfileState(prev => ({ ...data.profile, darkMode: prev.darkMode }));
       setProducts(data.products);
+      setSupplyEntries(previous => [
+        ...data.supplyEntries,
+        ...previous.filter(entry => !entry.requestId && !data.supplyEntries.some(saved => saved.requestId === `legacy-${entry.id}`)),
+      ]);
       setSales(data.sales);
       setExpenses(data.expenses);
       setAudits(data.audits);

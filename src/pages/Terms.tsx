@@ -7,7 +7,7 @@ const highlights = [
   "Use Verifin only for lawful business purposes.",
   "You are responsible for users, staff permissions, and data entered under your account.",
   "You own your business data; Verifin owns the platform, software, brand, and product design.",
-  "Paid subscriptions renew until cancelled, unless your plan or written agreement says otherwise.",
+  "The launch promotion ends automatically without a charge; continued premium access requires a paid upgrade.",
 ];
 
 const sections = [
@@ -21,7 +21,7 @@ const sections = [
     icon: Globe,
     title: "2. The Service",
     content:
-      "Verifin is a business operating platform for SMEs. Features may include inventory, branches, suppliers, purchase orders, sales, tills, expenses, customers, loyalty and credit tools, audits, reports, staff permissions, notifications, offline sync, AI-assisted insights, billing, and API access. Features can vary by plan, region, release stage, and account configuration.",
+      "Verifin is a business operating platform for SMEs. Features may include inventory, branches, suppliers, purchase orders, sales, tills, expenses, customers, loyalty and credit tools, audits, reports, staff permissions, notifications, offline sync, business insights, billing, and API access. Features can vary by plan, region, release stage, and account configuration.",
   },
   {
     icon: Shield,
@@ -41,8 +41,8 @@ const sections = [
       "Some features are free; others require a paid plan or trial.",
       "Trial access may be limited, changed, or ended if abused or if you are not eligible.",
       "Subscription fees, included features, limits, taxes, and billing cycles are shown during checkout or in the app.",
-      "Paid subscriptions renew automatically unless cancelled before the renewal date.",
-      "You can cancel a subscription, but cancellation usually takes effect at the end of the current billing period.",
+      "The launch promotion provides Business for 30 days from signup, followed by free Starter. No card is required and there are no automatic charges.",
+      "You can switch to Starter before the promotion ends. Paid upgrades are unavailable until payment setup is complete.",
       "We may change prices or plan features with reasonable notice where required.",
       "Refunds are provided only where required by law, stated in the app, or approved by Verifin in writing.",
     ],
@@ -64,14 +64,13 @@ const sections = [
       "Upload malicious code or interfere with the reliability of the service.",
       "Scrape, copy, resell, sublicense, or redistribute Verifin without written permission.",
       "Reverse engineer the platform except where applicable law expressly allows it.",
-      "Use AI-assisted features to generate unlawful, discriminatory, or harmful outputs.",
     ],
   },
   {
     icon: Shield,
-    title: "7. AI-Assisted Features",
+    title: "7. Reports and Summaries",
     content:
-      "Verifin may provide AI-assisted summaries, forecasts, reorder suggestions, receipt extraction, or business insights. These outputs are informational and may be incomplete or inaccurate. You are responsible for reviewing outputs before relying on them for stock, pricing, tax, accounting, staffing, legal, or financial decisions.",
+      "Verifin may provide summaries, forecasts, reorder suggestions, receipt extraction, or business insights. These outputs are informational and may be incomplete or inaccurate. You are responsible for reviewing outputs before relying on them for stock, pricing, tax, accounting, staffing, legal, or financial decisions.",
   },
   {
     icon: Globe,
@@ -107,7 +106,7 @@ const sections = [
     icon: Scale,
     title: "13. Disclaimers",
     content:
-      'Verifin is provided on an "as is" and "as available" basis to the maximum extent permitted by law. We do not guarantee that the service will be uninterrupted, error-free, or suitable for every business need. You are responsible for verifying records, exports, reports, AI outputs, tax calculations, and operational decisions.',
+      'Verifin is provided on an "as is" and "as available" basis to the maximum extent permitted by law. We do not guarantee that the service will be uninterrupted, error-free, or suitable for every business need. You are responsible for verifying records, exports, reports, report outputs, tax calculations, and operational decisions.',
   },
   {
     icon: Shield,
@@ -154,7 +153,7 @@ const Terms = () => (
           <p className="mt-5 max-w-2xl text-lg text-muted-foreground">
             These terms explain account responsibilities, subscriptions, acceptable use, data ownership, and service limitations.
           </p>
-          <p className="mt-4 text-sm text-muted-foreground">Last updated: May 9, 2026</p>
+          <p className="mt-4 text-sm text-muted-foreground">Last updated: September 15, 2026</p>
         </div>
       </section>
 

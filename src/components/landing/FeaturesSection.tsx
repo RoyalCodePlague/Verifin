@@ -4,12 +4,6 @@ import {
 } from "lucide-react";
 
 const features = [
-  // {
-  //   icon: MessageSquare,
-  //   title: "Auto Admin Assistant",
-  //   description:
-  //     "Just type a sale in your local currency and the system records everything - sales, stock, and receipts updated instantly.",
-  // },
   {
     icon: ScanBarcode,
     title: "Smart Inventory Audits",
@@ -20,7 +14,7 @@ const features = [
     icon: Receipt,
     title: "Receipt OCR",
     description:
-      "Snap a photo of any receipt and let AI extract the amount, date, and category automatically.",
+      "Scan a receipt to extract its text, then review the amount, date, and category before saving.",
   },
   {
     icon: MessageSquare,

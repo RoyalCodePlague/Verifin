@@ -2,6 +2,7 @@ from datetime import timedelta
 from decimal import Decimal
 import secrets
 
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -21,7 +22,7 @@ _CATALOG_SYNCED = False
 
 def sync_plan_catalog(force=False):
     global _CATALOG_SYNCED
-    if _CATALOG_SYNCED and not force:
+    if _CATALOG_SYNCED and not force and Plan.objects.filter(is_deleted=False).count() >= len(PLAN_DEFINITIONS):
         return Plan.objects.filter(is_deleted=False).prefetch_related("limits")
 
     expected_region_prices = len(COUNTRY_PRICING) * len(PLAN_DEFINITIONS)
@@ -135,6 +136,7 @@ def pricing_context(request):
         "currency": region["currency"],
         "currency_symbol": region["symbol"],
         "detected_by": "query_or_header",
+        "launch_promotion": {"enabled": settings.LAUNCH_PROMO_ENABLED, "days": 30},
         "prices": prices,
         "available_countries": [
             {
@@ -167,7 +169,7 @@ def get_starter_plan():
 def get_or_create_subscription(user):
     sync_plan_catalog()
     try:
-        subscription = user.subscription
+        subscription = Subscription.objects.select_related("plan").get(user=user)
     except Subscription.DoesNotExist:
         subscription = None
     if subscription:
@@ -192,8 +194,44 @@ def get_or_create_subscription(user):
     return subscription
 
 
-def refresh_subscription_state(subscription):
+@transaction.atomic
+def start_launch_promotion(user):
+    subscription = get_or_create_subscription(user)
+    subscription = Subscription.objects.select_for_update().get(pk=subscription.pk)
+    if not settings.LAUNCH_PROMO_ENABLED or subscription.launch_promo_started_at:
+        return subscription
     now = timezone.now()
+    subscription.plan = Plan.objects.get(code=Plan.BUSINESS, is_deleted=False)
+    subscription.provider = "launch_promo"
+    subscription.status = Subscription.TRIALING
+    subscription.launch_promo_started_at = now
+    subscription.launch_promo_ends_at = now + timedelta(days=30)
+    subscription.current_period_start = now
+    subscription.current_period_end = subscription.launch_promo_ends_at
+    subscription.trial_ends_at = subscription.launch_promo_ends_at
+    subscription.save()
+    record_event(subscription, "launch_promo_started", {"days": 30}, actor=user, provider="launch_promo")
+    return subscription
+
+
+@transaction.atomic
+def refresh_subscription_state(subscription):
+    subscription = Subscription.objects.select_for_update().select_related("plan").get(pk=subscription.pk)
+    now = timezone.now()
+    if subscription.provider == "launch_promo" and subscription.launch_promo_ends_at and now >= subscription.launch_promo_ends_at:
+        subscription.plan = get_starter_plan()
+        subscription.provider = "free"
+        subscription.status = Subscription.ACTIVE
+        subscription.current_period_start = now
+        subscription.current_period_end = None
+        subscription.trial_ends_at = None
+        subscription.grace_period_ends_at = None
+        subscription.cancel_at_period_end = False
+        subscription.cancelled_at = None
+        subscription.ended_at = None
+        subscription.save()
+        record_event(subscription, "launch_promo_expired", {"plan": "starter"}, provider="launch_promo")
+        return subscription
     changed = False
     if subscription.status == Subscription.TRIALING and subscription.trial_ends_at and now > subscription.trial_ends_at:
         subscription.status = Subscription.PAST_DUE
@@ -230,6 +268,7 @@ def activate_plan(user, plan_code, billing_period=Subscription.MONTHLY, trial_da
     region_price = region_price_for(plan, country_code or DEFAULT_COUNTRY)
 
     subscription.plan = plan
+    subscription.provider = "free" if is_free else Subscription.PROVIDER_MOCK
     subscription.billing_period = billing_period
     subscription.status = Subscription.TRIALING if is_trial else Subscription.ACTIVE
     subscription.billing_country_code = region_price.country_code
@@ -486,6 +525,7 @@ def redeem_referral_reward(user, token_code=""):
     end_at = now + timedelta(days=token.reward_days)
 
     subscription.plan = plan
+    subscription.provider = "referral_reward"
     subscription.billing_period = Subscription.MONTHLY
     subscription.status = Subscription.ACTIVE
     subscription.billing_country_code = region_price.country_code
@@ -657,7 +697,7 @@ def subscription_payload(user):
         "features": feature_access_payload(user, subscription=subscription, features_by_key=features_by_key, usage_counts=usage_counts),
         "events": subscription.events.filter(is_deleted=False)[:10],
         "cycles": subscription.cycles.filter(is_deleted=False)[:6],
-        "available_actions": ["mock_checkout", "renew", "upgrade", "downgrade", "cancel", "resume"],
+        "available_actions": ["mock_checkout", "renew", "upgrade", "downgrade", "cancel", "resume"] if settings.BILLING_TEST_MODE else ["downgrade"],
     }
 
 

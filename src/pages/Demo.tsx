@@ -12,13 +12,11 @@ import { getDetectedPricingCountry } from "@/lib/api";
 import { formatRegionalSampleAmount } from "@/lib/pricing";
 
 const countryCode = getDetectedPricingCountry();
-const sampleSale = `Sold 3 bread for ${formatRegionalSampleAmount(54, countryCode)}`;
-const sampleExpense = `Spent ${formatRegionalSampleAmount(200, countryCode)} on transport`;
 
 const tourSteps = [
   {
     title: "Record Sales Instantly",
-    desc: `Type natural commands like "${sampleSale}" and the AI assistant records it automatically. Try it below!`,
+    desc: "Select a product, enter the quantity, and record the sale. Stock and sales totals update together.",
     icon: ShoppingCart,
     action: "sale",
   },
@@ -30,7 +28,7 @@ const tourSteps = [
   },
   {
     title: "Log Expenses Easily",
-    desc: `Type "${sampleExpense}" and it's logged. No forms, no hassle. Try recording an expense below.`,
+    desc: "Enter an expense description and amount to track your business spending.",
     icon: Receipt,
     action: "expense",
   },
@@ -47,7 +45,7 @@ const tourSteps = [
     action: "qr",
   },
   {
-    title: "AI-Powered Insights",
+    title: "Business Insights",
     desc: "Get actionable business intelligence like low stock warnings, sales trend analysis, and restocking suggestions.",
     icon: Sparkles,
     action: "insights",
@@ -61,36 +59,30 @@ const tourSteps = [
 ];
 
 function SaleDemo() {
-  const [input, setInput] = useState("");
+  const [quantity, setQuantity] = useState("3");
   const [recorded, setRecorded] = useState(false);
-
-  const handleRecord = () => {
-    if (!input.trim()) { setInput(sampleSale); return; }
-    setRecorded(true);
-    toast.success("Sale recorded!", { description: input });
-  };
-
   return (
     <div className="space-y-3">
-      <div className="flex gap-2">
-        <div className="flex-1 relative">
-          <Sparkles className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-primary" />
-          <Input value={input} onChange={e => { setInput(e.target.value); setRecorded(false); }} placeholder={`Try: "${sampleSale}"`} className="pl-9" />
-        </div>
-        <Button onClick={handleRecord} className="bg-gradient-hero text-primary-foreground" disabled={recorded}>
-          {recorded ? <Check className="h-4 w-4" /> : "Record"}
-        </Button>
-      </div>
-      {recorded && (
-        <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} className="bg-success/10 text-success rounded-lg p-3 text-sm flex items-center gap-2">
-          <Check className="h-4 w-4 flex-shrink-0" /> Recorded! Inventory updated, daily total adjusted.
-        </motion.div>
-      )}
-      <div className="flex gap-2 flex-wrap">
-        {[`Sold 5 milk for ${formatRegionalSampleAmount(110, countryCode)}`, `Sold 2 cement for ${formatRegionalSampleAmount(340, countryCode)}`].map(s => (
-          <button key={s} onClick={() => { setInput(s); setRecorded(false); }} className="px-3 py-1.5 rounded-full bg-muted text-xs text-muted-foreground hover:bg-primary/10 hover:text-primary transition-colors">{s}</button>
-        ))}
-      </div>
+      <p className="text-sm">White Bread ? {formatRegionalSampleAmount(18, countryCode)} each</p>
+      <label className="block text-sm">Quantity
+        <Input type="number" min="1" step="1" value={quantity} onChange={e => { setQuantity(e.target.value); setRecorded(false); }} />
+      </label>
+      <Button disabled={recorded || !Number.isInteger(Number(quantity)) || Number(quantity) < 1} onClick={() => setRecorded(true)}>Record sample sale</Button>
+      {recorded && <p className="text-sm text-success">Sample sale recorded: {quantity} loaves. Total: {formatRegionalSampleAmount(Number(quantity) * 18, countryCode)}.</p>}
+    </div>
+  );
+}
+
+function ExpenseDemo() {
+  const [description, setDescription] = useState("Transport");
+  const [amount, setAmount] = useState("200");
+  const [recorded, setRecorded] = useState(false);
+  return (
+    <div className="space-y-3">
+      <label className="block text-sm">Description<Input value={description} onChange={e => { setDescription(e.target.value); setRecorded(false); }} /></label>
+      <label className="block text-sm">Amount<Input type="number" min="0.01" step="0.01" value={amount} onChange={e => { setAmount(e.target.value); setRecorded(false); }} /></label>
+      <Button disabled={recorded || !description.trim() || !(Number(amount) > 0)} onClick={() => setRecorded(true)}>Record sample expense</Button>
+      {recorded && <p className="text-sm text-success">Sample expense recorded for {description}.</p>}
     </div>
   );
 }
@@ -173,7 +165,7 @@ function InsightsDemo() {
 const demoComponents: Record<string, React.FC> = {
   sale: SaleDemo,
   inventory: InventoryDemo,
-  expense: SaleDemo,
+  expense: ExpenseDemo,
   audit: InventoryDemo,
   qr: QRDemo,
   insights: InsightsDemo,

@@ -149,3 +149,25 @@ class PurchaseOrderItem(TimeStampedSoftDeleteModel):
     unit_cost_base = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     line_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     line_total_base = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+
+
+class SupplyEntry(TimeStampedSoftDeleteModel):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    request_id = models.CharField(max_length=100)
+    product = models.ForeignKey(Product, on_delete=models.PROTECT)
+    direction = models.CharField(max_length=10, choices=[("incoming", "incoming"), ("outgoing", "outgoing")])
+    payment_status = models.CharField(max_length=10, choices=[("pending", "pending"), ("partial", "partial"), ("paid", "paid")])
+    partner_name = models.CharField(max_length=255)
+    partner_category = models.CharField(max_length=20)
+    quantity = models.PositiveIntegerField()
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2)
+    unit_cost = models.DecimalField(max_digits=12, decimal_places=2)
+    currency = models.CharField(max_length=10)
+    fx_rate_to_base = models.DecimalField(max_digits=18, decimal_places=6)
+    movement_date = models.DateField()
+    movement_time = models.TimeField()
+    notes = models.TextField(blank=True)
+    invoice_number = models.CharField(max_length=50)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["user", "request_id"], name="unique_supply_request")]

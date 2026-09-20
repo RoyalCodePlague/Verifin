@@ -117,7 +117,8 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     def perform_destroy(self, instance):
         name = instance.name
-        instance.delete()
+        instance.is_deleted = True
+        instance.save()
         log_staff_activity(self.request.user, "product_deleted", f"Deleted product {name}", actor=self.request.user, object_type="product", object_id=instance.id)
 
     @action(detail=False, methods=["get"], url_path="barcode-lookup")
@@ -388,6 +389,7 @@ class ProductViewSet(viewsets.ModelViewSet):
 
 
 class StockMovementViewSet(viewsets.ModelViewSet):
+    http_method_names = ["get", "post", "head", "options"]
     serializer_class = StockMovementSerializer
     permission_classes = [IsAuthenticated]
     filterset_fields = ["movement_type", "product"]
@@ -395,9 +397,15 @@ class StockMovementViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return StockMovement.objects.filter(created_by=self.request.user, is_deleted=False)
 
+    @transaction.atomic
     def perform_create(self, serializer):
+        from rest_framework.exceptions import ValidationError
+        product = Product.objects.select_for_update().get(pk=serializer.validated_data["product"].pk)
+        quantity = serializer.validated_data["quantity"]
+        movement_type = serializer.validated_data["movement_type"]
+        if quantity < 0 or (movement_type == "out" and product.stock < quantity):
+            raise ValidationError("Stock movements cannot create negative stock.")
         movement = serializer.save(created_by=self.request.user)
-        product = movement.product
         if movement.movement_type == "in":
             product.stock += movement.quantity
         elif movement.movement_type == "out":
@@ -434,7 +442,8 @@ class SupplierViewSet(viewsets.ModelViewSet):
 
     def perform_destroy(self, instance):
         name = instance.name
-        instance.delete()
+        instance.is_deleted = True
+        instance.save()
         log_staff_activity(self.request.user, "supplier_deleted", f"Deleted supplier {name}", actor=self.request.user, object_type="supplier", object_id=instance.id)
 
     @action(detail=False, methods=["get"], url_path="scorecards")
@@ -482,14 +491,17 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="receive")
     @transaction.atomic
     def receive(self, request, pk=None):
-        order = self.get_object()
+        order = PurchaseOrder.objects.select_for_update().get(pk=self.get_object().pk)
+        if order.status == "cancelled":
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError("Cannot receive a cancelled order.")
         received_any = False
         for item in order.items.select_related("product"):
             qty = int(request.data.get(str(item.id), item.quantity_ordered - item.quantity_received))
             qty = max(0, min(qty, item.quantity_ordered - item.quantity_received))
             if qty <= 0:
                 continue
-            product = item.product
+            product = Product.objects.select_for_update().get(pk=item.product_id)
             product.stock += qty
             product.cost_price = item.unit_cost_base or item.unit_cost
             product.cost_currency = order.currency

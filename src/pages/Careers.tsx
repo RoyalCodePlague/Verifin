@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 const openings = [
-  { title: "Senior Full-Stack Developer", team: "Engineering", location: "Remote (Africa)", type: "Full-Time", desc: "Build and scale the Verifin platform using React, TypeScript, and Python. Work on AI features, offline-first architecture, and real-time data pipelines." },
+  { title: "Senior Full-Stack Developer", team: "Engineering", location: "Remote (Africa)", type: "Full-Time", desc: "Build and scale the Verifin platform using React, TypeScript, and Python. Work on reporting features, offline-first architecture, and real-time data pipelines." },
   { title: "Product Designer (UI/UX)", team: "Design", location: "Johannesburg / Remote", type: "Full-Time", desc: "Design intuitive, mobile-first interfaces for SME operators. Conduct user research across African markets and translate insights into beautiful, functional designs." },
   { title: "DevOps Engineer", team: "Engineering", location: "Remote (Africa)", type: "Full-Time", desc: "Manage cloud infrastructure, CI/CD pipelines, and ensure 99.9% uptime. Experience with PostgreSQL, Docker, and African hosting providers preferred." },
   { title: "Customer Success Manager", team: "Operations", location: "Johannesburg", type: "Full-Time", desc: "Onboard and support SME clients across South Africa and Zimbabwe. Help businesses get the most out of Verifin with training, best practices, and proactive engagement." },

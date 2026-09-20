@@ -1,4 +1,4 @@
-import type { Product } from "@/lib/store";
+import type { Product, SupplyEntry } from "@/lib/store";
 
 const ACCESS_KEY = "sp_access_token";
 const REFRESH_KEY = "sp_refresh_token";
@@ -128,6 +128,7 @@ export async function apiFetch<T = unknown>(
     }
     const apiError = new Error(detail || `Request failed: ${res.status}`);
     (apiError as Error & { payload?: unknown }).payload = payload;
+    (apiError as Error & { status?: number }).status = res.status;
     throw apiError;
   }
 
@@ -150,7 +151,7 @@ export async function registerRequest(body: {
   business_name?: string;
   referral_code?: string;
 }) {
-  return apiFetch<{ access: string; refresh: string; user: ApiUser }>("/api/v1/accounts/register/", {
+  return apiFetch<{ verification_required: boolean; email_sent: boolean; email: string; detail: string }>("/api/v1/accounts/register/", {
     method: "POST",
     skipAuth: true,
     body: JSON.stringify(body),
@@ -166,7 +167,7 @@ export async function staffLoginRequest(payload: { business_code: string; userna
 }
 
 export async function verifyEmailRequest(token: string) {
-  return apiFetch<{ detail: string }>("/api/v1/accounts/verify-email/", {
+  return apiFetch<{ detail: string; access: string; refresh: string; user: ApiUser }>("/api/v1/accounts/verify-email/", {
     method: "POST",
     skipAuth: true,
     body: JSON.stringify({ token }),
@@ -862,6 +863,9 @@ export async function deleteExpenseApi(id: string) {
 type ApiOfflineAction = {
   id: string;
   type:
+    | "supply_create"
+    | "supply_update"
+    | "audit_complete"
     | "sale"
     | "expense"
     | "product_create"
@@ -958,6 +962,8 @@ export type BillingSubscription = {
   provider: string;
   current_period_start: string;
   current_period_end: string | null;
+  launch_promo_started_at: string | null;
+  launch_promo_ends_at: string | null;
   trial_ends_at: string | null;
   grace_period_ends_at: string | null;
   cancel_at_period_end: boolean;
@@ -1016,6 +1022,7 @@ export type RegionalPlanPrice = {
 };
 
 export type PricingContext = PricingCountry & {
+  launch_promotion?: { enabled: boolean; days: number };
   detected_by: string;
   prices: RegionalPlanPrice[];
   available_countries: PricingCountry[];
@@ -1076,7 +1083,7 @@ export async function getFeatureAccessApi() {
 }
 
 export async function fetchRuleInsightsApi() {
-  return apiFetch<{ insights: Array<{ type: string; severity: string; message: string }>; timestamp: string }>("/api/v1/assistant/insights/");
+  return apiFetch<{ insights: Array<{ type: string; severity: string; message: string }>; timestamp: string }>("/api/v1/reports/insights/");
 }
 
 export async function fetchProfitLeaksApi() {
@@ -1084,7 +1091,7 @@ export async function fetchProfitLeaksApi() {
 }
 
 export async function fetchWhatsAppSummaryApi() {
-  return apiFetch<{ message: string; date: string; channel: string }>("/api/v1/assistant/whatsapp-summary/");
+  return apiFetch<{ message: string; date: string; channel: string }>("/api/v1/reports/whatsapp-summary/");
 }
 
 export async function createWhatsAppReportApi(phone?: string) {
@@ -1243,6 +1250,26 @@ export async function mockCheckoutApi(payload: { plan: PlanCode; billing_period:
   });
 }
 
+export async function getProviderStatusApi() {
+  return apiFetch<{ providers: Array<{ provider: string; enabled: boolean; ready: boolean; label: string; detail: string; metadata: Record<string, unknown> }> }>('/api/v1/billing/subscriptions/providers/');
+}
+
+export async function pesepayCheckoutApi(payload: { plan: PlanCode; billing_period: BillingPeriod; country_code?: string; amount?: number; return_url?: string; result_url?: string }) {
+  return apiFetch<{
+    detail: string;
+    provider: string;
+    reference: string;
+    redirect_url: string;
+    status: string;
+    transaction_status: string;
+    message: string;
+    billing: BillingOverview;
+  }>('/api/v1/billing/subscriptions/pesepay-checkout/', {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function getReferralProgressApi() {
   return apiFetch<ReferralProgress>("/api/v1/billing/referrals/");
 }
@@ -1265,5 +1292,29 @@ export async function subscriptionActionApi(action: "renew" | "upgrade" | "downg
   return apiFetch<BillingOverview>(`/api/v1/billing/subscriptions/${action}/`, {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+
+export function createSupplyEntryApi(entry: Omit<SupplyEntry, "id" | "recordedAt" | "invoiceNumber">) {
+  return apiFetch<SupplyEntry>("/api/v1/inventory/supply-entries/", { method: "POST", body: JSON.stringify(entry) });
+}
+
+export function updateSupplyEntryApi(id: string, updates: Partial<SupplyEntry>) {
+  return apiFetch<SupplyEntry>(`/api/v1/inventory/supply-entries/${id}/`, { method: "PATCH", body: JSON.stringify(updates) });
+}
+
+export function completeAuditApi(id: string, counts?: Array<{ product: number; counted_quantity: number }>) {
+  return apiFetch<{ id: number; date: string; status: "in_progress" | "completed"; items_counted: number; discrepancies_found: number }>(`/api/v1/audits/${id}/complete/`, { method: "POST", body: JSON.stringify(counts ? { counts } : {}) });
+}
+
+export function googleConfigRequest() {
+  return apiFetch<{ client_id: string; nonce: string | null }>("/api/v1/accounts/google/", { skipAuth: true });
+}
+
+export function googleLoginRequest(credential: string, nonce: string, referralCode = "", businessName = "") {
+  return apiFetch<{ access: string; refresh: string; user: ApiUser; created: boolean }>("/api/v1/accounts/google/", {
+    method: "POST", skipAuth: true,
+    body: JSON.stringify({ credential, nonce, referral_code: referralCode, business_name: businessName }),
   });
 }

@@ -2,7 +2,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from billing.services import enforce_feature
-from assistant.services import ReceiptScanError, scan_receipt_image
+from reports.business_services import ReceiptScanError, scan_receipt_image
 from .models import Expense, ExpenseCategory
 from .serializers import ExpenseCategorySerializer, ExpenseSerializer
 

@@ -234,7 +234,7 @@ const Staff = () => {
             <div key={log.id} className="flex flex-col gap-1 rounded-lg border border-border px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-sm font-medium">{log.summary}</p>
-                <p className="text-xs text-muted-foreground">{log.action.replaceAll("_", " ")} · {log.actor_email || "system"}</p>
+                <p className="text-xs text-muted-foreground">{log.action.replace(/_/g, " ")} · {log.actor_email || "system"}</p>
               </div>
               <p className="text-xs text-muted-foreground">{new Date(log.created_at).toLocaleString()}</p>
             </div>

@@ -18,7 +18,7 @@ const routes = [
   {
     path: "/pricing",
     title: "Verifin Pricing - Inventory and Admin Software for SMEs",
-    description: "Compare Verifin plans for African SMEs. Start free, then unlock inventory automation, audits, reports, OCR, and AI assistance.",
+    description: "Compare Verifin plans for African SMEs. Start free, then unlock inventory automation, audits, reports, OCR, and business insights.",
     heading: "Verifin Pricing",
     body: "Compare Starter, Growth, and Business plans for inventory management, admin automation, barcode scanning, receipt OCR, reporting, and role-based controls.",
     keywords: ["Verifin pricing", "inventory software pricing", "SME business software plans"],
@@ -56,7 +56,7 @@ const routes = [
     title: "Verifin Help Center - Inventory and Admin Support",
     description: "Find Verifin support articles for inventory, sales, expenses, audits, reports, offline mode, and app installation.",
     heading: "Verifin Help Center",
-    body: "Find help for inventory tracking, sales, expenses, stock audits, reports, offline mode, PWA installation, barcode scanning, and AI insights.",
+    body: "Find help for inventory tracking, sales, expenses, stock audits, reports, offline mode, PWA installation, barcode scanning, and business insights.",
     keywords: ["Verifin help", "inventory app support", "business app help center"],
     cta: "Search support articles and learn the app.",
   },

@@ -17,9 +17,14 @@ ALLOWED_HOSTS = [
 if DEBUG and "*" not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append("*")
 
-# Groq AI Configuration
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+
+# Pesepay Configuration
+PESEPAY_ENABLED = os.getenv("PESEPAY_ENABLED", "False").lower() in ("1", "true", "yes")
+PESEPAY_ENV = os.getenv("PESEPAY_ENV", "sandbox")
+PESEPAY_INTEGRATION_KEY = os.getenv("PESEPAY_INTEGRATION_KEY", "")
+PESEPAY_ENCRYPTION_KEY = os.getenv("PESEPAY_ENCRYPTION_KEY", "")
+PESEPAY_RESULT_URL = os.getenv("PESEPAY_RESULT_URL", "")
+PESEPAY_RETURN_URL = os.getenv("PESEPAY_RETURN_URL", "")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -40,7 +45,7 @@ INSTALLED_APPS = [
     "customers",
     "reports",
     "notifications",
-    "assistant",
+    "assistant",  # Retired models retained for existing migration history only.
     "billing",
     "sync",
     "core",
@@ -180,14 +185,30 @@ CORS_ALLOW_CREDENTIALS = True
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "https://verifin-tau.vercel.app").rstrip("/")
 
+MAILGUN_API_KEY = os.getenv("MAILGUN_API_KEY", "").strip()
+MAILGUN_DOMAIN = os.getenv("MAILGUN_DOMAIN", "").strip()
+MAILGUN_REGION = os.getenv("MAILGUN_REGION", "us").strip().lower()
+
+# Mailgun credentials take precedence as a group to avoid mixing SMTP providers.
+MAILGUN_SMTP_CONFIGURED = any(os.getenv(name) for name in (
+    "MAILGUN_SMTP_HOST", "MAILGUN_SMTP_USERNAME", "MAILGUN_SMTP_PASSWORD",
+))
 EMAIL_BACKEND = os.getenv(
     "EMAIL_BACKEND",
-    "django.core.mail.backends.console.EmailBackend" if DEBUG else "django.core.mail.backends.smtp.EmailBackend",
+    "accounts.mailgun_backend.EmailBackend" if MAILGUN_API_KEY else (
+        "django.core.mail.backends.console.EmailBackend" if DEBUG and not MAILGUN_SMTP_CONFIGURED else "django.core.mail.backends.smtp.EmailBackend"
+    ),
 )
-EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com" if os.getenv("EMAIL_HOST_USER") else "")
-EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
-EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
-EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "").strip()
+if MAILGUN_SMTP_CONFIGURED:
+    EMAIL_HOST = os.getenv("MAILGUN_SMTP_HOST") or "smtp.mailgun.org"
+    EMAIL_PORT = int(os.getenv("MAILGUN_SMTP_PORT") or "587")
+    EMAIL_HOST_USER = os.getenv("MAILGUN_SMTP_USERNAME", "").strip()
+    EMAIL_HOST_PASSWORD = os.getenv("MAILGUN_SMTP_PASSWORD", "")
+else:
+    EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com" if os.getenv("EMAIL_HOST_USER") else "")
+    EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+    EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+    EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "").strip()
 if EMAIL_HOST.endswith("gmail.com"):
     EMAIL_HOST_PASSWORD = EMAIL_HOST_PASSWORD.replace(" ", "")
 EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").lower() in ("1", "true", "yes")
@@ -197,6 +218,8 @@ EMAIL_VERIFICATION_TOKEN_TTL_HOURS = int(os.getenv("EMAIL_VERIFICATION_TOKEN_TTL
 EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS = int(os.getenv("EMAIL_VERIFICATION_RESEND_COOLDOWN_SECONDS", "60"))
 
 CORS_ALLOWED_ORIGINS = [
+    "http://localhost:4489",
+    "http://127.0.0.1:4489",
     "http://127.0.0.1:8080",
     "http://localhost:8080",
     "http://127.0.0.1:8081",
@@ -248,3 +271,22 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # The URL prefix users use to access these files (e.g., /static/styles.css)
 STATIC_URL = '/static/'
 
+
+# Launch offer: one 30-day promotion per newly registered account.
+LAUNCH_PROMO_ENABLED = os.getenv("LAUNCH_PROMO_ENABLED", "True").lower() in ("1", "true", "yes")
+BILLING_TEST_MODE = DEBUG and os.getenv("BILLING_TEST_MODE", "False").lower() in ("1", "true", "yes")
+
+# Public OAuth Web client ID; no client secret is needed for GIS ID-token sign-in.
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+
+# Local mail previews must be explicitly enabled; SMTP is required for real delivery.
+EMAIL_ALLOW_LOCAL_VERIFICATION = os.getenv("EMAIL_ALLOW_LOCAL_VERIFICATION", "False").lower() in ("1", "true", "yes")
+EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "False").lower() in ("1", "true", "yes")
+ACCOUNT_AUTH_LIMITS = {
+    "register": {"ip": (5, 3600), "email": (3, 3600)},
+    "login": {"ip": (30, 300), "email": (10, 900)},
+    "resend": {"ip": (10, 3600), "email": (3, 3600)},
+    "verify": {"ip": (30, 900)},
+}
+# Set only when requests arrive through that many trusted reverse proxies.
+REST_FRAMEWORK["NUM_PROXIES"] = int(os.getenv("AUTH_TRUSTED_PROXY_COUNT", "0"))

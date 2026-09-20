@@ -20,6 +20,7 @@ import {
   parseBusinessDate,
   salePaymentBreakdown,
   supplyInvoiceAmountBase,
+  supplyInvoiceCostAmountBase,
   type FinancePeriod,
 } from "@/lib/reporting";
 import { LockedBadge, useFeatureAccess, useUpgradePrompt } from "@/lib/features";
@@ -47,8 +48,9 @@ const Reports = () => {
       total: supplyInvoiceAmountBase(entry, profile.currency),
     }));
   const totalSales = sales.reduce((sum, s) => sum + s.total, 0) + paidSupplyRevenue.reduce((sum, entry) => sum + entry.total, 0);
-  const totalCostOfGoods = sales.reduce((sum, s) => sum + (s.totalCost || 0), 0);
-  const grossProfit = sales.reduce((sum, s) => sum + (s.grossProfit ?? s.total), 0);
+  const supplyCost = supplyEntries.filter(entry => entry.direction === "outgoing" && entry.paymentStatus === "paid").reduce((sum, entry) => sum + supplyInvoiceCostAmountBase(entry, profile.currency), 0);
+  const totalCostOfGoods = sales.reduce((sum, s) => sum + (s.totalCost || 0), 0) + supplyCost;
+  const grossProfit = totalSales - totalCostOfGoods;
   const inventoryCost = products.reduce((sum, p) => sum + p.stock * (p.costPrice || 0), 0);
   const inventoryMarginValue = products.reduce((sum, p) => sum + p.stock * (p.price - (p.costPrice || 0)), 0);
   const weeklyData = buildWeeklyFinanceData(sales, expenses, new Date(), paidSupplyRevenue);

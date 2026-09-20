@@ -1,3 +1,5 @@
+import { GoogleSignIn } from "@/components/GoogleSignIn";
+import { LaunchPromotion } from "@/components/LaunchPromotion";
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, BadgeCheck, Eye, EyeOff, Lock, Mail, User } from "lucide-react";
@@ -44,7 +46,7 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { login, staffLogin, register } = useAuth();
+  const { login, googleLogin, staffLogin, register } = useAuth();
 
   useEffect(() => {
     if (searchParams.get("signup") === "1") setIsSignUp(true);
@@ -75,9 +77,8 @@ const Login = () => {
         toast.success("Welcome back!");
         navigate("/dashboard");
       } else if (isSignUp) {
-        await register(form.email, form.password, form.name.trim() || undefined, referralCode);
-        toast.success("Account created. Welcome!");
-        navigate("/dashboard");
+        const result = await register(form.email, form.password, form.name.trim() || undefined, referralCode);
+        navigate("/verify-email", { state: { email: result.email, emailSent: result.email_sent, detail: result.detail } });
       } else {
         await login(form.email, form.password);
         toast.success("Welcome back!");
@@ -90,8 +91,15 @@ const Login = () => {
     }
   };
 
-  const handleGoogleSignIn = () => {
-    toast.message("Google sign-in is not connected yet. Please use email and password.");
+  const handleGoogleSignIn = async (credential: string, nonce: string) => {
+    setLoading(true);
+    try {
+      const created = await googleLogin(credential, nonce, referralCode, form.name.trim());
+      toast.success(created ? "Account created. Welcome!" : "Welcome back!");
+      navigate("/dashboard");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Google sign-in failed. Please try again.");
+    } finally { setLoading(false); }
   };
 
   return (
@@ -119,6 +127,7 @@ const Login = () => {
 
         <Card className="shadow-elevated backdrop-blur-sm bg-card/95">
           <CardContent className="p-6">
+            {(isSignUp || loginMode === "owner") && <LaunchPromotion />}
             {!isSignUp && (
               <div className="mb-4 grid grid-cols-2 rounded-lg bg-muted p-1">
                 <button
@@ -138,23 +147,9 @@ const Login = () => {
               </div>
             )}
 
-            {loginMode === "owner" && (
+            {(loginMode === "owner" || isSignUp) && (
               <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full h-11 mb-4 gap-3 font-medium"
-                  disabled={loading}
-                  onClick={handleGoogleSignIn}
-                >
-                  <svg className="h-5 w-5" viewBox="0 0 24 24">
-                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />
-                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-                  </svg>
-                  Continue with Google
-                </Button>
+                <GoogleSignIn onCredential={handleGoogleSignIn} disabled={loading} />
 
                 <div className="relative mb-4">
                   <div className="absolute inset-0 flex items-center">
@@ -167,6 +162,7 @@ const Login = () => {
               </>
             )}
 
+            {!isSignUp && loginMode === "owner" && <button type="button" className="mb-4 text-sm underline" onClick={() => navigate("/verify-email", { state: { email: form.email } })}>Resend verification email</button>}
             <form onSubmit={handleSubmit} className="space-y-4">
               {loginMode === "staff" && !isSignUp ? (
                 <>
@@ -239,7 +235,7 @@ const Login = () => {
               </Button>
             </form>
 
-            {loginMode === "owner" && (
+            {(loginMode === "owner" || isSignUp) && (
               <div className="mt-6 text-center text-sm">
                 <span className="text-muted-foreground">
                   {isSignUp ? "Already have an account?" : "Don't have an account?"}

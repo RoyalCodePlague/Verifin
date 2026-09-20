@@ -94,6 +94,8 @@ class Subscription(TimeStampedSoftDeleteModel):
     billing_currency = models.CharField(max_length=10, default="ZAR")
     current_period_start = models.DateTimeField(default=timezone.now)
     current_period_end = models.DateTimeField(blank=True, null=True)
+    launch_promo_started_at = models.DateTimeField(blank=True, null=True)
+    launch_promo_ends_at = models.DateTimeField(blank=True, null=True)
     trial_ends_at = models.DateTimeField(blank=True, null=True)
     grace_period_ends_at = models.DateTimeField(blank=True, null=True)
     cancel_at_period_end = models.BooleanField(default=False)

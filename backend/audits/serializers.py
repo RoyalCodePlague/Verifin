@@ -9,6 +9,11 @@ class AuditSerializer(serializers.ModelSerializer):
         read_only_fields = ["conductor", "completed_at"]
 
     def validate(self, attrs):
+        if attrs.get("status") == "completed" and self.instance is None:
+            raise serializers.ValidationError({"status": "Create an audit and record counts before completing it."})
+        if self.instance and self.instance.status == "completed":
+            if any(key in attrs for key in ("status", "items_counted", "discrepancies_found")):
+                raise serializers.ValidationError("Completed audit results cannot be edited.")
         request = self.context.get("request")
         user = getattr(request, "user", None)
         if user and user.is_authenticated:
@@ -63,6 +68,11 @@ class StockCountSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         request = self.context.get("request")
         user = getattr(request, "user", None)
+        if attrs.get("counted_quantity", 0) < 0:
+            raise serializers.ValidationError({"counted_quantity": "Count cannot be negative."})
+        audit = attrs.get("audit", getattr(self.instance, "audit", None))
+        if audit and audit.status == "completed":
+            raise serializers.ValidationError({"audit": "Completed audit counts cannot be edited."})
         if user and user.is_authenticated:
             audit = attrs.get("audit")
             product = attrs.get("product")

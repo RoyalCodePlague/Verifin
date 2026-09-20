@@ -1,5 +1,5 @@
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -7,11 +7,12 @@ from rest_framework_simplejwt.tokens import RefreshToken
 User = get_user_model()
 
 
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
 class AccountAuthTests(TestCase):
     def setUp(self):
         self.client = APIClient()
 
-    def test_register_returns_tokens_and_creates_active_user(self):
+    def test_register_creates_pending_user_without_tokens(self):
         response = self.client.post(
             reverse("register"),
             {
@@ -23,14 +24,15 @@ class AccountAuthTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 201)
-        self.assertIn("access", response.data)
-        self.assertIn("refresh", response.data)
+        self.assertNotIn("access", response.data)
+        self.assertNotIn("refresh", response.data)
 
         user = User.objects.get(email="newuser@example.com")
-        self.assertTrue(user.is_active)
-        self.assertTrue(user.email_verified)
+        self.assertFalse(user.is_active)
+        self.assertFalse(user.email_verified)
+        self.assertTrue(user.email_verification_pending)
 
-    def test_verified_flag_does_not_block_login_for_now(self):
+    def test_unverified_email_blocks_login(self):
         User.objects.create_user(
             username="active@example.com",
             email="active@example.com",
@@ -45,9 +47,9 @@ class AccountAuthTests(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("access", response.data)
-        self.assertIn("refresh", response.data)
+        self.assertEqual(response.status_code, 400)
+        self.assertNotIn("access", response.data)
+        self.assertNotIn("refresh", response.data)
 
     def test_invalid_login_still_rejected(self):
         response = self.client.post(

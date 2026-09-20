@@ -123,13 +123,13 @@ const Sales = () => {
   const addProductToSale = (productId: string, quantity = 1) => {
     const product = products.find(p => p.id === productId);
     if (!product) return false;
-    const unitPrice = parseFloat(String(product.costPrice || 0)) || 0;
+    const unitPrice = parseFloat(String(product.price || 0)) || 0;
     if (quantity > product.stock) {
       toast.error(`Only ${product.stock} ${product.name} in stock`);
       return false;
     }
     if (unitPrice <= 0) {
-      toast.error("Set a product cost greater than zero before recording the sale.");
+      toast.error("Set a product selling price greater than zero before recording the sale.");
       return false;
     }
     const existing = lineItems.findIndex(l => l.productId === product.id);
@@ -220,7 +220,7 @@ const Sales = () => {
   const handleAdd = async () => {
     if (lineItems.length === 0) return;
     if (saleTotal <= 0) {
-      toast.error("Add at least one item with a product cost greater than zero.");
+      toast.error("Add at least one item with a product selling price greater than zero.");
       return;
     }
 
@@ -243,7 +243,7 @@ const Sales = () => {
       payment_method: method,
       payment_currency: paymentCurrency,
       // Multi-branch is disabled for now. Keep sending null until branch routing is restored.
-      branch: null,
+      branch: till?.branch || null,
       till_session: till?.id || null,
       customer: selectedCustomerId ? Number(selectedCustomerId) : null,
       sale_items: lineItems.map((l) => ({
@@ -256,6 +256,8 @@ const Sales = () => {
     const offlinePayload = {
       payment_method: method,
       payment_currency: paymentCurrency,
+      branch: till?.branch || null,
+      till_session: till?.id || null,
       customer: selectedCustomerId ? Number(selectedCustomerId) : null,
       sale_items: lineItems.map((l) => {
         const productId = parseInt(l.productId, 10);
@@ -270,7 +272,7 @@ const Sales = () => {
       }),
     };
 
-    if (SHOW_SPLIT_PAYMENT && paymentAllocations.length > 0) {
+    if (paymentAllocations.length > 0) {
       Object.assign(apiPayload, { payment_allocations: paymentAllocations });
       Object.assign(offlinePayload, {
         payment_allocations: paymentAllocations.map((row) => ({
@@ -329,7 +331,7 @@ const Sales = () => {
   const handleOpenTill = async () => {
     try {
       const opened = await openTillApi({
-        branch: null,
+        branch: till?.branch || null,
         cashier_name: tillForm.cashier,
         opening_cash: tillForm.openingCash || "0",
       });

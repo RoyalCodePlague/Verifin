@@ -3,8 +3,8 @@ from decimal import Decimal
 from django.utils import timezone
 from rest_framework import serializers
 from customers.models import Customer, LoyaltyTransaction
-from inventory.models import Product
-from core.currency import normalize_allocations
+from inventory.models import Product, StockMovement
+from core.currency import normalize_allocations, get_rate_to_base
 from .models import Sale, SaleItem, TillSession
 
 
@@ -12,6 +12,7 @@ class SaleItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = SaleItem
         fields = ["id", "product", "quantity", "unit_price", "subtotal"]
+        extra_kwargs = {"subtotal": {"required": False}}
 
 
 class SaleItemReadSerializer(serializers.ModelSerializer):
@@ -65,6 +66,8 @@ class SaleSerializer(serializers.ModelSerializer):
             if branch and branch.user_id != user.id:
                 raise serializers.ValidationError({"branch": "Branch does not belong to this account."})
             till_session = attrs.get("till_session")
+            if till_session and (till_session.is_deleted or till_session.status != "open"):
+                raise serializers.ValidationError({"till_session": "Till session must be open."})
             if till_session and till_session.user_id != user.id:
                 raise serializers.ValidationError({"till_session": "Till session does not belong to this account."})
             customer = attrs.get("customer")
@@ -72,6 +75,12 @@ class SaleSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"customer": "Customer does not belong to this account."})
             for item in items:
                 product = item.get("product")
+                if item.get("quantity", 0) <= 0:
+                    raise serializers.ValidationError({"sale_items": "Quantities must be greater than zero."})
+                if item.get("unit_price", 0) < 0:
+                    raise serializers.ValidationError({"sale_items": "Selling prices cannot be negative."})
+                if product and product.is_deleted:
+                    raise serializers.ValidationError({"sale_items": "Product has been deleted."})
                 if product and product.user_id != user.id:
                     raise serializers.ValidationError({"sale_items": f"{product.name} does not belong to this account."})
                 if branch and product and product.branch_id and product.branch_id != branch.id:
@@ -81,19 +90,21 @@ class SaleSerializer(serializers.ModelSerializer):
     @transaction.atomic
     def create(self, validated_data):
         items = validated_data.pop("sale_items", [])
-        validated_data.pop("payment_currency", "")
+        payment_currency = validated_data.pop("payment_currency", "")
         submitted_allocations = validated_data.pop("payment_allocations", [])
+        if not items:
+            raise serializers.ValidationError({"sale_items": "Add at least one sale item."})
         sale = Sale.objects.create(**validated_data)
         total = 0
         total_cost = 0
         item_labels = []
         for item in items:
-            product = item["product"]
+            product = Product.objects.select_for_update().get(pk=item["product"].pk)
             qty = item["quantity"]
             if product.stock < qty:
                 raise serializers.ValidationError(f"Insufficient stock for {product.name}")
             unit_price = item["unit_price"]
-            subtotal = item.get("subtotal") or (unit_price * qty)
+            subtotal = unit_price * qty
             unit_cost = product.cost_price
             cost_total = unit_cost * qty
             profit = subtotal - cost_total
@@ -112,6 +123,7 @@ class SaleSerializer(serializers.ModelSerializer):
             
             product.stock -= qty
             product.save()
+            StockMovement.objects.create(product=product, quantity=qty, movement_type="out", created_by=sale.created_by, reason=sale.receipt_number)
             total += subtotal
             total_cost += cost_total
             item_labels.append(f"{qty}x {product.name}")
@@ -120,12 +132,13 @@ class SaleSerializer(serializers.ModelSerializer):
         sale.total_cost = total_cost
         sale.gross_profit = total - total_cost
         sale.items = ", ".join(item_labels) if item_labels else ""
+        rate = get_rate_to_base(sale.created_by, payment_currency or sale.created_by.currency) if not submitted_allocations else Decimal("1")
         allocations, allocations_total = normalize_allocations(
             sale.created_by,
             submitted_allocations,
-            total,
-            getattr(sale.created_by, "currency", "ZAR"),
-            Decimal("1"),
+            (Decimal(total) / rate).quantize(Decimal("0.01")),
+            payment_currency or sale.created_by.currency,
+            rate,
             field_name="payment_allocations",
         )
         total_amount = Decimal(str(total)).quantize(Decimal("0.01"))
@@ -137,8 +150,9 @@ class SaleSerializer(serializers.ModelSerializer):
         sale.payment_currency = allocations[0]["currency"] if len(allocations) == 1 else "MIXED"
         sale.save()
         
-        customer = sale.customer
+        customer = Customer.objects.select_for_update().get(pk=sale.customer_id) if sale.customer_id else None
         if customer:
+            customer.last_visit = timezone.now()
             customer.visits += 1
             customer.total_spent += total
             points = int(total // 10)

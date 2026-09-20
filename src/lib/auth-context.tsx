@@ -13,16 +13,19 @@ import {
   fetchMe,
   getAccessToken,
   loginRequest,
+  googleLoginRequest,
   logoutRequest,
   onAuthExpired,
   registerRequest,
   setTokens,
   staffLoginRequest,
+  verifyEmailRequest,
   type ApiUser,
   type StaffSession,
 } from "@/lib/api";
 import { loadServerData } from "@/lib/sync";
 import { useStore } from "@/lib/store";
+import { toast } from "sonner";
 import {
   clearAuthenticatedOfflineSession,
   clearOfflineQueue,
@@ -79,8 +82,10 @@ type AuthContextValue = {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  verifyEmail: (token: string) => Promise<void>;
+  googleLogin: (credential: string, nonce: string, referralCode?: string, businessName?: string) => Promise<boolean>;
   staffLogin: (businessCode: string, username: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name?: string, referralCode?: string) => Promise<void>;
+  register: (email: string, password: string, name?: string, referralCode?: string) => ReturnType<typeof registerRequest>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   canAccess: (permission: string) => boolean;
@@ -169,6 +174,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [refreshUser]
   );
 
+  const googleLogin = useCallback(async (credential: string, nonce: string, referralCode?: string, businessName?: string) => {
+    const res = await googleLoginRequest(credential, nonce, referralCode, businessName);
+    localStorage.removeItem(STAFF_SESSION_KEY);
+    setStaffSession(null);
+    setTokens(res.access, res.refresh);
+    await refreshUser();
+    return res.created;
+  }, [refreshUser]);
+
+  const verifyEmail = useCallback(async (token: string) => {
+    if (getOfflineQueue().length > 0) {
+      throw new Error("Sync your pending changes before signing into a new account, or open this verification link in another browser.");
+    }
+    const result = await verifyEmailRequest(token);
+    // The successful response already proves identity; do not require another
+    // profile request after consuming a single-use verification link.
+    resetForLogout();
+    clearOfflineSession();
+    clearAuthenticatedOfflineSession();
+    localStorage.removeItem(STAFF_SESSION_KEY);
+    setStaffSession(null);
+    setTokens(result.access, result.refresh);
+    saveCachedUser(result.user);
+    markAuthenticatedOfflineSession();
+    setUser(result.user);
+    try {
+      await applyServerData(result.user);
+    } catch {
+      toast.error("You are signed in, but some account data could not load. Please refresh the page.");
+    }
+  }, [applyServerData, resetForLogout]);
+
   const staffLogin = useCallback(
     async (businessCode: string, username: string, password: string) => {
       const res = await staffLoginRequest({ business_code: businessCode, username, password });
@@ -184,19 +221,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const register = useCallback(
-    async (email: string, password: string, name?: string, referralCode?: string) => {
-      const res = await registerRequest({
-        email,
-        password,
-        business_name: name || "",
-        referral_code: referralCode || "",
-      });
-      setTokens(res.access, res.refresh);
-      localStorage.removeItem(STAFF_SESSION_KEY);
-      setStaffSession(null);
-      await refreshUser();
-    },
-    [refreshUser]
+    (email: string, password: string, name?: string, referralCode?: string) => registerRequest({
+      email, password, business_name: name || "", referral_code: referralCode || "",
+    }), []
   );
 
   const logout = useCallback(async () => {
@@ -220,7 +247,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const canAccess = useCallback(
     (permission: string) => {
       if (!staffSession) return true;
-      const permissions = staffSession.permissions?.length ? staffSession.permissions : ROLE_DEFAULT_PERMISSIONS[staffSession.role] || [];
+      const permissions = staffSession.permissions ?? ROLE_DEFAULT_PERMISSIONS[staffSession.role] ?? [];
       return permissions.includes("*") || permissions.includes(permission);
     },
     [staffSession]
@@ -234,13 +261,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated: !!user,
       isLoading,
       login,
+      verifyEmail,
+      googleLogin,
       staffLogin,
       register,
       logout,
       refreshUser,
       canAccess,
     }),
-    [user, staffSession, isLoading, login, staffLogin, register, logout, refreshUser, canAccess]
+    [user, staffSession, isLoading, login, verifyEmail, googleLogin, staffLogin, register, logout, refreshUser, canAccess]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

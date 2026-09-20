@@ -10,7 +10,7 @@ import { fallbackPricingContextForCountry } from "@/lib/pricing";
 
 const planFeatures: Record<PlanCode, string[]> = {
   starter: ["1 user", "50 products", "Basic tracking"],
-  growth: ["3 users", "Unlimited products", "AI assistant", "WhatsApp reports"],
+  growth: ["3 users", "Unlimited products", "Stock alerts", "WhatsApp reports"],
   business: ["Unlimited users", "Advanced analytics", "API access", "Priority support"],
 };
 

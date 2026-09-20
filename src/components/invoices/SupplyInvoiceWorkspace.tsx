@@ -1,3 +1,5 @@
+import { useAuth } from "@/lib/auth-context";
+import { canQueueOfflineAction } from "@/lib/offlineQueue";
 import { useMemo, useState } from "react";
 import { Download, FileText, Printer } from "lucide-react";
 import { toast } from "sonner";
@@ -52,6 +54,31 @@ export function SupplyInvoiceWorkspace({
   description = "Review supplier invoices, track payment status, and work with invoice-only reporting in one place.",
 }: SupplyInvoiceWorkspaceProps) {
   const { supplyEntries, profile, updateSupplyEntry } = useStore();
+  const { refreshUser } = useAuth();
+  const savePaymentStatus = async (id: string, paymentStatus: "pending" | "partial" | "paid") => {
+    try {
+      await updateSupplyEntry(id, { paymentStatus });
+      if (!canQueueOfflineAction()) await refreshUser();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update invoice.");
+    }
+  };
+  const [importing, setImporting] = useState(false);
+  const legacyInvoices = supplyEntries.filter(entry => !entry.requestId);
+  const importLegacyInvoices = async () => {
+    if (importing) return;
+    if (!navigator.onLine) { toast.error("Connect to the internet to save these invoices."); return; }
+    setImporting(true);
+    try {
+      for (const entry of legacyInvoices) {
+        await updateSupplyEntry(entry.id, { paymentStatus: entry.paymentStatus });
+      }
+      await refreshUser();
+      toast.success("Older invoices saved to your account.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save all invoices. You can retry safely.");
+    } finally { setImporting(false); }
+  };
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "partial" | "paid">("all");
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
@@ -123,6 +150,12 @@ export function SupplyInvoiceWorkspace({
 
   return (
     <div className="space-y-6">
+      {legacyInvoices.length > 0 && (
+        <div className="rounded-lg border border-border p-4 space-y-2">
+          <p className="text-sm">{legacyInvoices.length} older invoices are saved only on this device. Saving them to your account will apply their stock movements and make them available on other devices.</p>
+          <Button disabled={importing} onClick={importLegacyInvoices}>{importing ? "Saving invoices..." : "Save older invoices to account"}</Button>
+        </div>
+      )}
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h3 className="font-display text-lg font-semibold">{title}</h3>
@@ -201,7 +234,7 @@ export function SupplyInvoiceWorkspace({
 
                   <select
                     value={entry.paymentStatus}
-                    onChange={(e) => updateSupplyEntry(entry.id, { paymentStatus: e.target.value as typeof entry.paymentStatus })}
+                    onChange={(e) => savePaymentStatus(entry.id, e.target.value as typeof entry.paymentStatus)}
                     className="h-10 rounded-md border border-input bg-background px-3 text-sm"
                   >
                     <option value="pending">Pending</option>
@@ -322,7 +355,7 @@ export function SupplyInvoiceWorkspace({
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <select
                   value={selectedInvoice.paymentStatus}
-                  onChange={(e) => updateSupplyEntry(selectedInvoice.id, { paymentStatus: e.target.value as typeof selectedInvoice.paymentStatus })}
+                  onChange={(e) => savePaymentStatus(selectedInvoice.id, e.target.value as typeof selectedInvoice.paymentStatus)}
                   className="h-10 rounded-md border border-input bg-background px-3 text-sm"
                 >
                   <option value="pending">Pending</option>

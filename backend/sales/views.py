@@ -1,3 +1,8 @@
+from django.db import transaction
+from django.utils import timezone
+from rest_framework.exceptions import ValidationError
+from customers.models import Customer, LoyaltyTransaction
+from inventory.models import Product, StockMovement
 from django.db.models import Sum
 from django.db.models.functions import TruncDay, TruncMonth, TruncWeek
 from urllib.parse import quote
@@ -52,6 +57,7 @@ def build_receipt_message(payload, currency_symbol):
 
 
 class SaleViewSet(viewsets.ModelViewSet):
+    http_method_names = ["get", "post", "delete", "head", "options"]
     serializer_class = SaleSerializer
     permission_classes = [IsAuthenticated]
     filterset_fields = ["payment_method", "customer"]
@@ -72,6 +78,33 @@ class SaleViewSet(viewsets.ModelViewSet):
             object_type="sale",
             object_id=sale.id,
         )
+
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        sale = Sale.objects.select_for_update().get(pk=instance.pk)
+        if sale.is_deleted:
+            return
+        for item in sale.sale_items.filter(is_deleted=False).order_by("product_id"):
+            product = Product.objects.select_for_update().get(pk=item.product_id)
+            product.stock += item.quantity
+            product.save()
+            StockMovement.objects.create(product=product, quantity=item.quantity, movement_type="in", created_by=self.request.user, reason=f"Reversed {sale.receipt_number}")
+        if sale.customer_id:
+            customer = Customer.objects.select_for_update().get(pk=sale.customer_id)
+            points = int(sale.total // 10)
+            customer.visits = max(0, customer.visits - 1)
+            customer.total_spent -= sale.total
+            customer.loyalty_points -= points
+            previous = customer.sales.filter(is_deleted=False).exclude(pk=sale.pk).order_by("-created_at").first()
+            customer.last_visit = previous.created_at if previous else None
+            customer.save()
+            LoyaltyTransaction.objects.create(customer=customer, points_change=-points, reason=f"Reversed sale {sale.receipt_number}")
+        sale.is_deleted = True
+        sale.save()
+        sale.sale_items.update(is_deleted=True)
+        if sale.till_session_id and sale.till_session.status == "closed":
+            till = sale.till_session
+            TillSessionSerializer(context={"request": self.request}).close(till, till.closing_cash, till.notes)
 
     @action(detail=False, methods=["get"], url_path="aggregations")
     def aggregations(self, request):

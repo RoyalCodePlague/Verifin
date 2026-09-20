@@ -218,11 +218,13 @@ const Inventory = () => {
           price,
           barcode: form.barcode,
         });
-        if (/^\d+$/.test(editProduct)) {
+        {
           addToOfflineQueue({
             type: "product_update",
             payload: {
-              id: parseInt(editProduct, 10),
+              id: /^\d+$/.test(editProduct) ? parseInt(editProduct, 10) : undefined,
+              local_id: editProduct,
+              expected_stock: products.find(product => product.id === editProduct)?.stock,
               name: form.name,
               categoryName: form.category,
               preferred_supplier: form.supplierId || undefined,
@@ -644,17 +646,6 @@ const Inventory = () => {
           </div>
         </Card>
       )}
-
-      {/*
-      {showAssistant && (
-        <Card className="shadow-soft border-primary/20">
-          <CardContent className="p-4 lg:p-5">
-            <p className="text-sm font-medium text-muted-foreground mb-2">Auto Admin Assistant — next steps for your stock</p>
-            <AdminAssistant autoExpand onDismissAutoExpand={() => setShowAssistant(false)} />
-          </CardContent>
-        </Card>
-      )}
-      */}
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>{formDialog}</Dialog>
       <Dialog open={!!editProduct} onOpenChange={() => setEditProduct(null)}>{formDialog}</Dialog>

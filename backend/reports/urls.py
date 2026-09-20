@@ -17,7 +17,11 @@ from .views import (
     WeeklyPerformanceView,
 )
 
+from .business_views import insights, whatsapp_summary
+
 urlpatterns = [
+    path("insights/", insights),
+    path("whatsapp-summary/", whatsapp_summary),
     path("daily-sales/", DailySalesView.as_view()),
     path("weekly-performance/", WeeklyPerformanceView.as_view()),
     path("stock-movement/", StockMovementView.as_view()),

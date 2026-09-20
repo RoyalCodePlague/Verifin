@@ -8,7 +8,7 @@ const routeMeta: Record<string, { title: string; description: string; noindex?: 
   },
   "/pricing": {
     title: "Verifin Pricing - Inventory and Admin Software for SMEs",
-    description: "Compare Verifin plans for African SMEs. Start free, then unlock inventory automation, audits, reports, OCR, and AI assistance.",
+    description: "Compare Verifin plans for African SMEs. Start free, then unlock inventory automation, audits, reports, OCR, and business insights.",
   },
   "/demo": {
     title: "Verifin Demo - See Inventory, Sales, Audits and Reports",
