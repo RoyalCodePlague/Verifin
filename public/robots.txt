@@ -13,4 +13,4 @@ Allow: /
 User-agent: *
 Allow: /
 
-Sitemap: https://verifin-tau.vercel.app/sitemap.xml
+Sitemap: https://verifin.co.zw/sitemap.xml

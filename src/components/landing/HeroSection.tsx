@@ -70,7 +70,7 @@ const HeroSection = () => {
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8 }}
               className="text-lg text-muted-foreground max-w-lg mx-auto lg:mx-0 mb-8"
             >
-              Verifin is the all-in-one business operating system that handles your inventory, sales, expenses, and audits — so you can focus on growing your business.
+              Manage inventory, track sales, record expenses, and run stock audits in one app. Built for small businesses in Zimbabwe and across Africa, with offline workflows for unreliable connections.
             </motion.p>
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1 }} className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
               <Button size="lg" onClick={() => navigate(primaryPath)} className="bg-gradient-hero text-primary-foreground shadow-elevated hover:opacity-90 transition-opacity text-base px-8 h-12">

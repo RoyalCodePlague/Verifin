@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-const SITE_URL = "https://verifin-tau.vercel.app";
+const SITE_URL = "https://verifin.co.zw";
 const DEFAULT_IMAGE = `${SITE_URL}/og-image.png`;
 
 type SEOProps = {

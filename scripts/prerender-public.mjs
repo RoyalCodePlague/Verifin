@@ -1,15 +1,31 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-const SITE_URL = "https://verifin-tau.vercel.app";
+const SITE_URL = "https://verifin.co.zw";
 const IMAGE_URL = `${SITE_URL}/og-image.png`;
 const distDir = path.resolve("dist");
 
 const routes = [
   {
+    path: "/privacy",
+    title: "Privacy Policy | Verifin",
+    description: "Read how Verifin collects, uses and protects your account and business information, and learn about your privacy choices.",
+    heading: "Privacy Policy",
+    body: "Learn about the account and business information Verifin processes, how it is used, and your privacy choices.",
+    cta: "Contact the team with privacy questions.",
+  },
+  {
+    path: "/terms",
+    title: "Terms of Service | Verifin",
+    description: "Read the terms for using Verifin, including accounts, subscriptions, acceptable use and responsibilities.",
+    heading: "Terms of Service",
+    body: "Review the terms governing your use of Verifin, including accounts, subscriptions and acceptable use.",
+    cta: "Contact the team if you have questions about these terms.",
+  },
+  {
     path: "/",
-    title: "Verifin - Smart Inventory & Admin for African SMEs",
-    description: "Automate admin, control stock, track sales and expenses, run audits, and work offline with Verifin.",
+    title: "Inventory & Sales Software for Zimbabwe SMEs | Verifin",
+    description: "Manage stock, sales, expenses and audits with Verifin. Inventory software for small businesses in Zimbabwe and across Africa, with offline workflows.",
     heading: "Smart Inventory & Admin for African SMEs",
     body: "Verifin helps African SMEs manage inventory, sales, expenses, audits, reports, customer loyalty, and offline business operations in one practical app.",
     keywords: ["inventory management", "sales tracking", "expense tracking", "stock audits", "offline business app", "African SMEs"],
@@ -93,14 +109,14 @@ function setTag(html, pattern, replacement) {
 }
 
 function staticMarkup(route) {
-  const keywords = route.keywords.map((keyword) => `<li>${escapeHtml(keyword)}</li>`).join("");
+  const links = routes.filter((page) => page.path !== route.path).map((page) => `<a href="${page.path}">${escapeHtml(page.heading)}</a>`).join(" | ");
   return `
     <main class="seo-prerender" aria-label="${escapeHtml(route.heading)}">
       <section>
         <p>Verifin</p>
         <h1>${escapeHtml(route.heading)}</h1>
         <p>${escapeHtml(route.body)}</p>
-        <ul>${keywords}</ul>
+        <nav aria-label="Explore Verifin">${links}</nav>
         <p>${escapeHtml(route.cta)}</p>
       </section>
     </main>

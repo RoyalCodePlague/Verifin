@@ -3,8 +3,8 @@ import { SEO } from "@/components/SEO";
 
 const routeMeta: Record<string, { title: string; description: string; noindex?: boolean }> = {
   "/": {
-    title: "Verifin - Smart Inventory & Admin for African SMEs",
-    description: "Automate admin, control stock, track sales and expenses, run audits, and work offline with Verifin.",
+    title: "Inventory & Sales Software for Zimbabwe SMEs | Verifin",
+    description: "Manage stock, sales, expenses and audits with Verifin. Inventory software for small businesses in Zimbabwe and across Africa, with offline workflows.",
   },
   "/pricing": {
     title: "Verifin Pricing - Inventory and Admin Software for SMEs",
@@ -34,6 +34,19 @@ const routeMeta: Record<string, { title: string; description: string; noindex?: 
     title: "Verifin Careers - Build Software for African SMEs",
     description: "Join Verifin and help build practical business software for African SMEs.",
   },
+  "/privacy": {
+    title: "Privacy Policy | Verifin",
+    description: "Read how Verifin collects, uses and protects your account and business information, and learn about your privacy choices.",
+  },
+  "/terms": {
+    title: "Terms of Service | Verifin",
+    description: "Read the terms for using Verifin, including accounts, subscriptions, acceptable use and responsibilities.",
+  },
+  "/verify-email": {
+    title: "Verify Your Email | Verifin",
+    description: "Verify your email address to access your Verifin account.",
+    noindex: true,
+  },
   "/login": {
     title: "Login to Verifin",
     description: "Sign in to your Verifin account.",
@@ -49,14 +62,15 @@ const routeMeta: Record<string, { title: string; description: string; noindex?: 
 const privatePrefixes = ["/inventory", "/sales", "/expenses", "/audits", "/reports", "/customers", "/suppliers", "/staff", "/settings", "/billing", "/onboarding"];
 
 export function RouteSEO() {
-  const { pathname } = useLocation();
+  const { pathname: rawPath } = useLocation();
+  const pathname = rawPath.replace(/\/+$/, "") || "/";
   const exactMeta = routeMeta[pathname];
   const isPrivate = privatePrefixes.some((prefix) => pathname.startsWith(prefix));
 
   const meta = exactMeta || {
-    title: isPrivate ? "Verifin App" : "Verifin - Smart Inventory & Admin for African SMEs",
+    title: isPrivate ? "Verifin App" : "Page Not Found | Verifin",
     description: isPrivate ? "Private Verifin app page." : "Business software for African SMEs to manage stock, sales, expenses, audits, reports, and offline operations.",
-    noindex: isPrivate,
+    noindex: true,
   };
 
   return <SEO title={meta.title} description={meta.description} path={pathname} noindex={meta.noindex} />;
