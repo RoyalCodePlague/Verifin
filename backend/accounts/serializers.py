@@ -99,7 +99,7 @@ class UserSerializer(serializers.ModelSerializer):
     business_code = serializers.SerializerMethodField()
 
     def get_business_code(self, obj):
-        return f"VF-{obj.id}"
+        return obj.business_code
 
     def validate(self, attrs):
         if self.instance and "email" in attrs and attrs["email"].lower() != self.instance.email.lower():
@@ -234,11 +234,7 @@ class StaffLoginSerializer(serializers.Serializer):
 
         owner = None
         if business_code.upper().startswith("VF-"):
-            try:
-                owner_id = int(business_code.split("-", 1)[1])
-                owner = User.objects.filter(id=owner_id, is_active=True).first()
-            except (IndexError, TypeError, ValueError):
-                owner = None
+            owner = User.objects.filter(business_code__iexact=business_code, is_active=True).first()
         if owner is None:
             owner = User.objects.filter(email__iexact=business_code, is_active=True).first()
         if owner is None:

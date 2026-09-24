@@ -13,12 +13,13 @@ const values = [
   { icon: Lightbulb, title: "Built for Business", desc: "Smart automation that handles admin so you can focus on growing your business." },
 ];
 
-const team = [
-  { name: "Thabo M.", role: "Founder & CEO", initials: "TM" },
-  { name: "Amara K.", role: "Head of Product", initials: "AK" },
-  { name: "Sipho N.", role: "Lead Engineer", initials: "SN" },
-  { name: "Grace C.", role: "Customer Success", initials: "GC" },
-];
+// Temporarily hidden with the "Our Team" section below.
+// const team = [
+//   { name: "Thabo M.", role: "Founder & CEO", initials: "TM" },
+//   { name: "Amara K.", role: "Head of Product", initials: "AK" },
+//   { name: "Sipho N.", role: "Lead Engineer", initials: "SN" },
+//   { name: "Grace C.", role: "Customer Success", initials: "GC" },
+// ];
 
 const About = () => {
   const navigate = useNavigate();
@@ -53,6 +54,7 @@ const About = () => {
             ))}
           </div>
 
+          {/* Temporarily hidden: Our Team
           <div className="mb-16">
             <h2 className="font-display font-bold text-2xl text-center mb-8">Our Team</h2>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -67,6 +69,7 @@ const About = () => {
               ))}
             </div>
           </div>
+          */}
 
           <div className="text-center bg-gradient-hero rounded-2xl p-10 text-primary-foreground">
             <h2 className="font-display font-bold text-2xl mb-2">Ready to take control?</h2>

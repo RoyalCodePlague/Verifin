@@ -1,14 +1,14 @@
 import { motion } from "framer-motion";
 
 const stats = [
-  { value: "2,500+", label: "Active Businesses" },
-  { value: "12M+", label: "Transactions Tracked" },
-  { value: "99.9%", label: "Uptime" },
-  { value: "4.9★", label: "User Rating" },
+  { value: "Offline", label: "Keep working anywhere" },
+  { value: "Live", label: "Stock updates as you sell" },
+  { value: "1 place", label: "Sales, stock and expenses" },
+  { value: "Ready", label: "For your team and devices" },
 ];
 
 const StatsSection = () => (
-  <section className="py-16 bg-muted/30">
+  <section className="border-y border-border bg-muted/30 py-12">
     <div className="container">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
         {stats.map((s, i) => (

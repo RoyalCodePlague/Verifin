@@ -1,7 +1,7 @@
 import { GoogleSignIn } from "@/components/GoogleSignIn";
 import { LaunchPromotion } from "@/components/LaunchPromotion";
 import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, BadgeCheck, Eye, EyeOff, Lock, Mail, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,8 +45,10 @@ const Login = () => {
   const [staffForm, setStaffForm] = useState({ businessCode: "", username: "", password: "" });
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const { login, googleLogin, staffLogin, register } = useAuth();
+  const verificationNotice = (location.state as { email?: string; verificationNotice?: string } | null)?.verificationNotice;
 
   useEffect(() => {
     if (searchParams.get("signup") === "1") setIsSignUp(true);
@@ -56,6 +58,11 @@ const Login = () => {
       setIsSignUp(true);
     }
   }, [searchParams]);
+
+  useEffect(() => {
+    const email = (location.state as { email?: string } | null)?.email;
+    if (email) setForm((current) => ({ ...current, email }));
+  }, [location.state]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,7 +85,7 @@ const Login = () => {
         navigate("/dashboard");
       } else if (isSignUp) {
         const result = await register(form.email, form.password, form.name.trim() || undefined, referralCode);
-        navigate("/verify-email", { state: { email: result.email, emailSent: result.email_sent, detail: result.detail } });
+        navigate("/login", { replace: true, state: { email: result.email, verificationNotice: result.detail } });
       } else {
         await login(form.email, form.password);
         toast.success("Welcome back!");
@@ -123,6 +130,7 @@ const Login = () => {
           <p className="text-sm text-muted-foreground">
             {isSignUp ? "Start managing your business smarter" : loginMode === "staff" ? "Use the details created by the owner" : "Sign in to your dashboard"}
           </p>
+          {verificationNotice && <p role="status" className="mt-4 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary">{verificationNotice}</p>}
         </div>
 
         <Card className="shadow-elevated backdrop-blur-sm bg-card/95">
@@ -162,7 +170,15 @@ const Login = () => {
               </>
             )}
 
-            {!isSignUp && loginMode === "owner" && <button type="button" className="mb-4 text-sm underline" onClick={() => navigate("/verify-email", { state: { email: form.email } })}>Resend verification email</button>}
+            {!isSignUp && loginMode === "owner" && (
+              <button
+                type="button"
+                className="mb-5 flex w-full items-center justify-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-primary hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                onClick={() => navigate("/verify-email", { state: { email: form.email } })}
+              >
+                <Mail className="h-4 w-4" /> Resend verification email
+              </button>
+            )}
             <form onSubmit={handleSubmit} className="space-y-4">
               {loginMode === "staff" && !isSignUp ? (
                 <>
@@ -170,7 +186,7 @@ const Login = () => {
                     <Label>Business Code</Label>
                     <div className="relative mt-1.5">
                       <BadgeCheck className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input placeholder="VF-123" value={staffForm.businessCode} onChange={e => setStaffForm({ ...staffForm, businessCode: e.target.value })} className="pl-9" required />
+                      <Input placeholder="VF-3g4hj0" value={staffForm.businessCode} onChange={e => setStaffForm({ ...staffForm, businessCode: e.target.value })} className="pl-9" required />
                     </div>
                   </div>
                   <div>

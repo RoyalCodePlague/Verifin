@@ -1,6 +1,8 @@
 from django.contrib.auth.models import AbstractUser
 from django.contrib.auth.hashers import check_password, make_password
 from django.db import models
+import secrets
+import string
 from core.models import TimeStampedSoftDeleteModel
 
 
@@ -14,6 +16,15 @@ def default_staff_permissions():
 
 def default_api_key_permissions():
     return ["inventory", "sales", "customers", "reports"]
+
+
+def generate_business_code():
+    """Return a staff-safe, non-sequential business identifier."""
+    alphabet = string.ascii_lowercase + string.digits
+    characters = [secrets.choice(string.ascii_lowercase), secrets.choice(string.digits)]
+    characters.extend(secrets.choice(alphabet) for _ in range(4))
+    secrets.SystemRandom().shuffle(characters)
+    return "VF-" + "".join(characters)
 
 
 class User(AbstractUser, TimeStampedSoftDeleteModel):
@@ -31,9 +42,19 @@ class User(AbstractUser, TimeStampedSoftDeleteModel):
     email_verification_pending = models.BooleanField(default=False)
     email_verification_token = models.CharField(max_length=128, blank=True)
     email_verification_sent_at = models.DateTimeField(blank=True, null=True)
+    business_code = models.CharField(max_length=16, unique=True, default=generate_business_code, editable=False)
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["username"]
+
+    def save(self, *args, **kwargs):
+        code_in_use = self.business_code and User.objects.filter(business_code=self.business_code).exclude(pk=self.pk).exists()
+        if not self.business_code or code_in_use:
+            candidate = generate_business_code()
+            while User.objects.filter(business_code=candidate).exists():
+                candidate = generate_business_code()
+            self.business_code = candidate
+        super().save(*args, **kwargs)
 
 
 class Profile(TimeStampedSoftDeleteModel):

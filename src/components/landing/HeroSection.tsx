@@ -10,7 +10,7 @@ const HeroSection = () => {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
   const primaryPath = isAuthenticated ? "/dashboard" : "/login?signup=1";
-  const primaryLabel = isAuthenticated ? "Dashboard" : "Start Free Trial";
+  const primaryLabel = isAuthenticated ? "Open workspace" : "Set up my workspace";
   const countryCode = getDetectedPricingCountry();
 
   const particles = Array.from({ length: 12 }, (_, i) => ({
@@ -70,14 +70,14 @@ const HeroSection = () => {
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8 }}
               className="text-lg text-muted-foreground max-w-lg mx-auto lg:mx-0 mb-8"
             >
-              Manage inventory, track sales, record expenses, and run stock audits in one app. Built for small businesses in Zimbabwe and across Africa, with offline workflows for unreliable connections.
+              Your daily sales, stock levels, expenses and next actions — in one calm, practical workspace. Built for African businesses and unreliable connections.
             </motion.p>
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1 }} className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
               <Button size="lg" onClick={() => navigate(primaryPath)} className="bg-gradient-hero text-primary-foreground shadow-elevated hover:opacity-90 transition-opacity text-base px-8 h-12">
                 {primaryLabel} <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
-              <Button size="lg" variant="outline" onClick={() => navigate("/demo")} className="text-base h-12 bg-gradient-accent text-accent-foreground border-0 hover:opacity-90">
-                Try the Demo
+              <Button size="lg" variant="outline" onClick={() => navigate("/demo")} className="text-base h-12 border-primary/20 hover:bg-primary/5">
+                Explore live preview
               </Button>
             </motion.div>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.2 }} className="flex items-center gap-6 mt-8 justify-center lg:justify-start text-sm text-muted-foreground">
@@ -91,20 +91,19 @@ const HeroSection = () => {
             transition={{ duration: 0.8, delay: 0.3 }} 
             className="flex justify-center"
           >
-            {/* Dashboard preview card */}
             <div className="w-full max-w-md lg:max-w-lg rounded-2xl shadow-elevated bg-card p-6 border border-border">
               <div className="flex items-center gap-2 mb-4">
                 <div className="h-8 w-8 rounded-lg bg-gradient-hero flex items-center justify-center text-primary-foreground">
                   <CheckCircle className="h-5 w-5" />
                 </div>
-                <span className="font-display font-semibold text-sm">Verifin Dashboard</span>
+                <div><span className="font-display font-semibold text-sm">Tendai's workspace</span><p className="text-[11px] text-muted-foreground">Live overview · Thursday, 24 September</p></div>
               </div>
               <div className="grid grid-cols-2 gap-3 mb-4">
                 {[
-                  { label: "Today's Sales", value: formatRegionalSampleAmount(2486, countryCode) },
+                  { label: "Today's sales", value: formatRegionalSampleAmount(2486, countryCode) },
                   { label: "Inventory", value: "128 items" },
-                  { label: "Low Stock", value: "3 alerts" },
-                  { label: "Net Profit", value: formatRegionalSampleAmount(1236, countryCode) },
+                  { label: "Low stock", value: "3 alerts" },
+                  { label: "Net profit", value: formatRegionalSampleAmount(1236, countryCode) },
                 ].map((m, i) => (
                   <motion.div 
                     key={m.label} 
@@ -120,7 +119,7 @@ const HeroSection = () => {
               </div>
               <motion.div 
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.4 }}
-                className="rounded-lg bg-primary/5 p-3 border border-primary/10"
+                className="rounded-lg bg-amber-500/10 p-3 border border-amber-500/20"
               >
                 <p className="text-xs text-primary font-medium flex items-center gap-1.5"><Sparkles className="h-3 w-3 flex-shrink-0" /> Stock alert: "Bread is your top seller. Consider restocking — only 5 left."</p>
               </motion.div>

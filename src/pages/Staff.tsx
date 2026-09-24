@@ -99,7 +99,7 @@ const Staff = () => {
       ? selectedStaff.permissions
       : roleDefaults[selectedStaff.role as StaffRole] || []
     : [];
-  const businessCode = user?.business_code || (user?.id ? `VF-${user.id}` : "");
+  const businessCode = user?.business_code || "";
 
   const copyBusinessCode = async () => {
     if (!businessCode) return;

@@ -187,24 +187,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (getOfflineQueue().length > 0) {
       throw new Error("Sync your pending changes before signing into a new account, or open this verification link in another browser.");
     }
-    const result = await verifyEmailRequest(token);
-    // The successful response already proves identity; do not require another
-    // profile request after consuming a single-use verification link.
+    await verifyEmailRequest(token);
+    // Verification activates the account but deliberately does not create a
+    // browser session. The user returns to sign-in with their own credentials.
     resetForLogout();
+    clearTokens();
+    clearCachedUser();
     clearOfflineSession();
     clearAuthenticatedOfflineSession();
     localStorage.removeItem(STAFF_SESSION_KEY);
     setStaffSession(null);
-    setTokens(result.access, result.refresh);
-    saveCachedUser(result.user);
-    markAuthenticatedOfflineSession();
-    setUser(result.user);
-    try {
-      await applyServerData(result.user);
-    } catch {
-      toast.error("You are signed in, but some account data could not load. Please refresh the page.");
-    }
-  }, [applyServerData, resetForLogout]);
+    setUser(null);
+  }, [resetForLogout]);
 
   const staffLogin = useCallback(
     async (businessCode: string, username: string, password: string) => {

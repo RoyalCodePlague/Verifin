@@ -72,14 +72,14 @@ const CTASection = () => {
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="rounded-2xl bg-gradient-hero p-10 md:p-16 text-center text-primary-foreground shadow-elevated">
-          <h2 className="font-display text-3xl md:text-4xl font-bold mb-4">Ready to take control of your business?</h2>
-          <p className="text-primary-foreground/80 max-w-xl mx-auto mb-8 text-lg">Join thousands of SMEs using Verifin to automate admin, prevent stock losses, and grow smarter.</p>
+          <h2 className="font-display text-3xl md:text-4xl font-bold mb-4">Ready to run your business from one place?</h2>
+          <p className="text-primary-foreground/80 max-w-xl mx-auto mb-8 text-lg">Set up your workspace to track sales, manage stock and stay ahead of the work that needs attention.</p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Button size="lg" onClick={() => navigate(primaryPath)} className="bg-accent text-accent-foreground hover:bg-accent/90 text-base px-8 h-12 shadow-elevated">
               {primaryLabel} <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
             <Button size="lg" variant="outline" onClick={() => navigate("/demo")} className="text-base h-12 border-primary-foreground/30 bg-gradient-accent text-accent-foreground hover:opacity-90 border-0">
-              Try the Demo
+              Explore live preview
             </Button>
           </div>
         </motion.div>

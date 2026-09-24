@@ -29,7 +29,7 @@ const Navbar = () => {
           {isHome ? <a href="#features" className="hover:text-foreground transition-colors">Features</a> : <button onClick={() => navigate("/#features")} className="hover:text-foreground transition-colors">Features</button>}
           <button onClick={() => navigate("/pricing")} className="hover:text-foreground transition-colors">Pricing</button>
           <button onClick={() => navigate("/about")} className="hover:text-foreground transition-colors">About</button>
-          <button onClick={() => navigate("/demo")} className="hover:text-foreground transition-colors">Demo</button>
+          <button onClick={() => navigate("/demo")} className="hover:text-foreground transition-colors">Live preview</button>
         </nav>
 
         <div className="hidden md:flex items-center gap-3">
@@ -56,7 +56,7 @@ const Navbar = () => {
         <div className="md:hidden border-t border-border bg-background p-4 space-y-3">
           <button onClick={() => { navigate("/pricing"); setOpen(false); }} className="block text-sm py-2 w-full text-left">Pricing</button>
           <button onClick={() => { navigate("/about"); setOpen(false); }} className="block text-sm py-2 w-full text-left">About</button>
-          <button onClick={() => { navigate("/demo"); setOpen(false); }} className="block text-sm py-2 w-full text-left">Demo</button>
+          <button onClick={() => { navigate("/demo"); setOpen(false); }} className="block text-sm py-2 w-full text-left">Live preview</button>
           <Button className="w-full bg-gradient-hero text-primary-foreground" onClick={() => { navigate(primaryPath); setOpen(false); }}>
             {isAuthenticated ? "Dashboard" : "Get Started"}
           </Button>

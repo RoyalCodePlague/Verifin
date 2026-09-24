@@ -62,7 +62,7 @@ class StaffLoginView(APIView):
                 "username": staff.username,
                 "role": staff.role,
                 "permissions": staff.permissions or [],
-                "business_code": f"VF-{owner.id}",
+                "business_code": owner.business_code,
             },
         })
 

@@ -22,14 +22,16 @@ const Footer = () => {
               <li><button onClick={() => navigate("/#features")} className="hover:text-sidebar-foreground transition-colors">Features</button></li>
               <li><button onClick={() => navigate("/pricing")} className="hover:text-sidebar-foreground transition-colors">Pricing</button></li>
               <li><button onClick={() => navigate("/demo")} className="hover:text-sidebar-foreground transition-colors">Demo</button></li>
-              <li><button onClick={() => navigate("/api")} className="hover:text-sidebar-foreground transition-colors">API</button></li>
+              {/* Temporarily hidden: public API documentation link */}
+              {/* <li><button onClick={() => navigate("/api")} className="hover:text-sidebar-foreground transition-colors">API</button></li> */}
             </ul>
           </div>
           <div>
             <h4 className="font-display font-semibold text-sm mb-4">Company</h4>
             <ul className="space-y-2.5 text-sm text-sidebar-foreground/60">
               <li><button onClick={() => navigate("/about")} className="hover:text-sidebar-foreground transition-colors">About Us</button></li>
-              <li><button onClick={() => navigate("/careers")} className="hover:text-sidebar-foreground transition-colors">Careers</button></li>
+              {/* Temporarily hidden: Careers link */}
+              {/* <li><button onClick={() => navigate("/careers")} className="hover:text-sidebar-foreground transition-colors">Careers</button></li> */}
               <li><button onClick={() => navigate("/contact")} className="hover:text-sidebar-foreground transition-colors">Contact Us</button></li>
             </ul>
           </div>
