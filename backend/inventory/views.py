@@ -109,6 +109,8 @@ class ProductViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         enforce_limit(self.request.user, "products")
         product = serializer.save(user=self.request.user)
+        from core.analytics import record_activation_event
+        record_activation_event(self.request.user, "first_product_created")
         log_staff_activity(self.request.user, "product_created", f"Created product {product.name}", actor=self.request.user, object_type="product", object_id=product.id)
 
     def perform_update(self, serializer):

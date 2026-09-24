@@ -14,6 +14,7 @@ import { PageSkeleton } from "@/components/ui/page-skeleton";
 import { RouteSEO } from "@/components/RouteSEO";
 
 const Index = lazy(() => import("./pages/Index"));
+const Features = lazy(() => import("./pages/Features"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Inventory = lazy(() => import("./pages/Inventory"));
@@ -78,6 +79,7 @@ const App = () => (
             <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/" element={<Index />} />
+                <Route path="/features" element={<Features />} />
                 <Route path="/onboarding" element={<OnboardingRoute><Onboarding /></OnboardingRoute>} />
                 <Route path="/pricing" element={<Pricing />} />
                 <Route path="/about" element={<About />} />

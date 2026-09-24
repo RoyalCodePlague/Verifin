@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Menu, X, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth-context";
 import { Logo } from "@/components/Logo";
@@ -9,8 +9,6 @@ import { Logo } from "@/components/Logo";
 const Navbar = () => {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
-  const location = useLocation();
-  const isHome = location.pathname === "/";
   const { profile, setProfile } = useStore();
   const { isAuthenticated } = useAuth();
   const primaryPath = isAuthenticated ? "/dashboard" : "/login?signup=1";
@@ -26,7 +24,7 @@ const Navbar = () => {
         </button>
 
         <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-muted-foreground">
-          {isHome ? <a href="#features" className="hover:text-foreground transition-colors">Features</a> : <button onClick={() => navigate("/#features")} className="hover:text-foreground transition-colors">Features</button>}
+          <button onClick={() => navigate("/features")} className="hover:text-foreground transition-colors">Features</button>
           <button onClick={() => navigate("/pricing")} className="hover:text-foreground transition-colors">Pricing</button>
           <button onClick={() => navigate("/about")} className="hover:text-foreground transition-colors">About</button>
           <button onClick={() => navigate("/demo")} className="hover:text-foreground transition-colors">Live preview</button>
@@ -54,6 +52,7 @@ const Navbar = () => {
 
       {open && (
         <div className="md:hidden border-t border-border bg-background p-4 space-y-3">
+          <button onClick={() => { navigate("/features"); setOpen(false); }} className="block text-sm py-2 w-full text-left">Features</button>
           <button onClick={() => { navigate("/pricing"); setOpen(false); }} className="block text-sm py-2 w-full text-left">Pricing</button>
           <button onClick={() => { navigate("/about"); setOpen(false); }} className="block text-sm py-2 w-full text-left">About</button>
           <button onClick={() => { navigate("/demo"); setOpen(false); }} className="block text-sm py-2 w-full text-left">Live preview</button>

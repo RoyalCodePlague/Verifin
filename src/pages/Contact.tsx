@@ -14,7 +14,10 @@ const Contact = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    toast.success("Message sent! We'll get back to you within 24 hours.");
+    const subject = encodeURIComponent(`[Verifin support] ${form.subject}`);
+    const body = encodeURIComponent(`Name: ${form.name}\nEmail: ${form.email}\n\n${form.message}`);
+    window.location.href = `mailto:robert.workszw@gmail.com?subject=${subject}&body=${body}`;
+    toast.success("Opening your email app with your support request.");
     setForm({ name: "", email: "", subject: "", message: "" });
   };
 
@@ -30,7 +33,7 @@ const Contact = () => {
 
           <div className="grid md:grid-cols-3 gap-6 mb-12">
             {[
-              { icon: Mail, label: "Email", value: "robzmtambo@gmail.com", desc: "For general enquiries" },
+              { icon: Mail, label: "Email", value: "robert.workszw@gmail.com", desc: "Support and general enquiries" },
               { icon: Phone, label: "Phone", value: "+263 77 695 0947", desc: "Mon-Fri, 8am-5pm" },
               { icon: MapPin, label: "Office", value: "Johannesburg, South Africa", desc: "Sandton City, Gauteng" },
             ].map((c) => (

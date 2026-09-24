@@ -3,7 +3,7 @@ import { ShieldCheck, Clock, Wifi, Lock } from "lucide-react";
 
 const items = [
   { icon: ShieldCheck, title: "Security You Can Trust", desc: "Your data is protected with secure authentication, HTTPS in production, and access-controlled infrastructure. We are continuing to strengthen encryption, backup, and compliance controls." },
-  { icon: Clock, title: "99.9% Uptime SLA", desc: "Built on reliable cloud infrastructure with automatic failover and real-time monitoring." },
+  { icon: Clock, title: "Built for reliable daily work", desc: "Use clear sync status, offline-ready workflows, and recoverable changes to keep business moving." },
   { icon: Wifi, title: "Works Offline", desc: "Record sales and stock counts without internet. Everything syncs automatically when you're back online." },
   { icon: Lock, title: "Your Data, Your Control", desc: "Export your data anytime. We never sell or share your business information with third parties." },
 ];

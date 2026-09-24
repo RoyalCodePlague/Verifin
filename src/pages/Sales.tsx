@@ -3,7 +3,7 @@ import { closeTillApi, createSaleApi, deleteSaleApi, fetchReceiptApi, fetchWhats
 import { useAuth } from "@/lib/auth-context";
 import { addToOfflineQueue, canQueueOfflineAction } from "@/lib/offlineQueue";
 import { motion } from "framer-motion";
-import { Plus, Search, ArrowUpRight, Trash2, ShoppingCart, Receipt, Wallet, ScanBarcode, MessageCircle } from "lucide-react";
+import { Plus, Search, ArrowUpRight, Trash2, ShoppingCart, Receipt, Wallet, ScanBarcode, MessageCircle, Printer } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -696,7 +696,7 @@ const Sales = () => {
           <DialogHeader>
             <DialogTitle className="font-display">Receipt</DialogTitle>
             <DialogDescription>
-              Review the generated receipt text, copy it, or share it on WhatsApp.
+              Reprint, copy, or share this receipt with the customer.
             </DialogDescription>
           </DialogHeader>
           <pre className="rounded-lg bg-muted p-4 text-sm whitespace-pre-wrap">{receiptText}</pre>
@@ -709,7 +709,8 @@ const Sales = () => {
               placeholder="Leave blank to choose contact in WhatsApp"
             />
           </div>
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-2 sm:grid-cols-3">
+            <Button variant="outline" onClick={() => window.print()}><Printer className="mr-2 h-4 w-4" />Print</Button>
             <Button variant="outline" onClick={() => navigator.clipboard.writeText(receiptText)}>Copy Receipt</Button>
             <Button onClick={() => void shareReceiptOnWhatsApp()}>
               <MessageCircle className="mr-2 h-4 w-4" />

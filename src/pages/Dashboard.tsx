@@ -268,6 +268,17 @@ const Dashboard = () => {
         </CardContent>
       </Card>
 
+      {(products.length === 0 || sales.length === 0) && (
+        <Card className="border-primary/20 bg-primary/5 shadow-soft">
+          <CardContent className="p-4 lg:p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div><p className="font-display font-semibold">Finish your first business loop</p><p className="mt-1 text-sm text-muted-foreground">Add a product, then record a sale to see your workspace come alive.</p></div>
+              <div className="flex gap-2">{products.length === 0 ? <Button size="sm" onClick={() => navigate("/inventory")}>Add product</Button> : <Button size="sm" onClick={() => navigate("/sales")}>Record sale</Button>}<Button size="sm" variant="outline" onClick={() => navigate("/help")}>Get help</Button></div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid gap-6 xl:grid-cols-3">
         <Card className="shadow-soft xl:col-span-2">
           <CardHeader className="pb-2">

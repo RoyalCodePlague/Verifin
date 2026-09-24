@@ -10,6 +10,10 @@ const routeMeta: Record<string, { title: string; description: string; noindex?: 
     title: "Verifin Pricing - Inventory and Admin Software for SMEs",
     description: "Compare Verifin plans for African SMEs. Start free, then unlock inventory automation, audits, reports, OCR, and business insights.",
   },
+  "/features": {
+    title: "Verifin Features - Stock, Sales, Audits and Reports",
+    description: "Explore Verifin features for inventory, sales, expenses, stock audits, customers, offline work, and business reporting.",
+  },
   "/demo": {
     title: "Verifin Demo - See Inventory, Sales, Audits and Reports",
     description: "Try the Verifin product tour and see how sales, stock, expenses, audits, customer loyalty, and reports work together.",

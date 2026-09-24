@@ -861,6 +861,7 @@ const SettingsPage = () => {
         </CardContent>
       </Card>
 
+      {/* Temporarily hidden: POS API Keys
       <Card className="shadow-soft">
         <CardHeader>
           <CardTitle className="font-display flex items-center gap-2 text-base">
@@ -920,6 +921,7 @@ const SettingsPage = () => {
           </div>
         </CardContent>
       </Card>
+      */}
 
       <Card className="shadow-soft">
         <CardHeader>

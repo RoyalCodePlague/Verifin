@@ -19,7 +19,7 @@ const Footer = () => {
           <div>
             <h4 className="font-display font-semibold text-sm mb-4">Product</h4>
             <ul className="space-y-2.5 text-sm text-sidebar-foreground/60">
-              <li><button onClick={() => navigate("/#features")} className="hover:text-sidebar-foreground transition-colors">Features</button></li>
+              <li><button onClick={() => navigate("/features")} className="hover:text-sidebar-foreground transition-colors">Features</button></li>
               <li><button onClick={() => navigate("/pricing")} className="hover:text-sidebar-foreground transition-colors">Pricing</button></li>
               <li><button onClick={() => navigate("/demo")} className="hover:text-sidebar-foreground transition-colors">Demo</button></li>
               {/* Temporarily hidden: public API documentation link */}

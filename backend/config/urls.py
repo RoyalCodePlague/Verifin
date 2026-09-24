@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.db import connection
 from django.http import HttpResponse, JsonResponse
 from django.urls import include, path
 from django.conf import settings
@@ -24,9 +25,18 @@ def favicon(request):
     return HttpResponse(status=204)
 
 
+def readiness(request):
+    """A dependency-aware health check for Render and uptime monitors."""
+    try:
+        connection.ensure_connection()
+    except Exception:
+        return JsonResponse({"status": "unavailable", "database": "unavailable"}, status=503)
+    return JsonResponse({"status": "ok", "database": "ok"})
+
+
 urlpatterns = [
     path('', api_root),
-    path('health/', lambda request: JsonResponse({'status': 'ok'})),
+    path('health/', readiness),
     path('favicon.ico', favicon),
     path('admin/', admin.site.urls),
     path("api/v1/accounts/", include("accounts.urls")),

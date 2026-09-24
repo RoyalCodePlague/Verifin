@@ -73,7 +73,7 @@ const About = () => {
 
           <div className="text-center bg-gradient-hero rounded-2xl p-10 text-primary-foreground">
             <h2 className="font-display font-bold text-2xl mb-2">Ready to take control?</h2>
-            <p className="text-primary-foreground/80 mb-6">Join thousands of African businesses using Verifin.</p>
+            <p className="text-primary-foreground/80 mb-6">Bring sales, stock, expenses, and daily decisions into one workspace.</p>
             <Button onClick={() => navigate("/pricing")} className="bg-card text-foreground hover:bg-card/90">
               View Pricing <ArrowRight className="h-4 w-4 ml-2" />
             </Button>

@@ -78,6 +78,8 @@ class RegisterView(APIView):
         serializer.is_valid(raise_exception=True)
         with transaction.atomic():
             user = serializer.save()
+            from core.analytics import record_activation_event
+            record_activation_event(user, "account_registered")
             try:
                 send_verification_email(user)
                 sent, detail = True, "Check your inbox. Verify your email to finish creating your account and sign in."
@@ -103,6 +105,8 @@ class VerifyEmailView(APIView):
         user.is_active = True
         user.email_verification_token = ""
         user.save(update_fields=["email_verified", "email_verification_pending", "is_active", "email_verification_token"])
+        from core.analytics import record_activation_event
+        record_activation_event(user, "email_verified")
         from billing.services import qualify_referral_for_user
         qualify_referral_for_user(user)
         refresh = RefreshToken.for_user(user)
@@ -236,6 +240,9 @@ class MeView(APIView):
         serializer = UserSerializer(request.user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        if request.data.get("onboarding_complete") is True:
+            from core.analytics import record_activation_event
+            record_activation_event(request.user, "onboarding_completed")
         return Response(serializer.data)
 
 

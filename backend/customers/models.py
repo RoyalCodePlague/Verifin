@@ -17,6 +17,7 @@ class Customer(TimeStampedSoftDeleteModel):
     debt_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     debt_started_at = models.DateTimeField(blank=True, null=True)
     debt_updated_at = models.DateTimeField(blank=True, null=True)
+    debt_due_date = models.DateField(blank=True, null=True)
     debt_notes = models.TextField(blank=True)
     last_visit = models.DateTimeField(blank=True, null=True)
     badge = models.CharField(max_length=20, choices=BADGE_CHOICES, default="bronze")

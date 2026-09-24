@@ -70,6 +70,8 @@ class SaleViewSet(viewsets.ModelViewSet):
         if not till_session:
             till_session = TillSession.objects.filter(user=self.request.user, status="open", is_deleted=False).order_by("-opened_at").first()
         sale = serializer.save(created_by=self.request.user, till_session=till_session)
+        from core.analytics import record_activation_event
+        record_activation_event(self.request.user, "first_sale_recorded")
         log_staff_activity(
             self.request.user,
             "sale_created",

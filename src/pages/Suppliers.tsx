@@ -326,6 +326,23 @@ const Suppliers = () => {
     setOrderOpen(true);
   };
 
+  const startSmartReorder = (item: SmartReorderItem) => {
+    if (!item.supplier) {
+      toast.error("Add a supplier for this product before creating an order.");
+      return;
+    }
+    setOrderForm({
+      supplier: String(item.supplier.id),
+      product: String(item.product.id),
+      quantity: String(item.suggested_quantity || 1),
+      unitCost: String(item.product.cost_price || ""),
+      currency: profile.currency,
+      fxRate: "",
+      expectedDate: "",
+    });
+    setOrderOpen(true);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
@@ -392,6 +409,9 @@ const Suppliers = () => {
                 <p className="text-xs text-muted-foreground">
                   {item.days_remaining == null ? "No sales trend yet" : `${item.days_remaining} stock days left`} · est. {sym}{Number(item.estimated_cost || 0).toFixed(2)}
                 </p>
+                <Button size="sm" variant="outline" className="mt-3 w-full" onClick={() => startSmartReorder(item)} disabled={!item.supplier}>
+                  Create purchase order
+                </Button>
               </div>
             )) : (
               <p className="rounded-lg border border-border p-4 text-sm text-muted-foreground sm:col-span-2">

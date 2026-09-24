@@ -83,8 +83,12 @@ class CustomerViewSet(viewsets.ModelViewSet):
             customer.debt_started_at = timezone.now()
         customer.debt_amount += amount
         customer.debt_updated_at = timezone.now()
+        due_date = request.data.get("due_date")
+        if due_date:
+            from django.utils.dateparse import parse_date
+            customer.debt_due_date = parse_date(due_date)
         customer.debt_notes = request.data.get("reason", customer.debt_notes)
-        customer.save(update_fields=["debt_amount", "debt_started_at", "debt_updated_at", "debt_notes", "updated_at"])
+        customer.save(update_fields=["debt_amount", "debt_started_at", "debt_updated_at", "debt_due_date", "debt_notes", "updated_at"])
         CreditTransaction.objects.create(customer=customer, amount=amount, type="debt", reason=request.data.get("reason", "Debt added"))
         log_staff_activity(request.user, "customer_debt_added", f"Added debt for {customer.name}", actor=request.user, object_type="customer", object_id=customer.id, metadata={"amount": str(amount)})
         return Response(CustomerSerializer(customer).data)
@@ -102,10 +106,24 @@ class CustomerViewSet(viewsets.ModelViewSet):
             customer.debt_updated_at = timezone.now()
             if customer.debt_amount <= 0:
                 customer.debt_started_at = None
-            customer.save(update_fields=["debt_amount", "debt_started_at", "debt_updated_at", "updated_at"])
+                customer.debt_due_date = None
+            customer.save(update_fields=["debt_amount", "debt_started_at", "debt_due_date", "debt_updated_at", "updated_at"])
             CreditTransaction.objects.create(customer=customer, amount=payment, type="payment", reason=request.data.get("reason", "Debt payment"))
         log_staff_activity(request.user, "customer_payment_recorded", f"Recorded payment from {customer.name}", actor=request.user, object_type="customer", object_id=customer.id, metadata={"amount": str(payment)})
         return Response(CustomerSerializer(customer).data)
+
+    @action(detail=True, methods=["get"], url_path="statement")
+    def statement(self, request, pk=None):
+        """A printable, shareable debt statement backed by the transaction ledger."""
+        enforce_feature(request.user, "customer_credit")
+        customer = self.get_object()
+        transactions = CreditTransaction.objects.filter(customer=customer, is_deleted=False).order_by("created_at")
+        return Response({
+            "customer": CustomerSerializer(customer).data,
+            "currency_symbol": request.user.currency_symbol,
+            "generated_at": timezone.now(),
+            "transactions": CreditTransactionSerializer(transactions, many=True).data,
+        })
 
     @action(detail=True, methods=["post"], url_path="collection-reminder")
     def collection_reminder(self, request, pk=None):
