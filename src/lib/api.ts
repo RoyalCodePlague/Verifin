@@ -121,7 +121,7 @@ export async function apiFetch<T = unknown>(
       if (Array.isArray(err.detail)) {
         detail = err.detail.join(" ");
       } else {
-        detail = err.detail || err.non_field_errors?.[0] || JSON.stringify(err);
+        detail = err.detail || err.non_field_errors?.[0] || formatApiError(err);
       }
     } catch {
       /* ignore */
@@ -134,6 +134,16 @@ export async function apiFetch<T = unknown>(
 
   if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
+}
+
+function formatApiError(payload: unknown): string {
+  if (!payload || typeof payload !== "object") return String(payload ?? "");
+  const messages = Object.values(payload as Record<string, unknown>).flatMap((value) => {
+    if (typeof value === "string") return [value];
+    if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string");
+    return [];
+  });
+  return messages.join(" ") || JSON.stringify(payload);
 }
 
 export async function loginRequest(email: string, password: string) {
