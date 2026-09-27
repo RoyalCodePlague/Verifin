@@ -109,6 +109,27 @@ function setTag(html, pattern, replacement) {
 }
 
 function staticMarkup(route) {
+  if (route.path === "/") {
+    return `
+      <main class="seo-prerender" aria-label="Verifin business software">
+        <section>
+          <h1>Smart Inventory &amp; Admin for African SMEs</h1>
+          <p>Verifin brings inventory, sales, expenses and business reporting together for small and growing businesses. Track stock as products move, record sales and expenses, review audits, and get a clearer view of daily performance in one practical workspace.</p>
+        </section>
+        <section>
+          <h2>Inventory and stock control</h2>
+          <p>Keep product records organized, scan barcodes, review stock movement and notice low-stock items sooner. Stock audits help compare what is on hand with what your records expect, making discrepancies easier to investigate.</p>
+          <h2>Sales, expenses and business reports</h2>
+          <p>Record sales and expenses as they happen, keep customer activity together, and use reports to understand how the business is performing. Verifin helps owners spend less time piecing together information and more time deciding what to do next.</p>
+          <h2>Designed for day-to-day SME work</h2>
+          <p>Verifin is built for African small businesses that need useful tools on the move and may have unreliable internet. Supported offline workflows let teams continue essential work and sync queued changes when a connection returns.</p>
+          <h2>Explore Verifin</h2>
+          <p>Start with the free plan or explore the interactive product demo to see how inventory, sales, audits and reports fit together.</p>
+          <nav aria-label="Explore Verifin"><a href="/features">Features</a> | <a href="/pricing">Pricing</a> | <a href="/demo">Product demo</a> | <a href="/about">About Verifin</a> | <a href="/contact">Contact</a></nav>
+        </section>
+      </main>
+    `;
+  }
   const links = routes.filter((page) => page.path !== route.path).map((page) => `<a href="${page.path}">${escapeHtml(page.heading)}</a>`).join(" | ");
   return `
     <main class="seo-prerender" aria-label="${escapeHtml(route.heading)}">
@@ -155,4 +176,12 @@ for (const route of routes) {
   await writeFile(path.join(outDir, "index.html"), html);
 }
 
-console.log(`Prerendered ${routes.length} public routes.`);
+const notFoundHtml = baseHtml
+  .replace(/<title>.*?<\/title>/s, "<title>Page not found | Verifin</title>")
+  .replace(/<meta name="description" content="[^"]*"\s*\/>/, '<meta name="description" content="This Verifin page could not be found. Visit the homepage, explore the product demo, or contact our team." />')
+  .replace(/<meta name="robots" content="[^"]*"\s*\/>/, '<meta name="robots" content="noindex, follow" />')
+  .replace(/<link rel="canonical" href="[^"]*"\s*\/>/, "")
+  .replace('<div id="root"></div>', `<div id="root"><main class="seo-prerender"><section><h1>Page not found</h1><p>The page you are looking for may have moved or no longer exists.</p><nav aria-label="Helpful links"><a href="/">Go to Verifin home</a> | <a href="/demo">Explore the demo</a> | <a href="/pricing">View pricing</a> | <a href="/contact">Contact us</a></nav></section></main></div>`);
+await writeFile(path.join(distDir, "404.html"), notFoundHtml);
+
+console.log(`Prerendered ${routes.length} public routes and a custom 404 page.`);

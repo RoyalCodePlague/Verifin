@@ -146,5 +146,16 @@
       "source": "/(.*)",
       "destination": "/index.html"
     }
+  ],
+  "routes": [
+    {
+      "src": "^/(?:|features|pricing|about|demo|login|verify-email|terms|contact|privacy|help|careers|api|onboarding|dashboard|inventory|sales|expenses|audits|reports|customers|invoices|suppliers|staff|settings|billing)(?:/.*)?$",
+      "dest": "/index.html"
+    },
+    {
+      "src": ".*",
+      "dest": "/404.html",
+      "status": 404
+    }
   ]
 }
