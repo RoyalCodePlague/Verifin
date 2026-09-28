@@ -6,8 +6,8 @@
 
 # Test info
 
-- Name: e2e.spec.ts >> Stockpilot AI - Complete E2E Tests >> Dashboard >> should display sales chart
-- Location: tests\e2e.spec.ts:76:5
+- Name: audits-settings.spec.ts >> Audit section renders its empty state and explains plan access
+- Location: tests\audits-settings.spec.ts:32:1
 
 # Error details
 

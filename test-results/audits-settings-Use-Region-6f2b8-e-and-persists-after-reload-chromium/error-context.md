@@ -6,8 +6,8 @@
 
 # Test info
 
-- Name: e2e.spec.ts >> Stockpilot AI - Complete E2E Tests >> Navigation >> should have logout button in sidebar
-- Location: tests\e2e.spec.ts:150:5
+- Name: audits-settings.spec.ts >> Use Region Default saves USD for Zimbabwe and persists after reload
+- Location: tests\audits-settings.spec.ts:52:1
 
 # Error details
 

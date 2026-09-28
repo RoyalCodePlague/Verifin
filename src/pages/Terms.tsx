@@ -7,7 +7,7 @@ const highlights = [
   "Use Verifin only for lawful business purposes.",
   "You are responsible for users, staff permissions, and data entered under your account.",
   "You own your business data; Verifin owns the platform, software, brand, and product design.",
-  "The launch promotion ends automatically without a charge; continued Business plan access requires a paid upgrade.",
+  "The launch promotion ends automatically without a charge; paid upgrades are not currently available until payment processing is enabled.",
 ];
 
 const sections = [
@@ -21,7 +21,7 @@ const sections = [
     icon: Globe,
     title: "2. The Service",
     content:
-      "Verifin is a business operating platform for SMEs. Features may include inventory, branches, suppliers, purchase orders, sales, tills, expenses, customers, loyalty and credit tools, audits, reports, staff permissions, notifications, offline sync, business insights, billing, and API access. Features can vary by plan, region, release stage, and account configuration.",
+      "Verifin is a business operating platform for SMEs. Features may include inventory, branches, suppliers, purchase orders, sales, tills, expenses, customers, loyalty and credit tools, customer debt statements, audits, reports, staff permissions, notifications, offline sync, business insights, billing, and API access. Features can vary by plan, region, release stage, and account configuration.",
   },
   {
     icon: Shield,
@@ -70,7 +70,7 @@ const sections = [
     icon: Shield,
     title: "7. Reports and Summaries",
     content:
-      "Verifin may provide summaries, forecasts, reorder suggestions, receipt extraction, or business insights. These outputs are informational and may be incomplete or inaccurate. You are responsible for reviewing outputs before relying on them for stock, pricing, tax, accounting, staffing, legal, or financial decisions.",
+      "Verifin may provide summaries, forecasts, reorder suggestions, receipt extraction, printable records, exports, customer statements, or business insights. These outputs are informational and may be incomplete or inaccurate. You are responsible for reviewing outputs before relying on them for stock, pricing, tax, accounting, staffing, legal, or financial decisions.",
   },
   {
     icon: Globe,
@@ -135,7 +135,7 @@ const sections = [
   {
     icon: Mail,
     title: "18. Contact",
-    content: "For questions about these Terms, contact us at robzmtambo@gmail.com or visit the Contact page.",
+    content: "For questions about these Terms, contact us at robert.workszw@gmail.com or visit the Contact page.",
   },
 ];
 
@@ -153,7 +153,7 @@ const Terms = () => (
           <p className="mt-5 max-w-2xl text-lg text-muted-foreground">
             These terms explain account responsibilities, subscriptions, acceptable use, data ownership, and service limitations.
           </p>
-          <p className="mt-4 text-sm text-muted-foreground">Last updated: September 15, 2026</p>
+          <p className="mt-4 text-sm text-muted-foreground">Last updated: September 25, 2026</p>
         </div>
       </section>
 

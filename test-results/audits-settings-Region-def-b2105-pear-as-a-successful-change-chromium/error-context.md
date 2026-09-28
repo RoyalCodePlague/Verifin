@@ -6,8 +6,8 @@
 
 # Test info
 
-- Name: e2e.spec.ts >> Stockpilot AI - Complete E2E Tests >> Pricing Page >> should display pricing plans
-- Location: tests\e2e.spec.ts:112:5
+- Name: audits-settings.spec.ts >> Region default save errors do not appear as a successful change
+- Location: tests\audits-settings.spec.ts:66:1
 
 # Error details
 

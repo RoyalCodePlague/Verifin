@@ -4,7 +4,7 @@ import Navbar from "@/components/landing/Navbar";
 import Footer from "@/components/landing/Footer";
 
 const summary = [
-  "We use your data to run Verifin, secure accounts, sync records, process subscriptions, and improve the product.",
+  "We use your data to run Verifin, secure accounts, sync records, provide support, and improve the product.",
   "You own the business data you add to Verifin, including inventory, sales, expenses, customers, audits, and staff records.",
   "We do not sell your personal or business data.",
   "You can ask to access, correct, export, or delete your personal information.",
@@ -31,7 +31,7 @@ const sections = [
       },
       {
         subtitle: "Usage and technical data",
-        items: ["Device, browser, IP address, approximate location, page views, feature usage, logs, crash reports, and security events.", "Offline queue and sync metadata needed to keep your records consistent across sessions."],
+        items: ["Security and operational data such as IP address, browser information, logs, and security events needed to protect and operate the service.", "Limited first-party activation milestones: account registration, email verification, onboarding completion, first product creation, and first sale recording. These milestones do not include customer records, product names, sales values, or financial details.", "Offline queue and sync metadata needed to keep your records consistent across sessions."],
       },
       {
         subtitle: "Billing data",
@@ -57,7 +57,7 @@ const sections = [
     title: "4. When We Share Information",
     content: "We do not sell your data. We only share information where needed to provide the service, comply with law, or protect Verifin and its users.",
     items: [
-      "Service providers that help with hosting, database infrastructure, analytics, email, payments, support, logging, and security.",
+      "Service providers that help with hosting, database infrastructure, email delivery, support, logging, and security. We do not use third-party advertising trackers in the app.",
       "Your authorized staff users, based on the permissions you configure.",
       "Law enforcement, regulators, courts, or other parties where legally required or necessary to protect rights, safety, and security.",
       "A successor organization if Verifin is involved in a merger, acquisition, restructuring, financing, or sale of assets, subject to appropriate confidentiality safeguards.",
@@ -101,7 +101,7 @@ const sections = [
     icon: Cookie,
     title: "8. Cookies and Similar Technologies",
     content:
-      "We use essential storage and cookies for authentication, security, preferences, and session continuity. We may also use analytics tools to understand product usage and improve the service. You can control browser cookies through your browser settings, but disabling essential cookies may affect login and app functionality.",
+      "We use essential storage and cookies for authentication, security, preferences, offline workflows, and session continuity. Product activation milestones are stored in Verifin's own database rather than sent to a third-party advertising tracker. You can control browser cookies through your browser settings, but disabling essential cookies or local storage may affect login, offline mode, and app functionality.",
   },
   {
     icon: Globe,
@@ -125,7 +125,7 @@ const sections = [
     icon: Mail,
     title: "12. Contact",
     content:
-      "For privacy questions, data requests, or concerns, contact us at robzmtambo@gmail.com. You may also contact South Africa's Information Regulator at enquiries@inforegulator.org.za.",
+      "For privacy questions, data requests, or concerns, contact us at robert.workszw@gmail.com. You may also contact South Africa's Information Regulator at enquiries@inforegulator.org.za.",
   },
 ];
 
@@ -143,7 +143,7 @@ const Privacy = () => (
           <p className="mt-5 max-w-2xl text-lg text-muted-foreground">
             We keep the policy practical: what we collect, why we use it, who can access it, and the choices you have.
           </p>
-          <p className="mt-4 text-sm text-muted-foreground">Last updated: May 9, 2026</p>
+          <p className="mt-4 text-sm text-muted-foreground">Last updated: September 25, 2026</p>
         </div>
       </section>
 

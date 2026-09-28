@@ -6,8 +6,8 @@
 
 # Test info
 
-- Name: e2e.spec.ts >> Stockpilot AI - Complete E2E Tests >> Pricing Page >> should display feature comparison table
-- Location: tests\e2e.spec.ts:126:5
+- Name: audits-settings.spec.ts >> Audit records with numeric conductor IDs remain visible and searchable
+- Location: tests\audits-settings.spec.ts:44:1
 
 # Error details
 
