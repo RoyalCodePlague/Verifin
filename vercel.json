@@ -112,11 +112,11 @@
       ]
     },
     {
-      "source": "/(.*)",
+      "source": "/:path((?!assets/|favicomatic-LIGHT/|favicomatic-DARK/|manifest(?:-light|-dark)?\\.json$|site\\.webmanifest$|og-image\\.png$|robots\\.txt$|sitemap\\.xml$|service-worker\\.js$).*)",
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/client; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https: http://127.0.0.1:8000 http://localhost:8000 ws: wss:; frame-src 'self' https://accounts.google.com/gsi/; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' mailto: https:;"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://accounts.google.com/gsi/client https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com/gsi/style; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https: http://127.0.0.1:8000 http://localhost:8000 ws: wss:; frame-src 'self' https://accounts.google.com/gsi/ https://www.googletagmanager.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' mailto: https:;"
         },
         {
           "key": "Cross-Origin-Opener-Policy",
@@ -139,23 +139,6 @@
           "value": "camera=(self), microphone=(), geolocation=(), browsing-topics=()"
         }
       ]
-    }
-  ],
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
-  ],
-  "routes": [
-    {
-      "src": "^/(?:|features|pricing|about|demo|login|verify-email|terms|contact|privacy|help|careers|api|onboarding|dashboard|inventory|sales|expenses|audits|reports|customers|invoices|suppliers|staff|settings|billing)(?:/.*)?$",
-      "dest": "/index.html"
-    },
-    {
-      "src": ".*",
-      "dest": "/404.html",
-      "status": 404
     }
   ]
 }
