@@ -1,4 +1,4 @@
-const CACHE_NAME = 'verifin-cache-v11';
+const CACHE_NAME = 'verifin-cache-v12';
 const APP_SHELL = '/index.html';
 const OFFLINE_FALLBACK = '<!doctype html><title>Verifin</title><p>Verifin is offline. Reconnect and try again.</p>';
 const STATIC_ASSETS = [
@@ -117,7 +117,8 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  event.respondWith(fetch(request));
+  // Leave cross-origin requests to the browser. Third-party requests can be
+  // blocked by extensions or network policy, and should not reject in the SW.
 });
 
 self.addEventListener('message', event => {
