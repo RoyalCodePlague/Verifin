@@ -22,6 +22,7 @@ async function mockApi(page: Page, sent = true, valid = true) {
         ? { detail: "Email verified. You are now signed in.", access: "verified-access", refresh: "verified-refresh", user: verifiedUser }
         : { detail: "Invalid or expired verification link. Request a new email." };
     }
+    if (path.endsWith("/login/")) json = { access: "login-access", refresh: "login-refresh", user: verifiedUser };
     if (path.endsWith("/me/")) json = verifiedUser;
     if (path.endsWith("/resend-verification/")) json = { detail: "If this address has a pending account, a verification email will be sent." };
     await route.fulfill({ json, status });
@@ -29,39 +30,41 @@ async function mockApi(page: Page, sent = true, valid = true) {
   return () => verificationCalls;
 }
 
-test("signup stays signed out and shows the verification step", async ({ page }) => {
+test("signup stays signed out and explains the verification step", async ({ page }) => {
   await mockApi(page);
   await page.goto("/login?signup=1");
   await page.getByPlaceholder("you@business.com").fill("new@example.test");
   await page.getByPlaceholder("Password", { exact: true }).fill("Strong-pass123!");
   await page.getByRole("button", { name: "Create Account", exact: true }).click();
-  await expect(page).toHaveURL(/verify-email/);
+  await expect(page).toHaveURL(/login/);
   await expect(page.getByText("Check your inbox. Verify your email to finish creating your account and sign in.")).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem("sp_access_token"))).toBeNull();
 });
 
-test("email confirmation signs the new user in and opens onboarding", async ({ page }) => {
+test("email confirmation activates account and returns to sign in", async ({ page }) => {
   const calls = await mockApi(page);
   await page.goto("/verify-email?token=example-token");
-  await expect(page.getByRole("button", { name: "Verify my email & sign in" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Verify email" })).toBeVisible();
   expect(calls()).toBe(0);
-  await page.getByRole("button", { name: "Verify my email & sign in" }).click();
-  await expect(page).toHaveURL(/onboarding$/);
+  await page.getByRole("button", { name: "Verify email" }).click();
+  await expect(page).toHaveURL(/login$/);
   expect(calls()).toBe(1);
-  expect(await page.evaluate(() => localStorage.getItem("sp_access_token"))).toBe("verified-access");
-  expect(await page.evaluate(() => localStorage.getItem("sp_refresh_token"))).toBe("verified-refresh");
-  await page.reload();
+  expect(await page.evaluate(() => localStorage.getItem("sp_access_token"))).toBeNull();
+  await expect(page.getByText(/Your email is verified/)).toBeVisible();
+  await page.getByPlaceholder("you@business.com").fill("new@example.test");
+  await page.getByPlaceholder("Password", { exact: true }).fill("Strong-pass123!");
+  await page.getByRole("button", { name: "Sign In", exact: true }).click();
   await expect(page).toHaveURL(/onboarding$/);
-  await expect(page.getByRole("button", { name: "Continue", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem("sp_access_token"))).toBe("login-access");
 });
 
 test("invalid verification stays signed out and allows resending", async ({ page }) => {
   await mockApi(page, true, false);
   await page.goto("/verify-email?token=expired-token");
-  await page.getByRole("button", { name: "Verify my email & sign in" }).click();
+  await page.getByRole("button", { name: "Verify email" }).click();
   await expect(page.getByRole("status")).toContainText("Invalid or expired verification link");
   expect(await page.evaluate(() => localStorage.getItem("sp_access_token"))).toBeNull();
-  await page.getByLabel("Email address").fill("new@example.test");
+  await page.getByPlaceholder("you@business.com").fill("new@example.test");
   await page.getByRole("button", { name: "Resend verification email" }).click();
   await expect(page.getByRole("status")).toContainText("If this address has a pending account");
 });
@@ -70,7 +73,7 @@ test("pending offline changes are preserved before consuming the link", async ({
   const calls = await mockApi(page);
   await page.addInitScript(() => localStorage.setItem("sp_offline_queue", JSON.stringify([{ id: "pending", type: "sale", payload: {}, timestamp: 1 }])));
   await page.goto("/verify-email?token=example-token");
-  await page.getByRole("button", { name: "Verify my email & sign in" }).click();
+  await page.getByRole("button", { name: "Verify email" }).click();
   await expect(page.getByRole("status")).toContainText("Sync your pending changes");
   expect(calls()).toBe(0);
   expect(await page.evaluate(() => localStorage.getItem("sp_access_token"))).toBeNull();
@@ -84,6 +87,9 @@ test("delivery failure is visible and users can request another email", async ({
   await page.getByPlaceholder("Password", { exact: true }).fill("Strong-pass123!");
   await page.getByRole("button", { name: "Create Account", exact: true }).click();
   await expect(page.getByText(/Email delivery is not configured yet/)).toBeVisible();
+  await page.getByRole("button", { name: "Resend verification email" }).click();
+  await expect(page).toHaveURL(/verify-email/);
+  await page.getByPlaceholder("you@business.com").fill("new@example.test");
   await page.getByRole("button", { name: "Resend verification email" }).click();
   await expect(page.getByText(/If this address has a pending account/)).toBeVisible();
 });

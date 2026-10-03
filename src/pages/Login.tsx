@@ -51,12 +51,9 @@ const Login = () => {
   const verificationNotice = (location.state as { email?: string; verificationNotice?: string } | null)?.verificationNotice;
 
   useEffect(() => {
-    if (searchParams.get("signup") === "1") setIsSignUp(true);
     const ref = searchParams.get("ref") || "";
-    if (ref) {
-      setReferralCode(ref.trim().toUpperCase());
-      setIsSignUp(true);
-    }
+    setIsSignUp(searchParams.get("signup") === "1" || Boolean(ref));
+    if (ref) setReferralCode(ref.trim().toUpperCase());
   }, [searchParams]);
 
   useEffect(() => {

@@ -36,6 +36,7 @@ def readiness(request):
 
 urlpatterns = [
     path('', api_root),
+    path('api/v1/', api_root),
     path('health/', readiness),
     path('favicon.ico', favicon),
     path('admin/', admin.site.urls),
