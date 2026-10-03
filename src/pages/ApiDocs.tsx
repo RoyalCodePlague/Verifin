@@ -57,7 +57,7 @@ const pythonExample = `import os
 import uuid
 import requests
 
-BASE_URL = os.getenv("VERIFIN_API", "https://verifin-tau.vercel.app/api/v1")
+BASE_URL = os.getenv("VERIFIN_API", "https://verifin.co.zw/api/v1")
 headers = {"X-API-Key": os.environ["VERIFIN_API_KEY"]}
 
 product = requests.get(
@@ -102,7 +102,7 @@ int main(void) {
     "\\"payment_method\\":\\"Cash\\","
     "\\"items\\":[{\\"product\\":101,\\"quantity\\":1,\\"unit_price\\":\\"15.00\\"}]}";
 
-  curl_easy_setopt(curl, CURLOPT_URL, "https://verifin-tau.vercel.app/api/v1/sales/");
+  curl_easy_setopt(curl, CURLOPT_URL, "https://verifin.co.zw/api/v1/sales/");
   curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
   curl_easy_setopt(curl, CURLOPT_POSTFIELDS, sale_json);
   curl_easy_perform(curl);
@@ -302,7 +302,7 @@ const ApiDocs = () => (
         <h2 className="font-display font-bold text-xl mb-4 flex items-center gap-2"><Terminal className="h-5 w-5 text-primary" /> Base URL</h2>
         <Card className="shadow-soft mb-8">
           <CardContent className="p-4">
-            <code className="text-sm font-mono bg-muted px-3 py-2 rounded-lg block">https://verifin-tau.vercel.app/api/v1</code>
+            <code className="text-sm font-mono bg-muted px-3 py-2 rounded-lg block">https://verifin.co.zw/api/v1</code>
           </CardContent>
         </Card>
 
