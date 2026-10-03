@@ -1,10 +1,14 @@
-import { Code, Key, Database, Webhook, Shield, Terminal, ShoppingCart, Boxes, ReceiptText, Cpu } from "lucide-react";
+import { useMemo, useState, type FormEvent } from "react";
+import { Code, Key, Database, Webhook, Shield, Terminal, ShoppingCart, Boxes, ReceiptText, Cpu, Copy, Trash2, Play, Clock3 } from "lucide-react";
 import Navbar from "@/components/landing/Navbar";
 import Footer from "@/components/landing/Footer";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { apiBase } from "@/lib/api";
 
 const endpoints = [
+  { group: "General", method: "GET", path: "/api/v1/", desc: "Check the API service status and base routes.", auth: false },
   { group: "Auth", method: "POST", path: "/api/v1/accounts/login/", desc: "Create JWT access and refresh tokens with owner email and password.", auth: false },
   { group: "Auth", method: "POST", path: "/api/v1/accounts/token/refresh/", desc: "Refresh an expired access token.", auth: false },
   { group: "Inventory", method: "GET", path: "/api/v1/inventory/products/", desc: "List products with stock, pricing, SKU, barcode, branch, and category data.", auth: true },
@@ -117,6 +121,153 @@ const MethodBadge = ({ method }: { method: string }) => (
   }`}>{method}</Badge>
 );
 
+type ApiResponse = { status: number; statusText: string; duration: number; body: string };
+
+const ApiTerminal = () => {
+  const [selected, setSelected] = useState("0");
+  const [method, setMethod] = useState(endpoints[0].method);
+  const [path, setPath] = useState(endpoints[0].path);
+  const [authType, setAuthType] = useState<"none" | "api-key" | "bearer">("none");
+  const [credential, setCredential] = useState("");
+  const [body, setBody] = useState("");
+  const [response, setResponse] = useState<ApiResponse | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const origin = useMemo(() => apiBase() || (typeof window !== "undefined" ? window.location.origin : ""), []);
+
+  const chooseEndpoint = (value: string) => {
+    const index = Number(value);
+    const endpoint = endpoints[index];
+    if (!endpoint) return;
+    setSelected(value);
+    setMethod(endpoint.method);
+    setPath(endpoint.path);
+    setBody(endpoint.method === "POST" || endpoint.method === "PATCH" ? (endpoint.path === "/api/v1/sales/" ? sampleSalePayload : "{}") : "");
+    setError("");
+  };
+
+  const sendRequest = async (event: FormEvent) => {
+    event.preventDefault();
+    setError("");
+    setResponse(null);
+    if (!path.startsWith("/api/v1/") || path.startsWith("//") || path.includes("\\")) {
+      setError("Use a path under /api/v1/. Full URLs are not allowed.");
+      return;
+    }
+    let requestBody: string | undefined;
+    if (method !== "GET" && body.trim()) {
+      try {
+        requestBody = JSON.stringify(JSON.parse(body));
+      } catch {
+        setError("Request body must be valid JSON.");
+        return;
+      }
+    }
+
+    if (method !== "GET" && !window.confirm(`Send this ${method} request to ${path}? It may change live business data.`)) {
+      return;
+    }
+
+    const headers = new Headers({ Accept: "application/json" });
+    if (requestBody) headers.set("Content-Type", "application/json");
+    if (credential.trim() && authType === "api-key") headers.set("X-API-Key", credential.trim());
+    if (credential.trim() && authType === "bearer") headers.set("Authorization", `Bearer ${credential.trim()}`);
+
+    const startedAt = performance.now();
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 30000);
+    setBusy(true);
+    try {
+      const url = new URL(path, origin);
+      const result = await fetch(url, {
+        method,
+        headers,
+        body: requestBody,
+        signal: controller.signal,
+        credentials: "omit",
+      });
+      const raw = await result.text();
+      let formatted = raw;
+      try { formatted = JSON.stringify(JSON.parse(raw), null, 2); } catch { /* Preserve plain text and HTML errors. */ }
+      setResponse({ status: result.status, statusText: result.statusText, duration: Math.round(performance.now() - startedAt), body: formatted || "(empty response)" });
+    } catch (requestError) {
+      const message = requestError instanceof Error && requestError.name === "AbortError"
+        ? "Request timed out after 30 seconds."
+        : requestError instanceof Error ? requestError.message : "Request failed.";
+      setError(`${message} Check the API service and browser network access.`);
+    } finally {
+      window.clearTimeout(timeout);
+      setBusy(false);
+    }
+  };
+
+  const copyResponse = async () => {
+    if (!response) return;
+    try { await navigator.clipboard.writeText(response.body); } catch { setError("Could not access the clipboard in this browser."); }
+  };
+
+  const mutation = method !== "GET";
+  return (
+    <Card className="shadow-soft mb-12 overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/30 px-5 py-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary"><Terminal className="h-4 w-4" /></div>
+          <div><h2 className="font-display font-semibold">API Test Terminal</h2><p className="text-xs text-muted-foreground">Requests go to {origin}</p></div>
+        </div>
+        <Badge variant="outline" className="font-mono">API v1</Badge>
+      </div>
+      <CardContent className="space-y-5 p-5">
+        <form onSubmit={sendRequest} className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_140px]">
+            <label className="space-y-1.5 text-sm font-medium">Endpoint preset
+              <select aria-label="Endpoint preset" value={selected} onChange={event => chooseEndpoint(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 font-normal">
+                {endpoints.map((item, index) => <option key={`${item.method} ${item.path} ${index}`} value={String(index)}>{item.method} · {item.path}</option>)}
+              </select>
+            </label>
+            <label className="space-y-1.5 text-sm font-medium">Method
+              <select aria-label="Request method" value={method} onChange={event => setMethod(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 font-mono font-normal">
+                {["GET", "POST", "PATCH", "DELETE"].map(item => <option key={item}>{item}</option>)}
+              </select>
+            </label>
+          </div>
+          <label className="block space-y-1.5 text-sm font-medium">Request path
+            <input aria-label="Request path" value={path} onChange={event => setPath(event.target.value)} spellCheck={false} className="h-10 w-full rounded-md border border-input bg-background px-3 font-mono text-sm font-normal" placeholder="/api/v1/inventory/products/" />
+          </label>
+          <div className="grid gap-3 md:grid-cols-[180px_minmax(0,1fr)]">
+            <label className="space-y-1.5 text-sm font-medium">Authentication
+              <select aria-label="Authentication type" value={authType} onChange={event => setAuthType(event.target.value as typeof authType)} className="h-10 w-full rounded-md border border-input bg-background px-3 font-normal">
+                <option value="none">No authentication</option><option value="api-key">X-API-Key</option><option value="bearer">Bearer token</option>
+              </select>
+            </label>
+            {authType !== "none" && <label className="space-y-1.5 text-sm font-medium">{authType === "api-key" ? "API key" : "Access token"}
+              <input aria-label={authType === "api-key" ? "API key" : "Access token"} type="password" autoComplete="off" value={credential} onChange={event => setCredential(event.target.value)} className="h-10 w-full rounded-md border border-input bg-background px-3 font-mono text-sm font-normal" placeholder="Credential is kept in this page only" />
+            </label>}
+          </div>
+          {method !== "GET" && <label className="block space-y-1.5 text-sm font-medium">JSON body
+            <textarea aria-label="JSON request body" value={body} onChange={event => setBody(event.target.value)} spellCheck={false} rows={9} className="w-full rounded-md border border-input bg-background p-3 font-mono text-xs leading-relaxed" placeholder={'{\n  "example": true\n}'} />
+          </label>}
+          {mutation && <p className="rounded-md border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-muted-foreground">This {method} request can change live business data. Use test credentials and verify the path and body before sending.</p>}
+          {error && <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{error}</p>}
+          <div className="flex flex-wrap items-center gap-3">
+            <Button type="submit" disabled={busy} className="gap-2"><Play className="h-4 w-4" />{busy ? "Sending…" : "Send request"}</Button>
+            <p className="text-xs text-muted-foreground">Credentials stay in page memory and are never saved to storage.</p>
+          </div>
+        </form>
+        <section aria-label="Response" className="overflow-hidden rounded-lg border border-border">
+          <div className="flex min-h-12 flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/40 px-3 py-2">
+            <div className="flex items-center gap-2 text-sm font-medium"><span>Response</span>{response && <Badge variant={response.status < 400 ? "secondary" : "destructive"}>{response.status} {response.statusText}</Badge>}{response && <span className="flex items-center gap-1 text-xs font-normal text-muted-foreground"><Clock3 className="h-3.5 w-3.5" />{response.duration} ms</span>}</div>
+            <div className="flex gap-1">
+              <Button type="button" variant="ghost" size="sm" disabled={!response} onClick={() => void copyResponse()} aria-label="Copy response"><Copy className="h-4 w-4" /></Button>
+              <Button type="button" variant="ghost" size="sm" disabled={!response && !error} onClick={() => { setResponse(null); setError(""); }} aria-label="Clear response"><Trash2 className="h-4 w-4" /></Button>
+            </div>
+          </div>
+          <pre aria-live="polite" className="min-h-28 max-h-[480px] overflow-auto bg-background p-4 text-xs leading-relaxed text-foreground"><code>{response?.body ?? (error || "Send a request to inspect the response.")}</code></pre>
+        </section>
+      </CardContent>
+    </Card>
+  );
+};
+
 const ApiDocs = () => (
   <div className="min-h-screen bg-background">
     <Navbar />
@@ -127,6 +278,8 @@ const ApiDocs = () => (
           <p className="text-muted-foreground max-w-lg mx-auto">Integrate Verifin with your existing tools using our RESTful API. Available on the Business plan.</p>
           <Badge className="mt-3 bg-primary/10 text-primary hover:bg-primary/10">Business Plan Required</Badge>
         </div>
+
+        <ApiTerminal />
 
         <div className="grid sm:grid-cols-3 gap-4 mb-12">
           {[
