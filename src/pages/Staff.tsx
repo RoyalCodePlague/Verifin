@@ -13,6 +13,7 @@ import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { addToOfflineQueue, canQueueOfflineAction, hasQueuedLocalCreate, removeQueuedLocalCreate } from "@/lib/offlineQueue";
 import { toast } from "sonner";
+import { LockedBadge, useFeatureAccess, useUpgradePrompt } from "@/lib/features";
 
 type StaffRole = "Cashier" | "Stock Manager" | "Manager";
 
@@ -65,6 +66,8 @@ function fromApiStaff(staff: ApiStaff): StaffMember {
 const Staff = () => {
   const { staff, addStaff, upsertStaff, updateStaff, deleteStaff } = useStore();
   const { user } = useAuth();
+  const { canUse } = useFeatureAccess();
+  const promptUpgrade = useUpgradePrompt();
   const [addOpen, setAddOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -73,12 +76,16 @@ const Staff = () => {
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const [showStaffPassword, setShowStaffPassword] = useState(false);
   const [activityLogs, setActivityLogs] = useState<ApiStaffActivityLog[]>([]);
+  const [activityAction, setActivityAction] = useState("");
+  const [activityObject, setActivityObject] = useState("");
+  const [activityFrom, setActivityFrom] = useState("");
+  const [activityTo, setActivityTo] = useState("");
 
   useEffect(() => {
     let cancelled = false;
     void listStaffActivityLogsApi()
       .then((logs) => {
-        if (!cancelled) setActivityLogs(logs.slice(0, 8));
+        if (!cancelled) setActivityLogs(logs);
       })
       .catch(() => {
         if (!cancelled) setActivityLogs([]);
@@ -100,6 +107,12 @@ const Staff = () => {
       : roleDefaults[selectedStaff.role as StaffRole] || []
     : [];
   const businessCode = user?.business_code || "";
+  const filteredActivityLogs = activityLogs.filter(log => (!activityAction || log.action === activityAction) && (!activityObject || log.object_type === activityObject) && (!activityFrom || log.created_at.slice(0,10) >= activityFrom) && (!activityTo || log.created_at.slice(0,10) <= activityTo));
+  const exportActivity = () => {
+    if (!canUse("staff_activity_logs")) { promptUpgrade("staff_activity_logs", "Activity Logs"); return; }
+    const csv = ["Action,Object,ID,Summary,Actor,Date", ...filteredActivityLogs.map(log => [log.action,log.object_type,log.object_id,log.summary,log.actor_email || "system",log.created_at].map(value => `"${String(value ?? "").replaceAll('"','""')}"`).join(","))].join("\n");
+    const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csv], {type:"text/csv;charset=utf-8"})); link.download = "staff-activity.csv"; link.click(); URL.revokeObjectURL(link.href);
+  };
 
   const copyBusinessCode = async () => {
     if (!businessCode) return;
@@ -226,11 +239,12 @@ const Staff = () => {
         <CardHeader>
           <CardTitle className="font-display flex items-center gap-2 text-base">
             <Activity className="h-4 w-4 text-primary" />
-            Permission Audit
+            Activity Logs {!canUse("staff_activity_logs") && <LockedBadge />}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {activityLogs.length ? activityLogs.map((log) => (
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5"><select aria-label="Activity type" className="h-9 rounded-md border bg-background px-2 text-xs" value={activityAction} onChange={e=>setActivityAction(e.target.value)}><option value="">All actions</option>{[...new Set(activityLogs.map(log=>log.action))].map(action=><option key={action} value={action}>{action.replaceAll("_"," ")}</option>)}</select><select aria-label="Object type" className="h-9 rounded-md border bg-background px-2 text-xs" value={activityObject} onChange={e=>setActivityObject(e.target.value)}><option value="">All objects</option>{[...new Set(activityLogs.map(log=>log.object_type).filter(Boolean))].map(object=><option key={object} value={object}>{object}</option>)}</select><Input aria-label="From date" type="date" value={activityFrom} onChange={e=>setActivityFrom(e.target.value)} /><Input aria-label="To date" type="date" value={activityTo} onChange={e=>setActivityTo(e.target.value)} /><Button variant="outline" onClick={exportActivity}>Export CSV</Button></div>
+          {filteredActivityLogs.length ? filteredActivityLogs.map((log) => (
             <div key={log.id} className="flex flex-col gap-1 rounded-lg border border-border px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-sm font-medium">{log.summary}</p>
@@ -331,7 +345,7 @@ const Staff = () => {
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 text-sm font-medium">
                   <ShieldCheck className="h-4 w-4 text-primary" />
-                  Access
+                  Access {!canUse("role_based_access") && <LockedBadge label="Plan defaults" />}
                 </div>
                 <label className="flex items-center gap-2 text-xs text-muted-foreground">
                   <input type="checkbox" checked={form.loginEnabled} onChange={e => setForm({ ...form, loginEnabled: e.target.checked })} />
@@ -341,7 +355,7 @@ const Staff = () => {
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {permissionOptions.map((permission) => (
                   <label key={permission.id} className="flex items-center gap-2 rounded-md border border-border px-2 py-2 text-xs">
-                    <input type="checkbox" checked={form.permissions.includes(permission.id)} onChange={() => togglePermission(permission.id)} />
+                    <input type="checkbox" checked={form.permissions.includes(permission.id)} onChange={() => {if(!canUse("role_based_access")){promptUpgrade("role_based_access","Custom role permissions");return;}togglePermission(permission.id);}} />
                     <span>{permission.label}</span>
                   </label>
                 ))}

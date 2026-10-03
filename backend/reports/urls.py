@@ -8,7 +8,6 @@ from .views import (
     ExpenseAnalysisView,
     ExportView,
     ForecastView,
-    GenericStubView,
     MarginReportView,
     MonthlyOverviewView,
     ProfitLossView,

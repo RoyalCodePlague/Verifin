@@ -36,6 +36,7 @@ import {
   pushOfflineActions,
   revokeApiKeyApi,
   updateNotificationPreferencesApi,
+  apiFetch,
   type ApiIntegrationKey,
 } from "@/lib/api";
 import {
@@ -53,6 +54,7 @@ import {
 } from "@/lib/offlineQueue";
 import { useStore } from "@/lib/store";
 import { currencyOptions, getDetectedCountryCode, getRegionalCurrencyDefaults, symbolForCurrency } from "@/lib/currency";
+import { LockedBadge, useFeatureAccess, useUpgradePrompt } from "@/lib/features";
 
 const SECURITY_PREFS_KEY = "sp_security_prefs";
 const EXTENDED_NOTIFICATION_PREFS_KEY = "sp_extended_notification_prefs";
@@ -187,6 +189,12 @@ const SettingsPage = () => {
   const { profile, setProfile } = useStore();
   const { logout, refreshUser, user } = useAuth();
   const navigate = useNavigate();
+  const { canUse } = useFeatureAccess();
+  const automationEnabled = canUse("automation_rules");
+  const promptUpgrade = useUpgradePrompt();
+  const [automationRules, setAutomationRules] = useState(() => loadJson("verifin_automation_rules", {low_stock:true,no_sales_today:true,high_discrepancies:false,high_expenses:false, severity:"warning", channel:"in_app" as string}));
+  const [automationEvents, setAutomationEvents] = useState<{rule:string;severity:string;message:string}[]>([]);
+  const updateAutomation = (next: typeof automationRules) => { setAutomationRules(next); saveJson("verifin_automation_rules", next); };
   const [name, setName] = useState(profile.name);
   const [currency, setCurrency] = useState(profile.currency);
   const [secondaryCurrency, setSecondaryCurrency] = useState("");
@@ -281,6 +289,15 @@ const SettingsPage = () => {
   useEffect(() => {
     saveJson(EXTENDED_NOTIFICATION_PREFS_KEY, notificationPrefs);
   }, [notificationPrefs]);
+
+  useEffect(() => {
+    if (!getAccessToken() || !automationEnabled) return;
+    let cancelled = false;
+    void apiFetch<{alerts:{rule:string;severity:string;message:string}[]}>('/api/v1/reports/automation-alerts/')
+      .then(result => { if (!cancelled) setAutomationEvents(result.alerts || []); })
+      .catch(() => { if (!cancelled) setAutomationEvents([]); });
+    return () => { cancelled = true; };
+  }, [automationEnabled]);
 
   useEffect(() => {
     if (!getAccessToken()) return;
@@ -512,6 +529,7 @@ const SettingsPage = () => {
   };
 
   const handleCreateApiKey = async () => {
+    if (!canUse("api_access")) { promptUpgrade("api_access", "API Access"); return; }
     if (!apiKeyName.trim() || apiKeyPermissions.length === 0) {
       toast.error("Name the key and choose at least one permission.");
       return;
@@ -532,6 +550,7 @@ const SettingsPage = () => {
   };
 
   const handleRevokeApiKey = async (id: number) => {
+    if (!canUse("api_access")) { promptUpgrade("api_access", "API Access"); return; }
     setApiKeyLoading(true);
     try {
       const updated = await revokeApiKeyApi(id);
@@ -861,15 +880,26 @@ const SettingsPage = () => {
         </CardContent>
       </Card>
 
-      {/* Temporarily hidden: POS API Keys
+      <Card className="shadow-soft">
+        <CardHeader><CardTitle className="font-display flex items-center gap-2 text-base">Automation Rules {!canUse("automation_rules") && <LockedBadge />}</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">Choose which in-app conditions the automation alert feed evaluates. These preferences are stored on this device.</p>
+          {([ ["low_stock","Low stock"], ["no_sales_today","No sales recorded today"], ["high_discrepancies","Several unresolved discrepancies"], ["high_expenses","High expenses"] ] as const).map(([key,label])=><div key={key} className="flex items-center justify-between gap-3"><span className="text-sm">{label}</span><Switch checked={Boolean(automationRules[key])} onCheckedChange={(checked)=>{if(!canUse("automation_rules")){promptUpgrade("automation_rules","Automation Rules");return;} updateAutomation({...automationRules,[key]:checked});}} /></div>)}
+          <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm">Alert severity<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={automationRules.severity} onChange={e=>{if(!canUse("automation_rules")){promptUpgrade("automation_rules","Automation Rules");return;}updateAutomation({...automationRules,severity:e.target.value});}}><option value="info">Informational</option><option value="warning">Warning</option><option value="critical">Critical</option></select></label><label className="text-sm">Notification channel<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={automationRules.channel} onChange={e=>{if(!canUse("automation_rules")){promptUpgrade("automation_rules","Automation Rules");return;}updateAutomation({...automationRules,channel:e.target.value});}}><option value="in_app">In app</option><option value="email">Email preference</option><option value="whatsapp">WhatsApp preference</option></select></label></div>
+          <p className="text-xs text-muted-foreground">Email and WhatsApp delivery require server notification setup. Rule evaluation is available in the in-app automation feed.</p>
+          <div className="space-y-2"><p className="text-sm font-medium">Recent rule evaluations</p>{automationEvents.length ? automationEvents.map((event,index)=><div key={`${event.rule}-${index}`} className="rounded-md border p-3"><p className="text-sm font-medium">{event.message}</p><p className="text-xs capitalize text-muted-foreground">{event.rule.replaceAll("_"," ")} · {event.severity}</p></div>) : <p className="rounded-md border p-3 text-sm text-muted-foreground">No active alerts right now.</p>}</div>
+        </CardContent>
+      </Card>
+
       <Card className="shadow-soft">
         <CardHeader>
           <CardTitle className="font-display flex items-center gap-2 text-base">
             <KeyRound className="h-4 w-4 text-primary" />
-            POS API Keys
+            API Access {canUse("api_access") ? <span className="text-xs font-normal text-success">Enabled</span> : <LockedBadge />}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">Create scoped API keys, revoke access, and review last use. Keys are shown once when created. <button type="button" className="text-primary underline" onClick={() => navigate("/api")}>View endpoint documentation</button></p>
           <div className="rounded-lg border border-border bg-muted/20 p-4 dark:bg-muted/10">
             <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
               <div>
@@ -921,7 +951,6 @@ const SettingsPage = () => {
           </div>
         </CardContent>
       </Card>
-      */}
 
       <Card className="shadow-soft">
         <CardHeader>
