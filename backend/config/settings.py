@@ -2,6 +2,7 @@ from datetime import timedelta
 from pathlib import Path
 import os
 from urllib.parse import urlparse
+from corsheaders.defaults import default_headers
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -182,6 +183,7 @@ if not DEBUG:
     SECURE_HSTS_PRELOAD = os.getenv("SECURE_HSTS_PRELOAD", "false").lower() in ("1", "true", "yes")
 
 CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = (*default_headers, "x-api-key")
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "https://verifin-tau.vercel.app").rstrip("/")
 
@@ -229,6 +231,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:5173",
     "http://localhost:5173",
     "http://192.168.100.4:8080",
+    "https://verifin.co.zw",
     "https://verifin-tau.vercel.app",
     # Vercel production - UPDATE AFTER DEPLOYMENT
     "https://your-project.vercel.app",
