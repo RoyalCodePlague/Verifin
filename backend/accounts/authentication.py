@@ -27,6 +27,8 @@ PATH_PERMISSIONS = (
     ("/api/v1/expenses", "expenses"),
     ("/api/v1/customers", "customers"),
     ("/api/v1/sales", "sales"),
+    ("/api/v1/inventory/products/pos-catalog", "inventory"),
+    ("/api/v1/inventory/products/pos-barcode-lookup", "inventory"),
     ("/api/v1/inventory/suppliers", "suppliers"),
     ("/api/v1/inventory/purchase-orders", "suppliers"),
     ("/api/v1/inventory", "inventory"),

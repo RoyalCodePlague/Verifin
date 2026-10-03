@@ -8,15 +8,19 @@ const endpoints = [
   { group: "Auth", method: "POST", path: "/api/v1/accounts/login/", desc: "Create JWT access and refresh tokens with owner email and password.", auth: false },
   { group: "Auth", method: "POST", path: "/api/v1/accounts/token/refresh/", desc: "Refresh an expired access token.", auth: false },
   { group: "Inventory", method: "GET", path: "/api/v1/inventory/products/", desc: "List products with stock, pricing, SKU, barcode, branch, and category data.", auth: true },
+  { group: "Inventory", method: "GET", path: "/api/v1/inventory/products/pos-catalog/", desc: "Fetch the paginated POS catalog; use updated_since for incremental refresh and available_only=false to include out-of-stock items.", auth: true },
   { group: "Inventory", method: "POST", path: "/api/v1/inventory/products/", desc: "Create a product from an external catalog or POS back office.", auth: true },
   { group: "Inventory", method: "PATCH", path: "/api/v1/inventory/products/{id}/", desc: "Update product price, stock, barcode, reorder point, or status.", auth: true },
   { group: "Inventory", method: "GET", path: "/api/v1/inventory/products/barcode-lookup/?code={barcode}", desc: "Find a product by barcode before adding it to a POS basket.", auth: true },
+  { group: "Inventory", method: "GET", path: "/api/v1/inventory/products/pos-barcode-lookup/?code={barcode}", desc: "Look up a registered POS item barcode without enabling consumer barcode identification.", auth: true },
   { group: "Inventory", method: "GET", path: "/api/v1/inventory/products/low-stock/", desc: "Fetch low-stock products for reorder prompts.", auth: true },
   { group: "Inventory", method: "POST", path: "/api/v1/inventory/movements/", desc: "Record stock adjustments, returns, shrinkage, and external stock movement.", auth: true },
   { group: "Sales", method: "GET", path: "/api/v1/sales/", desc: "List sales with date, customer, payment, and branch filters.", auth: true },
   { group: "Sales", method: "POST", path: "/api/v1/sales/", desc: "Create a completed sale and deduct inventory quantities.", auth: true },
   { group: "Sales", method: "GET", path: "/api/v1/sales/{id}/receipt/", desc: "Return receipt data for printing or reprint screens.", auth: true },
   { group: "Sales", method: "GET", path: "/api/v1/sales/tills/current/", desc: "Get the current till session for the authenticated business.", auth: true },
+  { group: "Sales", method: "GET", path: "/api/v1/sales/tills/summary/", desc: "Get the open till and business currency settings in one request.", auth: true },
+  { group: "Sales", method: "POST", path: "/api/v1/sales/tills/", desc: "Open a till session for the shift.", auth: true },
   { group: "Sales", method: "POST", path: "/api/v1/sales/tills/{id}/close/", desc: "Close a till session from an integrated POS terminal.", auth: true },
   { group: "Customers", method: "GET", path: "/api/v1/customers/", desc: "List customers with loyalty, credit, and purchase data.", auth: true },
   { group: "Customers", method: "POST", path: "/api/v1/customers/", desc: "Create or sync a customer from an external POS.", auth: true },
@@ -26,7 +30,7 @@ const endpoints = [
 ];
 
 const posSteps = [
-  { icon: Key, title: "Authenticate", desc: "Login once, store the JWT securely, and send it as Authorization: Bearer <token>." },
+  { icon: Key, title: "Authenticate", desc: "Create a scoped API key in Settings and send it as X-API-Key." },
   { icon: Boxes, title: "Sync Products", desc: "Pull products and barcode data before opening the till or when the POS comes online." },
   { icon: ShoppingCart, title: "Post Sales", desc: "Send each completed receipt to Verifin so inventory, customers, and reports stay current." },
   { icon: ReceiptText, title: "Print Receipts", desc: "Use the receipt endpoint to reprint or render a receipt in another POS application." },
@@ -34,9 +38,8 @@ const posSteps = [
 
 const sampleSalePayload = `{
   "customer": 42,
-  "payment_method": "cash",
-  "discount": "0.00",
-  "tax": "0.00",
+  "integration_id": "terminal-1:receipt-100045",
+  "payment_method": "Cash",
   "items": [
     {
       "product": 101,
@@ -46,19 +49,15 @@ const sampleSalePayload = `{
   ]
 }`;
 
-const pythonExample = `import requests
+const pythonExample = `import os
+import uuid
+import requests
 
-BASE_URL = "https://verifin-tau.vercel.app/api/v1"
-
-tokens = requests.post(f"{BASE_URL}/accounts/login/", json={
-    "email": "owner@example.com",
-    "password": "your-password"
-}).json()
-
-headers = {"Authorization": f"Bearer {tokens['access']}"}
+BASE_URL = os.getenv("VERIFIN_API", "https://verifin-tau.vercel.app/api/v1")
+headers = {"X-API-Key": os.environ["VERIFIN_API_KEY"]}
 
 product = requests.get(
-    f"{BASE_URL}/inventory/products/barcode-lookup/",
+    f"{BASE_URL}/inventory/products/pos-barcode-lookup/",
     params={"code": "6001234567890"},
     headers=headers,
 ).json()
@@ -66,27 +65,37 @@ product = requests.get(
 sale = requests.post(
     f"{BASE_URL}/sales/",
     json={
-        "payment_method": "cash",
+        "integration_id": "terminal-1:" + str(uuid.uuid4()),
+        "payment_method": "Cash",
         "items": [{
             "product": product["id"],
             "quantity": 1,
-            "unit_price": product["selling_price"],
+            "unit_price": product["price"],
         }],
     },
     headers=headers,
 ).json()`;
 
 const cExample = `#include <curl/curl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 int main(void) {
+  const char *api_key = getenv("VERIFIN_API_KEY");
+  if (!api_key) return 1;
   CURL *curl = curl_easy_init();
+  if (!curl) return 1;
   struct curl_slist *headers = NULL;
 
   headers = curl_slist_append(headers, "Content-Type: application/json");
-  headers = curl_slist_append(headers, "Authorization: Bearer YOUR_ACCESS_TOKEN");
+  char auth_header[256];
+  snprintf(auth_header, sizeof(auth_header), "X-API-Key: %s", api_key);
+  headers = curl_slist_append(headers, auth_header);
 
   const char *sale_json =
-    "{\\"payment_method\\":\\"cash\\","
+    "{\\"integration_id\\":\\"terminal-1:receipt-100045\\","
+    "\\"payment_method\\":\\"Cash\\","
     "\\"items\\":[{\\"product\\":101,\\"quantity\\":1,\\"unit_price\\":\\"15.00\\"}]}";
 
   curl_easy_setopt(curl, CURLOPT_URL, "https://verifin-tau.vercel.app/api/v1/sales/");
@@ -144,7 +153,7 @@ const ApiDocs = () => (
           </CardContent>
         </Card>
 
-        <h2 className="font-display font-bold text-xl mb-4 flex items-center gap-2"><Code className="h-5 w-5 text-primary" /> Working Endpoints</h2>
+        <h2 className="font-display font-bold text-xl mb-4 flex items-center gap-2"><Code className="h-5 w-5 text-primary" /> API Endpoints</h2>
         <Card className="shadow-soft overflow-hidden">
           <div className="divide-y divide-border">
             {endpoints.map((e, i) => (
@@ -167,7 +176,7 @@ const ApiDocs = () => (
         <Card className="shadow-soft mb-8">
           <CardContent className="p-5">
             <p className="text-sm text-muted-foreground">
-              Any POS that can send HTTPS requests can integrate with Verifin. That includes desktop tills, Android devices, scanners, embedded systems, Python services, C/C++ programs, Java, C#, PHP, Node.js, and low-code tools.
+              Create a dedicated API key in Settings → API Access. Send it in X-API-Key on every request and grant Inventory and Sales for catalog lookup, checkout, and tills. Keep it in secure device storage, not source code. Send a stable unique integration_id with each completed receipt so retries never deduct stock twice.
             </p>
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               {posSteps.map((step) => (
@@ -196,9 +205,9 @@ const ApiDocs = () => (
             <CardContent className="p-5">
               <h3 className="font-display font-semibold mb-3">POS Flow</h3>
               <div className="space-y-3 text-sm text-muted-foreground">
-                <p><strong className="text-foreground">1.</strong> Login with owner credentials or a dedicated integration user.</p>
-                <p><strong className="text-foreground">2.</strong> Scan barcode and call product lookup.</p>
-                <p><strong className="text-foreground">3.</strong> Build basket locally and post the sale when payment succeeds.</p>
+                <p><strong className="text-foreground">1.</strong> Create a scoped API key in Settings and send it as X-API-Key.</p>
+                <p><strong className="text-foreground">2.</strong> Load the POS catalog and scan barcodes to look up items.</p>
+                <p><strong className="text-foreground">3.</strong> Open a till, build the basket locally, and post with a stable integration_id after payment succeeds.</p>
                 <p><strong className="text-foreground">4.</strong> Pull receipt data if your POS needs a printable copy.</p>
               </div>
             </CardContent>
@@ -237,7 +246,7 @@ const ApiDocs = () => (
 
         <div className="mt-10 text-center p-8 rounded-2xl bg-muted/50">
           <h3 className="font-display font-semibold text-lg mb-2">Need API access?</h3>
-          <p className="text-sm text-muted-foreground">Upgrade to the Business plan to get your API key. Contact <strong>robzmtambo@gmail.com</strong> for enterprise integrations.</p>
+          <p className="text-sm text-muted-foreground">Upgrade to the Business plan to enable API Access, then create and manage scoped integration keys in Settings.</p>
         </div>
       </div>
     </section>

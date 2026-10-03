@@ -1,5 +1,5 @@
 from django.db import transaction
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from django.utils import timezone
 from rest_framework import serializers
 from customers.models import Customer, LoyaltyTransaction
@@ -24,7 +24,8 @@ class SaleItemReadSerializer(serializers.ModelSerializer):
 
 
 class SaleSerializer(serializers.ModelSerializer):
-    sale_items = SaleItemSerializer(many=True, write_only=True, required=False)
+    sale_items = SaleItemSerializer(many=True, required=False)
+    items = serializers.ListField(child=serializers.DictField(), required=False, write_only=True)
     line_items = SaleItemReadSerializer(source="sale_items", many=True, read_only=True)
     payment_currency = serializers.CharField(required=False)
     payment_allocations = serializers.JSONField(required=False)
@@ -40,6 +41,7 @@ class SaleSerializer(serializers.ModelSerializer):
             "payment_method",
             "payment_currency",
             "payment_allocations",
+            "integration_id",
             "branch",
             "till_session",
             "receipt_number",
@@ -53,13 +55,19 @@ class SaleSerializer(serializers.ModelSerializer):
             "sale_items",
             "line_items",
         ]
-        read_only_fields = ["created_by", "date", "time", "created_at", "updated_at", "items", "total", "total_cost", "gross_profit", "receipt_number", "invoice_number"]
+        read_only_fields = ["created_by", "date", "time", "created_at", "updated_at", "total", "total_cost", "gross_profit", "receipt_number", "invoice_number"]
+
+        extra_kwargs = {"sale_items": {"write_only": True}}
 
     def validate(self, attrs):
         request = self.context.get("request")
         user = getattr(request, "user", None)
         branch = attrs.get("branch")
-        items = attrs.get("sale_items", [])
+        sale_items = attrs.get("sale_items")
+        api_items = attrs.get("items")
+        if sale_items is not None and api_items is not None:
+            raise serializers.ValidationError({"items": "Provide either items or sale_items, not both."})
+        items = sale_items if sale_items is not None else (api_items or [])
         payment_currency = (attrs.get("payment_currency") or getattr(self.instance, "payment_currency", getattr(user, "currency", "ZAR"))).strip().upper()
         attrs["payment_currency"] = payment_currency
         if user and user.is_authenticated:
@@ -70,26 +78,66 @@ class SaleSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"till_session": "Till session must be open."})
             if till_session and till_session.user_id != user.id:
                 raise serializers.ValidationError({"till_session": "Till session does not belong to this account."})
+            if till_session and not branch:
+                branch = till_session.branch
+            if till_session and branch and till_session.branch_id and till_session.branch_id != branch.id:
+                raise serializers.ValidationError({"till_session": "Till session belongs to another branch."})
             customer = attrs.get("customer")
             if customer and customer.user_id != user.id:
                 raise serializers.ValidationError({"customer": "Customer does not belong to this account."})
+            normalized_items = []
             for item in items:
                 product = item.get("product")
-                if item.get("quantity", 0) <= 0:
+                if not hasattr(product, "user_id"):
+                    product_id = product
+                    try:
+                        product = Product.objects.get(pk=product_id, user=user, is_deleted=False)
+                    except (Product.DoesNotExist, ValueError, TypeError):
+                        raise serializers.ValidationError({"items": f"Product {product_id} was not found."})
+                    item["product"] = product
+                try:
+                    quantity_value = Decimal(str(item.get("quantity", 0)))
+                    if not quantity_value.is_finite() or quantity_value != quantity_value.to_integral_value():
+                        raise ValueError("Quantity must be a whole number.")
+                    quantity = int(quantity_value)
+                    unit_price = Decimal(str(item.get("unit_price", 0)))
+                except (TypeError, ValueError, InvalidOperation):
+                    raise serializers.ValidationError({"items": "Each item needs a valid quantity and unit_price."})
+                if quantity <= 0:
                     raise serializers.ValidationError({"sale_items": "Quantities must be greater than zero."})
-                if item.get("unit_price", 0) < 0:
+                if unit_price < 0:
                     raise serializers.ValidationError({"sale_items": "Selling prices cannot be negative."})
+                if unit_price.as_tuple().exponent < -2:
+                    raise serializers.ValidationError({"sale_items": "Selling prices can have at most two decimal places."})
+                item["quantity"] = quantity
+                item["unit_price"] = unit_price
                 if product and product.is_deleted:
                     raise serializers.ValidationError({"sale_items": "Product has been deleted."})
-                if product and product.user_id != user.id:
-                    raise serializers.ValidationError({"sale_items": f"{product.name} does not belong to this account."})
                 if branch and product and product.branch_id and product.branch_id != branch.id:
                     raise serializers.ValidationError({"sale_items": f"{product.name} belongs to another branch."})
+                normalized_items.append({**item, "product": product, "quantity": quantity, "unit_price": unit_price})
+            if items and "sale_items" not in attrs:
+                attrs["sale_items"] = normalized_items
+            elif items:
+                attrs["sale_items"] = normalized_items
         return attrs
+
+    def validate_integration_id(self, value):
+        value = (value or "").strip()
+        if len(value) > 120:
+            raise serializers.ValidationError("Ensure this field has no more than 120 characters.")
+        return value
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["items"] = data.pop("line_items", [])
+        data.pop("sale_items", None)
+        return data
 
     @transaction.atomic
     def create(self, validated_data):
         items = validated_data.pop("sale_items", [])
+        validated_data.pop("items", None)
         payment_currency = validated_data.pop("payment_currency", "")
         submitted_allocations = validated_data.pop("payment_allocations", [])
         if not items:
@@ -98,11 +146,26 @@ class SaleSerializer(serializers.ModelSerializer):
         total = 0
         total_cost = 0
         item_labels = []
+        # Lock rows in stable order to prevent overselling and deadlocks when a
+        # receipt contains more than one product (including duplicate lines).
+        product_ids = sorted({item["product"].pk for item in items})
+        locked_products = {
+            product.pk: product
+            for product in Product.objects.select_for_update().filter(pk__in=product_ids).order_by("pk")
+        }
+        requested = {}
         for item in items:
-            product = Product.objects.select_for_update().get(pk=item["product"].pk)
+            requested[item["product"].pk] = requested.get(item["product"].pk, 0) + item["quantity"]
+        for product_id, quantity in requested.items():
+            product = locked_products.get(product_id)
+            if not product or product.user_id != sale.created_by_id or product.is_deleted:
+                raise serializers.ValidationError({"sale_items": "A product is no longer available."})
+            if product.stock < quantity:
+                raise serializers.ValidationError({"sale_items": f"Insufficient stock for {product.name}."})
+
+        for item in items:
+            product = locked_products[item["product"].pk]
             qty = item["quantity"]
-            if product.stock < qty:
-                raise serializers.ValidationError(f"Insufficient stock for {product.name}")
             unit_price = item["unit_price"]
             subtotal = unit_price * qty
             unit_cost = product.cost_price
@@ -121,12 +184,15 @@ class SaleSerializer(serializers.ModelSerializer):
                 profit=profit,
             )
             
-            product.stock -= qty
-            product.save()
             StockMovement.objects.create(product=product, quantity=qty, movement_type="out", created_by=sale.created_by, reason=sale.receipt_number)
             total += subtotal
             total_cost += cost_total
             item_labels.append(f"{qty}x {product.name}")
+
+        for product_id, quantity in requested.items():
+            product = locked_products[product_id]
+            product.stock -= quantity
+            product.save(update_fields=["stock", "status", "updated_at"])
         
         sale.total = total
         sale.total_cost = total_cost

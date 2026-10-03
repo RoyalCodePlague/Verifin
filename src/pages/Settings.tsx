@@ -59,8 +59,8 @@ import { LockedBadge, useFeatureAccess, useUpgradePrompt } from "@/lib/features"
 const SECURITY_PREFS_KEY = "sp_security_prefs";
 const EXTENDED_NOTIFICATION_PREFS_KEY = "sp_extended_notification_prefs";
 const apiPermissionOptions = [
-  { id: "inventory", label: "Inventory" },
-  { id: "sales", label: "Sales" },
+  { id: "inventory", label: "Inventory (read catalog, barcode lookup)" },
+  { id: "sales", label: "Sales (checkout, till sessions)" },
   { id: "customers", label: "Customers" },
   { id: "reports", label: "Reports" },
   { id: "suppliers", label: "Suppliers" },
@@ -899,7 +899,7 @@ const SettingsPage = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">Create scoped API keys, revoke access, and review last use. Keys are shown once when created. <button type="button" className="text-primary underline" onClick={() => navigate("/api")}>View endpoint documentation</button></p>
+          <p className="text-sm text-muted-foreground">Create scoped API keys, revoke access, and review last use. POS terminals need Inventory and Sales scopes. Keys are shown once when created. <button type="button" className="text-primary underline" onClick={() => navigate("/api")}>View endpoint documentation</button></p>
           <div className="rounded-lg border border-border bg-muted/20 p-4 dark:bg-muted/10">
             <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
               <div>

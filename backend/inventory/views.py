@@ -132,6 +132,32 @@ class ProductViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Product not found."}, status=404)
         return Response(ProductSerializer(product).data)
 
+    @action(detail=False, methods=["get"], url_path="pos-barcode-lookup")
+    def pos_barcode_lookup(self, request):
+        code = _clean_text(request.query_params.get("code"))
+        if not code:
+            return Response({"detail": "Barcode is required."}, status=400)
+        product = self.get_queryset().filter(barcode=code).first()
+        if not product:
+            return Response({"detail": "Product not found."}, status=404)
+        return Response(ProductSerializer(product).data)
+
+    @action(detail=False, methods=["get"], url_path="pos-catalog")
+    def pos_catalog(self, request):
+        """Paginated catalog for terminal startup and incremental refresh."""
+        queryset = Product.objects.filter(user=request.user, is_deleted=False).select_related("branch", "category").order_by("id")
+        if request.query_params.get("available_only", "true").lower() == "true":
+            queryset = queryset.filter(stock__gt=0)
+        branch = request.query_params.get("branch")
+        if branch:
+            queryset = queryset.filter(models.Q(branch__isnull=True) | models.Q(branch_id=branch))
+        updated_since = request.query_params.get("updated_since")
+        if updated_since:
+            queryset = queryset.filter(updated_at__gte=updated_since)
+        page = self.paginate_queryset(queryset)
+        serializer = ProductSerializer(page if page is not None else queryset, many=True)
+        return self.get_paginated_response(serializer.data) if page is not None else Response(serializer.data)
+
     @action(detail=False, methods=["get"], url_path="barcode-identify")
     def barcode_identify(self, request):
         enforce_feature(request.user, "barcode_scanning")

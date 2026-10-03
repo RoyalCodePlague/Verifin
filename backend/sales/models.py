@@ -17,11 +17,17 @@ class Sale(TimeStampedSoftDeleteModel):
     branch = models.ForeignKey(Branch, on_delete=models.SET_NULL, blank=True, null=True, related_name="sales")
     till_session = models.ForeignKey("TillSession", on_delete=models.SET_NULL, blank=True, null=True, related_name="sales")
     receipt_number = models.CharField(max_length=40, blank=True)
+    integration_id = models.CharField(max_length=120, blank=True)
     invoice_number = models.CharField(max_length=40, blank=True)
     customer = models.ForeignKey(Customer, on_delete=models.SET_NULL, blank=True, null=True, related_name="sales")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="sales")
     date = models.DateField(auto_now_add=True)
     time = models.TimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["created_by", "integration_id"], condition=~models.Q(integration_id=""), name="unique_sale_integration_id_per_user"),
+        ]
 
     def save(self, *args, **kwargs):
         if not self.receipt_number and self.created_by_id:

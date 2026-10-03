@@ -9,11 +9,13 @@ router.register("", SaleViewSet, basename="sales")
 till_list = TillSessionViewSet.as_view({"get": "list", "post": "create"})
 till_detail = TillSessionViewSet.as_view({"get": "retrieve", "patch": "partial_update", "delete": "destroy"})
 till_current = TillSessionViewSet.as_view({"get": "current"})
+till_summary = TillSessionViewSet.as_view({"get": "summary"})
 till_close = TillSessionViewSet.as_view({"post": "close"})
 
 urlpatterns = [
     path("tills/", till_list),
     path("tills/current/", till_current),
+    path("tills/summary/", till_summary),
     path("tills/<int:pk>/", till_detail),
     path("tills/<int:pk>/close/", till_close),
     path("", include(router.urls)),

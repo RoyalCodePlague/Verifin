@@ -1,3 +1,4 @@
+from decimal import Decimal
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
@@ -12,6 +13,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from accounts.activity import log_staff_activity
 from billing.services import enforce_feature
+from core.currency import get_rate_to_base, normalize_allocations
 from notifications.models import NotificationLog
 from .models import Sale, SaleItem, TillSession
 from .serializers import SaleItemReadSerializer, SaleItemSerializer, SaleSerializer, TillSessionSerializer
@@ -65,6 +67,17 @@ class SaleViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return Sale.objects.filter(created_by=self.request.user, is_deleted=False)
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["request"] = self.request
+        return context
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if hasattr(request, "api_key") and request.method == "DELETE":
+            from accounts.authentication import require_area
+            require_area(request, "sales")
+
     def perform_create(self, serializer):
         till_session = serializer.validated_data.get("till_session")
         if not till_session:
@@ -80,6 +93,78 @@ class SaleViewSet(viewsets.ModelViewSet):
             object_type="sale",
             object_id=sale.id,
         )
+
+    def _matches_idempotent_sale(self, sale, validated_data):
+        requested_items = sorted(
+            (
+                item["product"].pk,
+                item["quantity"],
+                str(Decimal(item["unit_price"]).quantize(Decimal("0.01"))),
+            )
+            for item in validated_data.get("sale_items", [])
+        )
+        existing_items = sorted(
+            (
+                item.product_id,
+                item.quantity,
+                str(item.unit_price.quantize(Decimal("0.01"))),
+            )
+            for item in sale.sale_items.filter(is_deleted=False)
+        )
+        if requested_items != existing_items:
+            return False
+
+        user = self.request.user
+        payment_currency = validated_data.get("payment_currency") or user.currency
+        payment_method = validated_data.get("payment_method", Sale._meta.get_field("payment_method").default)
+        requested_total = sum(
+            (Decimal(item["unit_price"]) * item["quantity"] for item in validated_data.get("sale_items", [])),
+            Decimal("0"),
+        )
+        submitted_allocations = validated_data.get("payment_allocations", [])
+        rate = get_rate_to_base(user, payment_currency) if not submitted_allocations else Decimal("1")
+        expected_allocations, _ = normalize_allocations(
+            user,
+            submitted_allocations,
+            (requested_total / rate).quantize(Decimal("0.01")),
+            payment_currency,
+            rate,
+        )
+        if payment_method != sale.payment_method or expected_allocations != sale.payment_allocations:
+            return False
+
+        branch = validated_data.get("branch")
+        customer = validated_data.get("customer")
+        if sale.branch_id != getattr(branch, "pk", None) or sale.customer_id != getattr(customer, "pk", None):
+            return False
+        if "till_session" in self.request.data:
+            till_session = validated_data.get("till_session")
+            if sale.till_session_id != getattr(till_session, "pk", None):
+                return False
+        return True
+
+    def create(self, request, *args, **kwargs):
+        integration_id = str(request.data.get("integration_id") or "").strip()
+        if len(integration_id) > 120:
+            return Response({"integration_id": ["Ensure this field has no more than 120 characters."]}, status=400)
+        if integration_id:
+            with transaction.atomic():
+                from django.contrib.auth import get_user_model
+                get_user_model().objects.select_for_update().get(pk=request.user.pk)
+                serializer = self.get_serializer(data=request.data)
+                serializer.is_valid(raise_exception=True)
+                integration_id = serializer.validated_data.get("integration_id", "")
+                existing = Sale.objects.filter(created_by=request.user, integration_id=integration_id).first() if integration_id else None
+                if existing:
+                    if existing.is_deleted:
+                        return Response({"integration_id": ["This receipt ID has already been voided and cannot be reused."]}, status=409)
+                    if not self._matches_idempotent_sale(existing, serializer.validated_data):
+                        return Response({"integration_id": ["This receipt ID was already used with a different sale payload."]}, status=409)
+                    response = Response(self.get_serializer(existing).data, status=200)
+                    response["Idempotent-Replay"] = "true"
+                    return response
+                return super().create(request, *args, **kwargs)
+        return super().create(request, *args, **kwargs)
 
     @transaction.atomic
     def perform_destroy(self, instance):
@@ -184,11 +269,51 @@ class TillSessionViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return TillSession.objects.filter(user=self.request.user, is_deleted=False).order_by("-opened_at")
 
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["request"] = self.request
+        return context
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        if hasattr(request, "api_key") and request.method in ("POST", "PATCH", "DELETE"):
+            from accounts.authentication import require_area
+            require_area(request, "sales")
+
+    @action(detail=False, methods=["get"], url_path="summary")
+    def summary(self, request):
+        session = self.get_queryset().filter(status="open").first()
+        return Response({
+            "open_till": TillSessionSerializer(session, context={"request": request}).data if session else None,
+            "business": {"name": request.user.business_name, "currency": request.user.currency, "currency_symbol": request.user.currency_symbol},
+        })
+
+    def partial_update(self, request, *args, **kwargs):
+        if hasattr(request, "api_key"):
+            from accounts.authentication import require_area
+            require_area(request, "sales")
+        return super().partial_update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        if hasattr(request, "api_key"):
+            from accounts.authentication import require_area
+            require_area(request, "sales")
+        return super().destroy(request, *args, **kwargs)
+
+    def create(self, request, *args, **kwargs):
+        if hasattr(request, "api_key"):
+            from accounts.authentication import require_area
+            require_area(request, "sales")
+        return super().create(request, *args, **kwargs)
+
     def perform_create(self, serializer):
-        if TillSession.objects.filter(user=self.request.user, status="open", is_deleted=False).exists():
-            from rest_framework.exceptions import ValidationError
-            raise ValidationError("Close the current till before opening a new one.")
-        serializer.save(user=self.request.user)
+        with transaction.atomic():
+            from django.contrib.auth import get_user_model
+            get_user_model().objects.select_for_update().get(pk=self.request.user.pk)
+            if TillSession.objects.filter(user=self.request.user, status="open", is_deleted=False).exists():
+                from rest_framework.exceptions import ValidationError
+                raise ValidationError("Close the current till before opening a new one.")
+            serializer.save(user=self.request.user)
 
     @action(detail=False, methods=["get"], url_path="current")
     def current(self, request):
@@ -199,7 +324,12 @@ class TillSessionViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="close")
     def close(self, request, pk=None):
+        if hasattr(request, "api_key"):
+            from accounts.authentication import require_area
+            require_area(request, "sales")
         session = self.get_object()
+        if session.status != "open":
+            return Response({"detail": "Till session is already closed."}, status=400)
         serializer = TillSessionSerializer(session, context={"request": request})
         closing_cash = request.data.get("closing_cash", 0)
         session = serializer.close(session, closing_cash=closing_cash, notes=request.data.get("notes", ""))
