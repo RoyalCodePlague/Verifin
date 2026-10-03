@@ -331,6 +331,9 @@ const ApiDocs = () => (
             <p className="text-sm text-muted-foreground">
               Create a dedicated API key in Settings → API Access. Send it in X-API-Key on every request and grant Inventory and Sales for catalog lookup, checkout, and tills. Keep it in secure device storage, not source code. Send a stable unique integration_id with each completed receipt so retries never deduct stock twice.
             </p>
+            <p className="mt-3 text-sm text-muted-foreground">
+              The full key is shown only once when created. Save it securely and reuse it for requests; Settings only shows its prefix afterward. If it is lost, create a replacement and revoke the old key. Use separate keys for separate terminals so one can be revoked without interrupting the others.
+            </p>
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               {posSteps.map((step) => (
                 <div key={step.title} className="flex gap-3 rounded-lg border border-border bg-muted/20 p-4">
@@ -358,7 +361,7 @@ const ApiDocs = () => (
             <CardContent className="p-5">
               <h3 className="font-display font-semibold mb-3">POS Flow</h3>
               <div className="space-y-3 text-sm text-muted-foreground">
-                <p><strong className="text-foreground">1.</strong> Create a scoped API key in Settings and send it as X-API-Key.</p>
+                <p><strong className="text-foreground">1.</strong> Create and securely save a scoped API key; it is shown once. Reuse it as X-API-Key on each request.</p>
                 <p><strong className="text-foreground">2.</strong> Load the POS catalog and scan barcodes to look up items.</p>
                 <p><strong className="text-foreground">3.</strong> Open a till, build the basket locally, and post with a stable integration_id after payment succeeds.</p>
                 <p><strong className="text-foreground">4.</strong> Pull receipt data if your POS needs a printable copy.</p>
