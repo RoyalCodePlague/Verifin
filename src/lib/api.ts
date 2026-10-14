@@ -304,7 +304,9 @@ export function mapProductResponse(p: ApiProduct): Product {
     costPrice: parseFloat(p.cost_price || "0"),
     costCurrency: p.cost_currency || undefined,
     costFxRateToBase: p.cost_fx_rate_to_base ? parseFloat(p.cost_fx_rate_to_base) : undefined,
-    price: parseFloat(p.price),
+    // Treat an omitted/null price as zero. `parseFloat(undefined)` produces
+    // NaN, which the sale form rejects with a misleading zero-price warning.
+    price: parseFloat(String(p.price ?? 0)) || 0,
     status: p.status,
     barcode: p.barcode || undefined,
     addedDate: fmtShort(p.created_at),
