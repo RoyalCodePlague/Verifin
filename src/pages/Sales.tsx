@@ -53,7 +53,6 @@ const Sales = () => {
   const [method, setMethod] = useState<"Cash" | "EFT" | "Card">("Cash");
   const [lineItems, setLineItems] = useState<SaleLineItem[]>([]);
   const [selectedProduct, setSelectedProduct] = useState("");
-  const [saleUnitPrice, setSaleUnitPrice] = useState("");
   const [barcodeInput, setBarcodeInput] = useState("");
   const [qty, setQty] = useState("1");
   const [paymentCurrency, setPaymentCurrency] = useState(profile.currency);
@@ -121,10 +120,10 @@ const Sales = () => {
     setPaymentRate("");
   };
 
-  const addProductToSale = (productId: string, quantity = 1, priceOverride?: number) => {
+  const addProductToSale = (productId: string, quantity = 1) => {
     const product = products.find(p => p.id === productId);
     if (!product) return false;
-    const unitPrice = priceOverride ?? (parseFloat(String(product.price || 0)) || 0);
+    const unitPrice = parseFloat(String(product.price || 0)) || 0;
     if (quantity > product.stock) {
       toast.error(`Only ${product.stock} ${product.name} in stock`);
       return false;
@@ -151,14 +150,8 @@ const Sales = () => {
 
   const addLineItem = () => {
     const quantity = parseInt(qty, 10) || 1;
-    const unitPrice = Number(saleUnitPrice);
-    if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
-      toast.error("Enter a selling price greater than zero for this sale.");
-      return;
-    }
-    if (!addProductToSale(selectedProduct, quantity, unitPrice)) return;
+    if (!addProductToSale(selectedProduct, quantity)) return;
     setSelectedProduct("");
-    setSaleUnitPrice("");
     setQty("1");
   };
 
@@ -173,18 +166,9 @@ const Sales = () => {
       return;
     }
 
-    if (!(matchedProduct.price > 0)) {
-      setSelectedProduct(matchedProduct.id);
-      setSaleUnitPrice("");
-      setQty(String(quantity));
-      toast.error("Enter a selling price greater than zero for this sale.");
-      return;
-    }
-
     if (!addProductToSale(matchedProduct.id, quantity)) return;
 
     setSelectedProduct(matchedProduct.id);
-    setSaleUnitPrice(String(matchedProduct.price || ""));
     setBarcodeInput("");
     toast.success(`${quantity} ${matchedProduct.name} added to this sale`);
   };
@@ -540,21 +524,12 @@ const Sales = () => {
             <div className="flex gap-2 items-end">
               <div className="flex-1">
                 <Label>Product</Label>
-                <select value={selectedProduct} onChange={e => {
-                  const productId = e.target.value;
-                  setSelectedProduct(productId);
-                  const product = products.find((item) => item.id === productId);
-                  setSaleUnitPrice(product?.price > 0 ? String(product.price) : "");
-                }} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
+                <select value={selectedProduct} onChange={e => setSelectedProduct(e.target.value)} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
                   <option value="">Select product...</option>
                   {products.filter(p => p.stock > 0).map(p => (
                     <option key={p.id} value={p.id}>{p.name} ({p.stock} in stock)</option>
                   ))}
                 </select>
-              </div>
-              <div className="w-28">
-                <Label>Unit price</Label>
-                <Input type="number" min="0.01" step="0.01" value={saleUnitPrice} onChange={e => setSaleUnitPrice(e.target.value)} className="mt-1" placeholder="0.00" />
               </div>
               <div className="w-20">
                 <Label>Qty</Label>

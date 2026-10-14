@@ -199,11 +199,15 @@ const Inventory = () => {
   };
 
   const handleSave = async () => {
-    setSaving(true);
     const stock = parseInt(form.stock) || 0;
     const reorder = parseInt(form.reorder) || 5;
     const costPrice = parseFloat(form.costPrice) || 0;
     const price = parseFloat(form.price) || 0;
+    if (!Number.isFinite(price) || price <= 0) {
+      toast.error("Enter a selling price greater than zero before saving the product.");
+      return;
+    }
+    setSaving(true);
 
     const saveOffline = () => {
       if (editProduct) {
@@ -438,7 +442,7 @@ const Inventory = () => {
           <div><Label>Stock</Label><Input type="number" value={form.stock} onChange={e => setForm({ ...form, stock: e.target.value })} className="mt-1" /></div>
           <div><Label>Reorder At</Label><Input type="number" value={form.reorder} onChange={e => setForm({ ...form, reorder: e.target.value })} className="mt-1" /></div>
           <div>
-            <Label>Cost ({sym})</Label>
+            <Label>Unit Cost ({sym})</Label>
             <Input type="number" value={form.costPrice} onChange={e => setForm({ ...form, costPrice: e.target.value })} className="mt-1" />
             {editProduct ? (
               <p className="mt-1 text-[11px] text-muted-foreground">
@@ -449,13 +453,11 @@ const Inventory = () => {
             )}
           </div>
         </div>
-        {/*
-        Selling price is hidden for now. Keep this field for later reactivation.
         <div>
-          <Label>Price ({sym})</Label><Input type="number" value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} className="mt-1" />
+          <Label>Unit Selling Price ({sym})</Label>
+          <Input type="number" min="0.01" step="0.01" required value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} className="mt-1" />
           <p className="text-xs text-muted-foreground mt-1">Margin: {pricePreview(form.price, form.costPrice)}%</p>
         </div>
-        */}
         <div>
           <Label>Barcode <span className="text-muted-foreground font-normal">(optional)</span></Label>
           <Input value={form.barcode} onChange={e => setForm({ ...form, barcode: e.target.value })} className="mt-1" placeholder="Scan or enter manually" />
@@ -591,8 +593,9 @@ const Inventory = () => {
                   <th className="text-left p-3 font-medium text-muted-foreground hidden md:table-cell">Category</th>
                   {/* Supplier visibility is disabled in the inventory table for now. */}
                   <th className="text-center p-3 font-medium text-muted-foreground">Stock</th>
-                  <th className="text-right p-3 font-medium text-muted-foreground hidden lg:table-cell">Cost</th>
-                  {/* Selling price is hidden in the inventory table for now. */}
+                  <th className="text-right p-3 font-medium text-muted-foreground hidden lg:table-cell">Unit Cost</th>
+                  <th className="text-right p-3 font-medium text-muted-foreground hidden lg:table-cell">Stock Cost</th>
+                  <th className="text-right p-3 font-medium text-muted-foreground hidden lg:table-cell">Selling Price</th>
                   <th className="text-center p-3 font-medium text-muted-foreground hidden md:table-cell">Added</th>
                   <th className="text-center p-3 font-medium text-muted-foreground hidden lg:table-cell">Restocked</th>
                   <th className="text-center p-3 font-medium text-muted-foreground">Status</th>
@@ -618,7 +621,8 @@ const Inventory = () => {
                         ) : null}
                       </div>
                     </td>
-                    {/* Selling price is hidden in the inventory table for now. */}
+                    <td className="p-3 text-right hidden lg:table-cell">{sym}{(p.stock * (p.costPrice || 0)).toFixed(2)}</td>
+                    <td className="p-3 text-right hidden lg:table-cell">{sym}{(p.price || 0).toFixed(2)}</td>
                     <td className="p-3 text-center hidden md:table-cell">
                       <span className="text-xs text-muted-foreground">{p.addedDate || "N/A"}</span>
                     </td>
