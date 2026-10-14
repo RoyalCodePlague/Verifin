@@ -219,6 +219,14 @@ const Sales = () => {
 
   const handleAdd = async () => {
     if (lineItems.length === 0) return;
+    const unsyncedProduct = lineItems.find((item) => {
+      const productId = Number(item.productId);
+      return !Number.isSafeInteger(productId) || productId <= 0;
+    });
+    if (unsyncedProduct) {
+      toast.error(`${unsyncedProduct.productName} is not synced to the server yet. Reconnect and wait for inventory to sync before recording this sale.`);
+      return;
+    }
     if (saleTotal <= 0) {
       toast.error("Add at least one item with a product selling price greater than zero.");
       return;

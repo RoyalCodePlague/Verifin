@@ -137,11 +137,12 @@ export async function apiFetch<T = unknown>(
 }
 
 function formatApiError(payload: unknown): string {
+  if (typeof payload === "string") return payload;
+  if (Array.isArray(payload)) return payload.map(formatApiError).filter(Boolean).join(" ");
   if (!payload || typeof payload !== "object") return String(payload ?? "");
-  const messages = Object.values(payload as Record<string, unknown>).flatMap((value) => {
-    if (typeof value === "string") return [value];
-    if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string");
-    return [];
+  const messages = Object.entries(payload as Record<string, unknown>).flatMap(([key, value]) => {
+    const message = formatApiError(value);
+    return message ? [`${key}: ${message}`] : [];
   });
   return messages.join(" ") || JSON.stringify(payload);
 }
