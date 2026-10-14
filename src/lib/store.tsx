@@ -267,6 +267,20 @@ function loadState<T>(key: string, fallback: T): T {
   } catch { return fallback; }
 }
 
+function normalizeSaleItems(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (!Array.isArray(value)) return "";
+  return value.map((item) => {
+    if (typeof item === "string") return item;
+    if (!item || typeof item !== "object") return "";
+    const row = item as { quantity?: unknown; product_name?: unknown; productName?: unknown; name?: unknown };
+    const name = String(row.product_name || row.productName || row.name || "").trim();
+    if (!name) return "";
+    const quantity = Number(row.quantity);
+    return Number.isFinite(quantity) && quantity > 0 ? `${quantity}x ${name}` : name;
+  }).filter(Boolean).join(", ");
+}
+
 function saveState(key: string, value: unknown) {
   localStorage.setItem(`sp_${key}`, JSON.stringify(value));
 }
@@ -328,6 +342,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [sales, setSales] = useState<Sale[]>(() =>
     loadState<Sale[]>("sales", []).map((sale) => ({
       ...sale,
+      items: normalizeSaleItems(sale.items),
       date: normalizeStoredDate(sale.date),
     }))
   );
@@ -715,7 +730,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         ...data.supplyEntries,
         ...previous.filter(entry => !entry.requestId && !data.supplyEntries.some(saved => saved.requestId === `legacy-${entry.id}`)),
       ]);
-      setSales(data.sales);
+      setSales(data.sales.map((sale) => ({ ...sale, items: normalizeSaleItems(sale.items) })));
       setExpenses(data.expenses);
       setAudits(data.audits);
       setDiscrepancies(data.discrepancies);

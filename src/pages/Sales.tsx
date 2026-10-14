@@ -97,7 +97,7 @@ const Sales = () => {
     return () => window.clearTimeout(timeout);
   }, [addOpen]);
 
-  const filtered = sales.filter(s => s.items.toLowerCase().includes(search.toLowerCase()));
+  const filtered = sales.filter(s => String(s.items || "").toLowerCase().includes(search.toLowerCase()));
   const todayTotal = sales.filter(s => isSameBusinessDay(s.date)).reduce((sum, s) => sum + s.total, 0);
   const todayCount = sales.filter(s => isSameBusinessDay(s.date)).length;
   const saleTotal = lineItems.reduce((sum, l) => sum + l.quantity * l.unitPrice, 0);

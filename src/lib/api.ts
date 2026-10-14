@@ -644,9 +644,18 @@ export async function identifyBarcodeProductApi(code: string) {
   }>(`/api/v1/inventory/products/barcode-identify/?code=${encodeURIComponent(code)}`);
 }
 
+type ApiSaleItem = {
+  id?: number;
+  product?: number;
+  product_name?: string;
+  quantity: number;
+  unit_price: string;
+  subtotal?: string;
+};
+
 type ApiSale = {
   id: number;
-  items: string;
+  items: string | ApiSaleItem[];
   total: string;
   total_cost?: string;
   gross_profit?: string;

@@ -63,7 +63,8 @@ type ApiProduct = {
 
 type ApiSale = {
   id: number;
-  items: string;
+  items: string | Array<{ product_name?: string; quantity: number; unit_price: string }>;
+  line_items?: Array<{ product_name?: string; quantity: number; unit_price: string }>;
   total: string;
   total_cost?: string;
   gross_profit?: string;
@@ -269,7 +270,11 @@ export async function loadServerData(user: {
 
   const sales: Sale[] = rawSales.map((s) => ({
     id: String(s.id),
-    items: s.items || "",
+    items: typeof s.items === "string"
+      ? s.items
+      : Array.isArray(s.items)
+        ? s.items.map((item) => `${item.quantity}x ${item.product_name || "Item"}`).join(", ")
+        : "",
     total: parseFloat(String(s.total ?? 0)),
     totalCost: parseFloat(String(s.total_cost ?? (s as ApiSale & Partial<Sale>).totalCost ?? "0")),
     grossProfit: parseFloat(String(s.gross_profit ?? (s as ApiSale & Partial<Sale>).grossProfit ?? "0")),
@@ -284,7 +289,8 @@ export async function loadServerData(user: {
     })),
     branchId: s.branch ? String(s.branch) : undefined,
     customerId: (s as ApiSale & { customer?: number }).customer ? String((s as ApiSale & { customer?: number }).customer) : undefined,
-    saleItems: (s as ApiSale & { line_items?: Array<{ product_name: string; quantity: number; unit_price: string }> }).line_items?.map(item => ({ productName: item.product_name, quantity: item.quantity, unitPrice: Number(item.unit_price) })),
+    saleItems: (Array.isArray(s.items) ? s.items : s.line_items || [])
+      .map(item => ({ productName: item.product_name || "Item", quantity: item.quantity, unitPrice: Number(item.unit_price) })),
   }));
 
   const todayStr = new Date().toISOString().slice(0, 10);
