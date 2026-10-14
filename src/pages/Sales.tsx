@@ -33,6 +33,10 @@ function roundMoney(value: number) {
   return Math.round(value * 100) / 100;
 }
 
+function createSaleIntegrationId() {
+  return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 const Sales = () => {
   const { sales, deleteSale, profile, products, customers, addSale } = useStore();
   const { refreshUser } = useAuth();
@@ -60,6 +64,7 @@ const Sales = () => {
   const [paymentRate, setPaymentRate] = useState("");
   const [canUseCameraScan, setCanUseCameraScan] = useState(false);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
+  const saleIntegrationIdRef = useRef<string | null>(null);
   const baseCurrency = profile.currency || "ZAR";
   const sym = profile.currencySymbol || symbolForCurrency(baseCurrency);
   const enabledCurrencies = profile.enabledCurrencies?.length ? profile.enabledCurrencies : [baseCurrency];
@@ -132,6 +137,7 @@ const Sales = () => {
       toast.error("Set a product selling price greater than zero before recording the sale.");
       return false;
     }
+    saleIntegrationIdRef.current = null;
     const existing = lineItems.findIndex(l => l.productId === product.id);
     if (existing >= 0) {
       const newItems = [...lineItems];
@@ -178,7 +184,10 @@ const Sales = () => {
     setScanOpen(false);
   };
 
-  const removeLineItem = (idx: number) => setLineItems(lineItems.filter((_, i) => i !== idx));
+  const removeLineItem = (idx: number) => {
+    saleIntegrationIdRef.current = null;
+    setLineItems(lineItems.filter((_, i) => i !== idx));
+  };
 
   const paymentAllocations = useMemo(() => {
     const rows: Array<{ currency: string; amount: number; fx_rate_to_base?: number }> = [];
@@ -245,9 +254,12 @@ const Sales = () => {
       return;
     }
 
+    const integrationId = saleIntegrationIdRef.current || createSaleIntegrationId();
+    saleIntegrationIdRef.current = integrationId;
     setSaving(true);
 
     const apiPayload = {
+      integration_id: integrationId,
       payment_method: method,
       payment_currency: paymentCurrency,
       // Multi-branch is disabled for now. Keep sending null until branch routing is restored.
@@ -262,6 +274,7 @@ const Sales = () => {
       })),
     };
     const offlinePayload = {
+      integration_id: integrationId,
       payment_method: method,
       payment_currency: paymentCurrency,
       branch: till?.branch || null,
@@ -300,6 +313,7 @@ const Sales = () => {
     if (canQueueOfflineAction()) {
       createOfflineSale();
       addToOfflineQueue({ type: "sale", payload: offlinePayload });
+      saleIntegrationIdRef.current = null;
       toast.success("Sale saved locally while offline. It will sync automatically when you are back online.");
       setLineItems([]);
       setBarcodeInput("");
@@ -314,6 +328,7 @@ const Sales = () => {
 
     try {
       await createSaleApi(apiPayload);
+      saleIntegrationIdRef.current = null;
       toast.success("Sale recorded");
       setLineItems([]);
       setBarcodeInput("");

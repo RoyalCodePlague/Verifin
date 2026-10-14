@@ -661,6 +661,7 @@ type ApiSale = {
 };
 
 export async function createSaleApi(payload: {
+  integration_id: string;
   payment_method: string;
   payment_currency?: string;
   payment_allocations?: Array<{ currency: string; amount: number; fx_rate_to_base?: number }>;
