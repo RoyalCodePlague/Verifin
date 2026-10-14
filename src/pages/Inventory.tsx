@@ -27,6 +27,13 @@ const allCategories = [
   "Bakery", "Frozen Foods", "Health & Beauty", "Tools", "Other"
 ];
 
+function pricePreview(price: string, cost: string) {
+  const sellingPrice = Number(price);
+  const unitCost = Number(cost);
+  if (!Number.isFinite(sellingPrice) || sellingPrice <= 0 || !Number.isFinite(unitCost)) return "0.0";
+  return (((sellingPrice - unitCost) / sellingPrice) * 100).toFixed(1);
+}
+
 function forecastRiskMeta(risk: ApiForecastItem["risk"], horizonDays: number, daysRemaining: number | null) {
   if (risk === "stockout") {
     return {
