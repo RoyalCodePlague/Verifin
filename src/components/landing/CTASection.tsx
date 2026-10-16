@@ -10,15 +10,15 @@ import { fallbackPricingContextForCountry } from "@/lib/pricing";
 
 const planFeatures: Record<PlanCode, string[]> = {
   starter: ["1 user", "50 products", "Basic tracking"],
-  growth: ["3 users", "Unlimited products", "Stock alerts", "WhatsApp reports"],
-  business: ["Unlimited users", "Advanced analytics", "API access", "Priority support"],
+  growth: ["3 users", "Unlimited products", "Sales and expenses", "Low-stock alerts"],
+  business: ["Unlimited users", "Sales and expense tracking", "Staff access controls"],
 };
 
 function formatPlanPrice(price: RegionalPlanPrice) {
   const amount = Number(price.monthly_price);
   if (amount <= 0) return { price: "Free", note: "Forever" };
   return {
-    price: `${price.currency_symbol}${amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+    price: `${price.currency_symbol}${amount.toLocaleString(undefined, { maximumFractionDigits: 0 })} ${price.currency}`,
     note: "/mo",
   };
 }

@@ -24,21 +24,30 @@ const routes = [
   },
   {
     path: "/",
-    title: "Inventory & Sales Software for Zimbabwe SMEs | Verifin",
-    description: "Manage stock, sales, expenses and audits with Verifin. Inventory software for small businesses in Zimbabwe and across Africa, with offline workflows.",
-    heading: "Smart Inventory & Admin for African SMEs",
-    body: "Verifin helps African SMEs manage inventory, sales, expenses, audits, reports, customer loyalty, and offline business operations in one practical app.",
+    title: "Stock, Sales and Expenses for Zimbabwe Shops | Verifin",
+    description: "Know what you sold, what is in stock, and where your money went. Verifin helps Zimbabwe shops track sales, stock and expenses, even with unreliable internet.",
+    heading: "Know what you sold, what is left, and where your money went.",
+    body: "Verifin helps grocery shops, hardware stores, boutiques, tuckshops and bakeries keep sales, stock and expenses clear in one place.",
     keywords: ["inventory management", "sales tracking", "expense tracking", "stock audits", "offline business app", "African SMEs"],
     cta: "Start free or try the interactive demo.",
   },
   {
     path: "/pricing",
-    title: "Verifin Pricing - Inventory and Admin Software for SMEs",
-    description: "Compare Verifin plans for African SMEs. Start free, then unlock inventory automation, audits, reports, OCR, and business insights.",
+    title: "Verifin Pricing | Plans for Zimbabwe Shops",
+    description: "Compare Verifin Starter, Growth and Business plans. Zimbabwe prices are shown in USD. Start free; contact us about paid plan options.",
     heading: "Verifin Pricing",
-    body: "Compare Starter, Growth, and Business plans for inventory management, admin automation, barcode scanning, receipt OCR, reporting, and role-based controls.",
+    body: "Simple plans for grocery shops, hardware stores, boutiques, tuckshops and bakeries. Zimbabwe prices are shown in USD. Paid online checkout is not available yet.",
     keywords: ["Verifin pricing", "inventory software pricing", "SME business software plans"],
     cta: "Start free and upgrade when your business needs more power.",
+  },
+  {
+    path: "/features",
+    title: "Verifin Features | Stock, Sales and Expenses",
+    description: "See how Verifin helps shops record sales, keep stock in view, track expenses and review business performance, even when the internet drops.",
+    heading: "Keep the work behind every sale clear",
+    body: "Record daily sales, check what is running low, log expenses and understand how your shop is doing.",
+    keywords: ["shop inventory", "sales and expense tracking", "offline shop software"],
+    cta: "Try the interactive demo without creating an account.",
   },
   {
     path: "/demo",
@@ -113,20 +122,45 @@ function staticMarkup(route) {
     return `
       <main class="seo-prerender" aria-label="Verifin business software">
         <section>
-          <h1>Smart Inventory &amp; Admin for African SMEs</h1>
-          <p>Verifin brings inventory, sales, expenses and business reporting together for small and growing businesses. Track stock as products move, record sales and expenses, review audits, and get a clearer view of daily performance in one practical workspace.</p>
+          <h1>Know what you sold, what is left, and where your money went.</h1>
+          <p>Verifin helps grocery shops, hardware stores, boutiques, tuckshops and bakeries keep sales, stock and expenses clear in one place.</p>
+          <p><a href="/login?signup=1">Start free</a> · <a href="/demo">Explore the interactive demo</a></p>
         </section>
         <section>
-          <h2>Inventory and stock control</h2>
-          <p>Keep product records organized, scan barcodes, review stock movement and notice low-stock items sooner. Stock audits help compare what is on hand with what your records expect, making discrepancies easier to investigate.</p>
-          <h2>Sales, expenses and business reports</h2>
-          <p>Record sales and expenses as they happen, keep customer activity together, and use reports to understand how the business is performing. Verifin helps owners spend less time piecing together information and more time deciding what to do next.</p>
-          <h2>Designed for day-to-day SME work</h2>
-          <p>Verifin is built for African small businesses that need useful tools on the move and may have unreliable internet. Supported offline workflows let teams continue essential work and sync queued changes when a connection returns.</p>
+          <h2>No data? Keep selling.</h2>
+          <p>Save supported sales, stock updates and expenses on your device. They sync when you reconnect.</p>
+          <h2>Know what is running low</h2>
+          <p>Keep product records together, see low-stock items and review stock counts alongside your sales.</p>
+          <h2>See where the money went</h2>
+          <p>Record sales and expenses, then use clear summaries to understand how your shop is doing.</p>
           <h2>Explore Verifin</h2>
-          <p>Start with the free plan or explore the interactive product demo to see how inventory, sales, audits and reports fit together.</p>
-          <nav aria-label="Explore Verifin"><a href="/features">Features</a> | <a href="/pricing">Pricing</a> | <a href="/demo">Product demo</a> | <a href="/about">About Verifin</a> | <a href="/contact">Contact</a></nav>
+          <p>Try a sample sale, stock update and business summary in the interactive demo. No account needed.</p>
+          <nav aria-label="Explore Verifin"><a href="/features">Features</a> | <a href="/pricing">Pricing</a> | <a href="/demo">Product demo</a> | <a href="/contact">Contact</a></nav>
         </section>
+      </main>
+    `;
+  }
+  if (route.path === "/pricing") {
+    const plans = [
+      { name: "Starter", price: "Free", period: "forever", detail: "For solo shop owners getting started", features: ["1 user", "50 products", "Basic sales", "Daily summaries"] },
+      { name: "Growth", price: "$12 USD", period: "per month", detail: "For shops that need more room to grow", features: ["3 users", "Unlimited products", "Sales and expense tracking", "Low-stock alerts", "Stock counts and reports"] },
+      { name: "Business", price: "$24 USD", period: "per month", detail: "For established teams", features: ["Unlimited users", "Sales and expense tracking", "Staff access controls", "Advanced reports", "Excel exports"] },
+    ];
+    return `
+      <main class="seo-prerender" aria-label="Verifin pricing">
+        <section><p>Pricing · Zimbabwe (USD)</p><h1>Start free. Ask us when you need a paid plan.</h1><p>For grocery shops, hardware stores, boutiques, tuckshops and bakeries. Paid online checkout is not available yet; message us about current subscription options.</p></section>
+        <section aria-label="Plans" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px">
+          ${plans.map((plan) => `<article><h2>${plan.name}</h2><p>${plan.detail}</p><p><strong>${plan.price}</strong> ${plan.period}</p><ul>${plan.features.map((feature) => `<li>${feature}</li>`).join("")}</ul>${plan.name === "Starter" ? '<a href="/login?signup=1">Start free</a>' : '<a href="https://wa.me/263775252409">Ask about this plan</a>'}</article>`).join("")}
+        </section>
+        <p>Ask us on <a href="https://wa.me/263775252409">WhatsApp</a> about subscription and payment options, including EcoCash availability.</p>
+      </main>
+    `;
+  }
+  if (route.path === "/features") {
+    return `
+      <main class="seo-prerender" aria-label="Verifin features">
+        <section><p>Verifin features</p><h1>Keep the work behind every sale clear</h1><p>For grocery shops, hardware stores, boutiques, tuckshops and bakeries.</p><p><a href="/demo">Try the interactive demo</a> · <a href="/login?signup=1">Start free</a></p></section>
+        <section><h2>Know what is in stock</h2><p>Track product quantities, spot what is running low, and see how sales change your stock.</p><h2>Record daily sales</h2><p>Record what you sold and keep sale details together with your stock records.</p><h2>Track business expenses</h2><p>Log business spending as it happens and review it alongside sales in your reports.</p><h2>Keep working when data drops</h2><p>Save supported sales, stock updates and expenses on this device. They queue for sync when your connection returns.</p><h2>See how the shop is doing</h2><p>Use clear sales, stock and expense summaries to understand what needs your attention.</p></section>
       </main>
     `;
   }

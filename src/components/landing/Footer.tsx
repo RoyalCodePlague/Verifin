@@ -13,7 +13,7 @@ const Footer = () => {
               <Logo className="h-11 w-auto" />
             </button>
             <p className="text-sm text-sidebar-foreground/60 leading-relaxed">
-              The all-in-one business operating system built for African SMEs. Automate admin, control stock, stop losing money.
+              Keep track of what you sold, what is in stock, and where your money went.
             </p>
           </div>
           <div>
@@ -38,6 +38,7 @@ const Footer = () => {
           <div>
             <h4 className="font-display font-semibold text-sm mb-4">Support</h4>
             <ul className="space-y-2.5 text-sm text-sidebar-foreground/60">
+              <li><a href="https://wa.me/263775252409" target="_blank" rel="noreferrer" className="hover:text-sidebar-foreground transition-colors">Chat with us on WhatsApp</a></li>
               <li><button onClick={() => navigate("/help")} className="hover:text-sidebar-foreground transition-colors">Help Center</button></li>
               <li><button onClick={() => navigate("/privacy")} className="hover:text-sidebar-foreground transition-colors">Privacy Policy</button></li>
               <li><button onClick={() => navigate("/terms")} className="hover:text-sidebar-foreground transition-colors">Terms of Service</button></li>

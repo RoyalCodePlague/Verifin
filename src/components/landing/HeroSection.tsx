@@ -53,28 +53,28 @@ const HeroSection = () => {
               transition={{ duration: 0.4 }}
               className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary mb-6"
             >
-              <Zap className="h-3.5 w-3.5" /> Built for African SMEs
+              <Zap className="h-3.5 w-3.5" /> Made for everyday shop work
             </motion.div>
             <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1] mb-6">
               <motion.span initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-                Automate your admin,{" "}
+                Know what you sold,{" "}
               </motion.span>
               <motion.span initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="text-gradient-hero">
-                control your stock,
+                what is left,
               </motion.span>{" "}
               <motion.span initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}>
-                stop losing money.
+                and where your money went.
               </motion.span>
             </h1>
             <motion.p 
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.8 }}
               className="text-lg text-muted-foreground max-w-lg mx-auto lg:mx-0 mb-8"
             >
-              Your daily sales, stock levels, expenses and next actions — in one calm, practical workspace. Built for African businesses and unreliable connections.
+              Keep sales, stock and expenses clear in one place. Made for grocery shops, hardware stores, boutiques, tuckshops and bakeries.
             </motion.p>
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 1 }} className="flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
               <Button size="lg" onClick={() => navigate(primaryPath)} className="bg-gradient-hero text-primary-foreground shadow-elevated hover:opacity-90 transition-opacity text-base px-8 h-12">
-                {primaryLabel} <ArrowRight className="ml-2 h-4 w-4" />
+                {isAuthenticated ? "Open workspace" : "Start free"} <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
               <Button size="lg" variant="outline" onClick={() => navigate("/demo")} className="text-base h-12 border-primary/20 hover:bg-primary/5">
                 Explore live preview

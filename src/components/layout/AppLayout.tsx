@@ -3,7 +3,7 @@ import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, Package, ShoppingCart, Receipt, ClipboardCheck,
   BarChart3, Users, UserCog, Settings, Menu, X, LogOut,
-  Moon, Sun, Clock, Truck, CreditCard,
+  Moon, Sun, Clock, Truck, CreditCard, MessageCircle,
   Lock,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
@@ -186,6 +186,10 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
             onTriggerClick={() => setSidebarOpen(false)}
             triggerClassName="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-foreground/70 transition-colors hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
           />
+          <a href="https://wa.me/263775252409" target="_blank" rel="noreferrer" className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-foreground/70 transition-colors hover:text-sidebar-foreground hover:bg-sidebar-accent/50">
+            <MessageCircle className="h-4 w-4" />
+            WhatsApp support
+          </a>
         </nav>
         <div className="p-4 border-t border-sidebar-border">
           <button

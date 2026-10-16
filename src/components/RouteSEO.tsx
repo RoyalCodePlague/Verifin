@@ -3,16 +3,16 @@ import { SEO } from "@/components/SEO";
 
 const routeMeta: Record<string, { title: string; description: string; noindex?: boolean }> = {
   "/": {
-    title: "Inventory & Sales Software for Zimbabwe SMEs | Verifin",
-    description: "Manage stock, sales, expenses and audits with Verifin. Inventory software for small businesses in Zimbabwe and across Africa, with offline workflows.",
+    title: "Stock, Sales and Expenses for Zimbabwe Shops | Verifin",
+    description: "Know what you sold, what is in stock, and where your money went. Verifin helps Zimbabwe shops track sales, stock and expenses, even with unreliable internet.",
   },
   "/pricing": {
-    title: "Verifin Pricing - Inventory and Admin Software for SMEs",
-    description: "Compare Verifin plans for African SMEs. Start free, then unlock inventory automation, audits, reports, OCR, and business insights.",
+    title: "Verifin Pricing | Plans for Zimbabwe Shops",
+    description: "Compare Verifin Starter, Growth and Business plans. Zimbabwe prices are shown in USD. Start free; contact us about paid plan options.",
   },
   "/features": {
-    title: "Verifin Features - Stock, Sales, Audits and Reports",
-    description: "Explore Verifin features for inventory, sales, expenses, stock audits, customers, offline work, and business reporting.",
+    title: "Verifin Features | Stock, Sales and Expenses",
+    description: "See how Verifin helps shops record sales, keep stock in view, track expenses and review business performance, even when the internet drops.",
   },
   "/demo": {
     title: "Verifin Demo - See Inventory, Sales, Audits and Reports",

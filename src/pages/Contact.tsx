@@ -50,6 +50,12 @@ const Contact = () => {
             ))}
           </div>
 
+          <div className="mb-10 text-center">
+            <a href="https://wa.me/263775252409" target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center rounded-md bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground">
+              Chat with support on WhatsApp · +263 77 525 2409
+            </a>
+          </div>
+
           <Card className="shadow-soft max-w-2xl mx-auto">
             <CardContent className="p-6">
               <h2 className="font-display font-semibold text-xl mb-4 flex items-center gap-2">

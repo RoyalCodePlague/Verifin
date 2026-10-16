@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { BarChart3, Check, HelpCircle, Lock, ScanBarcode, ShieldCheck, Sparkles, type LucideIcon } from "lucide-react";
+import { Check, HelpCircle, MessageCircle } from "lucide-react";
 import Navbar from "@/components/landing/Navbar";
 import Footer from "@/components/landing/Footer";
 import { useAuth } from "@/lib/auth-context";
@@ -10,29 +10,22 @@ import { fallbackPricingContextForCountry } from "@/lib/pricing";
 
 const features: Record<PlanCode, string[]> = {
   starter: ["1 user", "50 products", "100 customers", "Basic sales", "Daily summaries", "2 basic reports"],
-  growth: ["3 users", "Unlimited products", "Sales and expense tracking", "Audits and barcode scanning", "Receipt OCR", "8 reports with charts"],
-  business: ["Unlimited users", "Forecasting", "Advanced analytics", "Role-based access", "Offline auto-sync", "Excel exports and API access"],
+  growth: ["3 users", "Unlimited products", "Sales and expense tracking", "Low-stock alerts", "Stock counts and reports"],
+  business: ["Unlimited users", "Sales and expense tracking", "Choose what staff can see", "Advanced reports", "Excel exports"],
 };
 
 const comparison = [
   ["Users", "1", "3", "Unlimited"],
   ["Products", "50", "Unlimited", "Unlimited"],
-  ["Customers", "100", "Unlimited", "Unlimited"],
-  ["Forecasting", "Locked", "Locked", "Included"],
-  ["Exports", "Basic", "Reports", "Excel and API"],
+  ["Sales and expenses", "Included", "Included", "Included"],
+  ["Stock counts", "Basic", "Included", "Included"],
+  ["Staff access controls", "—", "—", "Included"],
 ];
 
 const faqs = [
-  ["Can I switch plans?", "You can switch to free Starter. Paid upgrades will become available when payment setup is complete."],
+  ["Can I switch plans?", "You can start with Starter. Paid online checkout is not available yet; contact us to ask about current subscription options."],
   ["What happens at a limit?", "The app blocks the action, explains the limit, and points the user to the plan that unlocks it."],
-  ["Can this move to real payments later?", "Yes. The backend already stores provider IDs, events, payments, billing cycles, and webhook-ready records."],
-];
-
-const trustItems: Array<[LucideIcon, string]> = [
-  [ShieldCheck, "Mock billing, real rules"],
-  [Lock, "Feature gates in the API"],
-  [ScanBarcode, "Growth tools unlock cleanly"],
-  [BarChart3, "Business analytics ready"],
+  ["Can I pay with EcoCash or in local currency?", "Payment methods vary and paid online checkout is not available yet. Message us on WhatsApp to confirm current options before subscribing."],
 ];
 
 const tone: Record<PlanCode, string> = {
@@ -44,7 +37,7 @@ const tone: Record<PlanCode, string> = {
 function priceFor(price: RegionalPlanPrice, period: BillingPeriod) {
   const amount = Number(period === "yearly" ? price.yearly_price : price.monthly_price);
   if (amount <= 0) return "Free";
-  return `${price.currency_symbol}${amount.toLocaleString("en-ZA")}`;
+  return `${price.currency_symbol}${amount.toLocaleString("en-ZA")} ${price.currency}`;
 }
 
 const Pricing = () => {
@@ -57,7 +50,12 @@ const Pricing = () => {
   const pricing = data ?? fallbackPricingContext;
   const prices = (pricing.prices.length ? pricing.prices : fallbackPricingContext.prices).sort((a, b) => a.plan.sort_order - b.plan.sort_order);
 
-  const startPlan = () => {
+  const startPlan = (planCode: PlanCode = "starter") => {
+    if (planCode !== "starter") {
+      const message = encodeURIComponent(`Hi, I would like to ask about the ${planCode} plan and available payment options.`);
+      window.open(`https://wa.me/263775252409?text=${message}`, "_blank", "noopener,noreferrer");
+      return;
+    }
     navigate(isAuthenticated ? "/billing" : "/login?signup=1");
   };
 
@@ -69,9 +67,9 @@ const Pricing = () => {
           <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
             <div className="max-w-3xl">
               <p className="text-sm font-bold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-400">Pricing</p>
-              <h1 className="mt-4 text-4xl font-bold tracking-tight sm:text-5xl">Start free. Upgrade when the business needs more power.</h1>
+              <h1 className="mt-4 text-4xl font-bold tracking-tight sm:text-5xl">Start free. Ask us when you need a paid plan.</h1>
               <p className="mt-5 text-lg text-muted-foreground">
-                Compare Starter, Growth, and Business plans to find the tools your business needs.
+                Simple plans for grocery shops, hardware stores, boutiques, tuckshops and bakeries. Prices are shown in the selected country’s currency.
               </p>
             </div>
             <div className="mt-8 inline-flex rounded-md border border-border bg-background/90 p-1 dark:bg-card">
@@ -113,8 +111,8 @@ const Pricing = () => {
                   {Number(period === "yearly" ? price.yearly_price : price.monthly_price) > 0 && <span className="pb-1 text-sm text-muted-foreground">/{period === "yearly" ? "year" : "month"}</span>}
                 </div>
                 {period === "yearly" && plan.code !== "starter" && <p className="mt-2 text-sm font-semibold text-emerald-700 dark:text-emerald-400">Two months included</p>}
-                <button type="button" onClick={startPlan} className="mt-6 w-full rounded-md bg-primary px-4 py-3 text-sm font-bold text-primary-foreground hover:bg-primary/90">
-                  {plan.code === "starter" ? "Start free" : "Create account"}
+                <button type="button" onClick={() => startPlan(plan.code)} className="mt-6 w-full rounded-md bg-primary px-4 py-3 text-sm font-bold text-primary-foreground hover:bg-primary/90">
+                  {plan.code === "starter" ? "Start free" : `Ask about ${plan.name}`}
                 </button>
                 <ul className="mt-6 space-y-3 text-sm">
                   {features[plan.code].map((feature) => (
@@ -127,17 +125,6 @@ const Pricing = () => {
               </article>
               );
             })}
-          </div>
-        </section>
-
-        <section className="border-y border-border bg-background/70 dark:bg-card/30">
-          <div className="mx-auto grid max-w-7xl gap-4 px-4 py-10 sm:grid-cols-2 lg:grid-cols-4 lg:px-8">
-            {trustItems.map(([Icon, label]) => (
-              <div key={label} className="flex items-center gap-3 rounded-md border border-border bg-background/90 p-4 dark:bg-card">
-                <Icon className="h-5 w-5 text-emerald-700 dark:text-emerald-400" />
-                <span className="text-sm font-semibold">{label}</span>
-              </div>
-            ))}
           </div>
         </section>
 
@@ -170,7 +157,7 @@ const Pricing = () => {
           <div className="mx-auto grid max-w-7xl gap-8 px-4 py-12 lg:grid-cols-[0.8fr_1.2fr] lg:px-8">
             <div>
               <p className="text-sm font-bold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-400">Questions</p>
-              <h2 className="mt-3 text-3xl font-bold">Built for testing today and payments tomorrow.</h2>
+              <h2 className="mt-3 text-3xl font-bold">Clear pricing. Helpful support.</h2>
             </div>
             <div className="grid gap-4">
               {faqs.map(([q, a]) => (
@@ -189,17 +176,9 @@ const Pricing = () => {
         </section>
 
         <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-          <div className="rounded-lg border border-border bg-slate-950 p-8 text-white dark:border-slate-800">
-            <div className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-center">
-              <div>
-                <p className="flex items-center gap-2 text-sm font-bold text-emerald-300"><Sparkles className="h-4 w-4" /> Local billing sandbox</p>
-                <h2 className="mt-3 text-3xl font-bold">Try the full subscription journey without touching real money.</h2>
-                <p className="mt-3 max-w-2xl text-slate-300">Use the in-app Billing page to activate plans, renew, cancel, resume, and test limits.</p>
-              </div>
-              <button type="button" onClick={startPlan} className="rounded-md bg-white px-6 py-3 text-sm font-bold text-slate-950 hover:bg-emerald-100">
-                Open billing
-              </button>
-            </div>
+          <div className="flex flex-col items-start justify-between gap-5 rounded-lg border border-border bg-primary/5 p-6 sm:flex-row sm:items-center sm:p-8">
+            <div><h2 className="text-xl font-bold">Need help choosing or paying?</h2><p className="mt-2 max-w-2xl text-sm text-muted-foreground">Ask us about available subscription and payment options. Paid online checkout is not enabled yet.</p></div>
+            <a href="https://wa.me/263775252409" target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-2 rounded-md bg-primary px-5 py-3 text-sm font-bold text-primary-foreground"><MessageCircle className="h-4 w-4" /> Ask on WhatsApp</a>
           </div>
         </section>
       </main>
