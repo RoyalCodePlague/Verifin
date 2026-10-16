@@ -125,7 +125,7 @@ const sections = [
     icon: Mail,
     title: "12. Contact",
     content:
-      "For privacy questions, data requests, or concerns, contact us at robert.workszw@gmail.com. You may also contact South Africa's Information Regulator at enquiries@inforegulator.org.za.",
+      "For privacy questions, data requests, or concerns, contact us at verifin2026@gmail.com. You may also contact South Africa's Information Regulator at enquiries@inforegulator.org.za.",
   },
 ];
 

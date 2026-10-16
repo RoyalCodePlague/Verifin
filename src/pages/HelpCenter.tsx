@@ -156,7 +156,7 @@ const HelpCenter = () => {
           <div className="mt-12 text-center p-8 rounded-2xl bg-muted/50">
             <h3 className="font-display font-semibold text-lg mb-2">Still need help?</h3>
             <p className="text-sm text-muted-foreground mb-4">Our support team is available Monday-Friday, 8am-5pm SAST.</p>
-            <p className="text-sm"><strong>Email:</strong> robzmtambo@gmail.com &middot; <strong>Phone:</strong> +263 77 695 0947</p>
+            <p className="text-sm"><strong>Email:</strong> verifin2026@gmail.com &middot; <strong>Phone:</strong> +263 77 525 2409</p>
           </div>
         </div>
       </section>

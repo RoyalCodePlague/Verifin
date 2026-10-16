@@ -135,7 +135,7 @@ const sections = [
   {
     icon: Mail,
     title: "18. Contact",
-    content: "For questions about these Terms, contact us at robert.workszw@gmail.com or visit the Contact page.",
+    content: "For questions about these Terms, contact us at verifin2026@gmail.com or visit the Contact page.",
   },
 ];
 
