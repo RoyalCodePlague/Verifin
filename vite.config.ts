@@ -30,7 +30,9 @@ export default defineConfig(({ mode }) => ({
       output: {
         manualChunks(id) {
           if (id.includes("node_modules")) {
-            if (id.includes("recharts")) return "charts";
+            if (id.includes("/node_modules/recharts/")) return "recharts";
+            if (id.includes("/node_modules/victory-vendor/")) return "chart-vendor";
+            if (id.includes("/node_modules/recharts-scale/") || id.includes("/node_modules/d3-")) return "chart-utils";
             if (id.includes("framer-motion")) return "motion";
             if (id.includes("@tanstack/react-query")) return "query";
           }
