@@ -23,9 +23,9 @@ const comparison = [
 ];
 
 const faqs = [
-  ["Can I switch plans?", "You can start with Starter. Paid online checkout is not available yet; contact us to ask about current subscription options."],
+  ["Can I switch plans?", "You can start with Starter and choose a paid plan later from Billing. Paynow checkout is available for eligible USD prices when configured."],
   ["What happens at a limit?", "The app blocks the action, explains the limit, and points the user to the plan that unlocks it."],
-  ["Can I pay with EcoCash or in local currency?", "Payment methods vary and paid online checkout is not available yet. Message us on WhatsApp to confirm current options before subscribing."],
+  ["Can I pay in local currency?", "Prices are shown in the selected country's currency. Paynow checkout currently supports paid USD plans; Billing shows whether checkout is available for your region."],
 ];
 
 const tone: Record<PlanCode, string> = {
@@ -51,12 +51,8 @@ const Pricing = () => {
   const prices = (pricing.prices.length ? pricing.prices : fallbackPricingContext.prices).sort((a, b) => a.plan.sort_order - b.plan.sort_order);
 
   const startPlan = (planCode: PlanCode = "starter") => {
-    if (planCode !== "starter") {
-      const message = encodeURIComponent(`Hi, I would like to ask about the ${planCode} plan and available payment options.`);
-      window.open(`https://wa.me/263775252409?text=${message}`, "_blank", "noopener,noreferrer");
-      return;
-    }
-    navigate(isAuthenticated ? "/billing" : "/login?signup=1");
+    const billingPath = `/billing?country=${encodeURIComponent(country)}&period=${period}&plan=${planCode}`;
+    navigate(isAuthenticated ? billingPath : "/login?signup=1");
   };
 
   return (
@@ -67,9 +63,9 @@ const Pricing = () => {
           <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
             <div className="max-w-3xl">
               <p className="text-sm font-bold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-400">Pricing</p>
-              <h1 className="mt-4 text-4xl font-bold tracking-tight sm:text-5xl">Start free. Ask us when you need a paid plan.</h1>
+              <h1 className="mt-4 text-4xl font-bold tracking-tight sm:text-5xl">Start free. Upgrade when your shop is ready.</h1>
               <p className="mt-5 text-lg text-muted-foreground">
-                Simple plans for grocery shops, hardware stores, boutiques, tuckshops and bakeries. Prices are shown in the selected country’s currency.
+                Simple plans for grocery shops, hardware stores, boutiques, tuckshops and bakeries. Review your plan and Paynow checkout options in Billing.
               </p>
             </div>
             <div className="mt-8 inline-flex rounded-md border border-border bg-background/90 p-1 dark:bg-card">
@@ -112,7 +108,7 @@ const Pricing = () => {
                 </div>
                 {period === "yearly" && plan.code !== "starter" && <p className="mt-2 text-sm font-semibold text-emerald-700 dark:text-emerald-400">Two months included</p>}
                 <button type="button" onClick={() => startPlan(plan.code)} className="mt-6 w-full rounded-md bg-primary px-4 py-3 text-sm font-bold text-primary-foreground hover:bg-primary/90">
-                  {plan.code === "starter" ? "Start free" : `Ask about ${plan.name}`}
+                  {plan.code === "starter" ? "Start free" : isAuthenticated ? "Choose in Billing" : "Create account to choose"}
                 </button>
                 <ul className="mt-6 space-y-3 text-sm">
                   {features[plan.code].map((feature) => (
@@ -177,7 +173,7 @@ const Pricing = () => {
 
         <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
           <div className="flex flex-col items-start justify-between gap-5 rounded-lg border border-border bg-primary/5 p-6 sm:flex-row sm:items-center sm:p-8">
-            <div><h2 className="text-xl font-bold">Need help choosing or paying?</h2><p className="mt-2 max-w-2xl text-sm text-muted-foreground">Ask us about available subscription and payment options. Paid online checkout is not enabled yet.</p></div>
+            <div><h2 className="text-xl font-bold">Need help choosing or paying?</h2><p className="mt-2 max-w-2xl text-sm text-muted-foreground">Billing shows Paynow checkout availability for your region and selected plan.</p></div>
             <a href="https://wa.me/263775252409" target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-2 rounded-md bg-primary px-5 py-3 text-sm font-bold text-primary-foreground"><MessageCircle className="h-4 w-4" /> Ask on WhatsApp</a>
           </div>
         </section>

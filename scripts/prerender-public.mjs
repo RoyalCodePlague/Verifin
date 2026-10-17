@@ -34,11 +34,11 @@ const routes = [
   {
     path: "/pricing",
     title: "Verifin Pricing | Plans for Zimbabwe Shops",
-    description: "Compare Verifin Starter, Growth and Business plans. Zimbabwe prices are shown in USD. Start free; contact us about paid plan options.",
+    description: "Compare Verifin Starter, Growth and Business plans. Review regional prices and Paynow checkout options in Billing.",
     heading: "Verifin Pricing",
-    body: "Simple plans for grocery shops, hardware stores, boutiques, tuckshops and bakeries. Zimbabwe prices are shown in USD. Paid online checkout is not available yet.",
+    body: "Simple plans for grocery shops, hardware stores, boutiques, tuckshops and bakeries. Review regional prices and Paynow checkout availability in Billing.",
     keywords: ["Verifin pricing", "inventory software pricing", "SME business software plans"],
-    cta: "Start free and upgrade when your business needs more power.",
+    cta: "Start free and review Paynow checkout options from Billing.",
   },
   {
     path: "/features",
@@ -148,11 +148,11 @@ function staticMarkup(route) {
     ];
     return `
       <main class="seo-prerender" aria-label="Verifin pricing">
-        <section><p>Pricing · Zimbabwe (USD)</p><h1>Start free. Ask us when you need a paid plan.</h1><p>For grocery shops, hardware stores, boutiques, tuckshops and bakeries. Paid online checkout is not available yet; message us about current subscription options.</p></section>
+        <section><p>Pricing · Zimbabwe (USD)</p><h1>Start free. Upgrade when your shop is ready.</h1><p>For grocery shops, hardware stores, boutiques, tuckshops and bakeries. Review your plan and Paynow checkout options in Billing.</p></section>
         <section aria-label="Plans" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px">
-          ${plans.map((plan) => `<article><h2>${plan.name}</h2><p>${plan.detail}</p><p><strong>${plan.price}</strong> ${plan.period}</p><ul>${plan.features.map((feature) => `<li>${feature}</li>`).join("")}</ul>${plan.name === "Starter" ? '<a href="/login?signup=1">Start free</a>' : '<a href="https://wa.me/263775252409">Ask about this plan</a>'}</article>`).join("")}
+          ${plans.map((plan) => `<article><h2>${plan.name}</h2><p>${plan.detail}</p><p><strong>${plan.price}</strong> ${plan.period}</p><ul>${plan.features.map((feature) => `<li>${feature}</li>`).join("")}</ul>${plan.name === "Starter" ? '<a href="/login?signup=1">Start free</a>' : '<a href="/login?signup=1">Create account to choose</a>'}</article>`).join("")}
         </section>
-        <p>Ask us on <a href="https://wa.me/263775252409">WhatsApp</a> about subscription and payment options, including EcoCash availability.</p>
+        <p>Sign in to Billing to review Paynow checkout availability for your selected region.</p>
       </main>
     `;
   }

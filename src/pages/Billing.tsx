@@ -53,12 +53,20 @@ function UsageRow({ limit }: { limit: FeatureLimit }) {
 }
 
 const Billing = () => {
-  const [period, setPeriod] = useState<BillingPeriod>("monthly");
+  const [period, setPeriod] = useState<BillingPeriod>(() => {
+    const requested = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("period");
+    return requested === "yearly" ? "yearly" : "monthly";
+  });
+  const [pricingCountry] = useState(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("country")?.toUpperCase() ?? "");
+  const [requestedPlan] = useState<PlanCode | "">(() => {
+    const requested = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("plan");
+    return requested === "growth" || requested === "business" || requested === "starter" ? requested : "";
+  });
   const [paymentReference, setPaymentReference] = useState(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("payment_reference") ?? "");
   const queryClient = useQueryClient();
   const online = typeof navigator === "undefined" || navigator.onLine;
   const billingQuery = useQuery({ queryKey: ["billing-overview"], queryFn: getBillingOverviewApi, staleTime: 60_000, refetchInterval: 60_000, enabled: online });
-  const pricingQuery = useQuery({ queryKey: ["pricing-context"], queryFn: () => getPricingContextApi(), staleTime: 5 * 60_000, enabled: online });
+  const pricingQuery = useQuery({ queryKey: ["pricing-context", pricingCountry], queryFn: () => getPricingContextApi(pricingCountry || undefined), staleTime: 5 * 60_000, enabled: online });
   const referralsQuery = useQuery({ queryKey: ["referrals"], queryFn: getReferralProgressApi, staleTime: 60_000, enabled: online });
   const providersQuery = useQuery({ queryKey: ["billing-providers"], queryFn: getProviderStatusApi, staleTime: 30_000, enabled: online });
   const paynow = providersQuery.data?.providers.find((provider) => provider.provider === "paynow");
@@ -265,7 +273,7 @@ const Billing = () => {
             <p className="mt-1 text-sm text-muted-foreground">
               {paynow?.ready && paynow.enabled && pricing?.currency === "USD"
                 ? `Pay securely through Paynow. Prices are shown for ${pricing?.country_name ?? "your region"}.`
-                : `Paynow checkout will appear here after your merchant account is approved and credentials are configured. Prices are shown for ${pricing?.country_name ?? "your region"}.`}
+                : `Paynow checkout is available for eligible USD plans when the provider is enabled and configured. Prices are shown for ${pricing?.country_name ?? "your region"}.`}
             </p>
           </div>
           <div className="rounded-md border border-border bg-muted/20 p-1 dark:bg-muted/10">
@@ -284,11 +292,12 @@ const Billing = () => {
             const isCurrent = currentCode === plan.code;
             const canPay = Boolean(paynow?.enabled && paynow.ready && regional?.currency === "USD");
             return (
-              <article key={plan.code} className={`rounded-lg border p-5 shadow-soft transition-colors ${planTone[plan.code]}`}>
+              <article key={plan.code} className={`rounded-lg border p-5 shadow-soft transition-colors ${planTone[plan.code]} ${requestedPlan === plan.code ? "ring-2 ring-primary ring-offset-2" : ""}`}>
                 <div className="flex items-center justify-between">
                   <h3 className="text-xl font-bold">{plan.name}</h3>
                   {plan.code === "growth" && <span className="rounded-md bg-emerald-600 px-2 py-1 text-xs font-bold text-white">Most Popular</span>}
                 </div>
+                {requestedPlan === plan.code && <p className="mt-2 text-xs font-semibold text-primary">Selected from Pricing</p>}
                 <p className="mt-2 min-h-10 text-sm text-muted-foreground">{plan.description}</p>
                 <p className="mt-5 text-3xl font-bold">{formatMoney(price, period, regional?.currency_symbol ?? pricing?.currency_symbol)}</p>
                 <ul className="mt-5 space-y-2 text-sm">
