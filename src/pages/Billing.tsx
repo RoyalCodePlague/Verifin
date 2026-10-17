@@ -1,10 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Check, Copy, Gift, Lock, Ticket } from "lucide-react";
 import { toast } from "sonner";
 import {
   getBillingOverviewApi,
   getPricingContextApi,
+  getProviderStatusApi,
+  getPaynowStatusApi,
+  paynowCheckoutApi,
   getReferralProgressApi,
   redeemReferralRewardApi,
   subscriptionActionApi,
@@ -51,11 +54,20 @@ function UsageRow({ limit }: { limit: FeatureLimit }) {
 
 const Billing = () => {
   const [period, setPeriod] = useState<BillingPeriod>("monthly");
+  const [paymentReference, setPaymentReference] = useState(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("payment_reference") ?? "");
   const queryClient = useQueryClient();
   const online = typeof navigator === "undefined" || navigator.onLine;
   const billingQuery = useQuery({ queryKey: ["billing-overview"], queryFn: getBillingOverviewApi, staleTime: 60_000, refetchInterval: 60_000, enabled: online });
   const pricingQuery = useQuery({ queryKey: ["pricing-context"], queryFn: () => getPricingContextApi(), staleTime: 5 * 60_000, enabled: online });
   const referralsQuery = useQuery({ queryKey: ["referrals"], queryFn: getReferralProgressApi, staleTime: 60_000, enabled: online });
+  const providersQuery = useQuery({ queryKey: ["billing-providers"], queryFn: getProviderStatusApi, staleTime: 30_000, enabled: online });
+  const paynow = providersQuery.data?.providers.find((provider) => provider.provider === "paynow");
+  const paymentStatusQuery = useQuery({
+    queryKey: ["paynow-status", paymentReference],
+    queryFn: () => getPaynowStatusApi(paymentReference),
+    enabled: online && Boolean(paymentReference),
+    refetchInterval: (query) => query.state.data?.status === "pending" ? 5000 : false,
+  });
 
   const billing = billingQuery.data;
   const referrals = referralsQuery.data;
@@ -84,6 +96,28 @@ const Billing = () => {
     },
     onError: (error) => toast.error(error.message),
   });
+
+  const checkoutMutation = useMutation({
+    mutationFn: paynowCheckoutApi,
+    onSuccess: (result) => { window.location.assign(result.redirect_url); },
+    onError: (error) => toast.error(error.message),
+  });
+
+  useEffect(() => {
+    const status = paymentStatusQuery.data?.status;
+    if (!status || !paymentReference) return;
+    if (status === "paid") {
+      toast.success("Payment confirmed. Your plan is active.");
+      void refreshBilling();
+    }
+    if (status === "failed") toast.error("Paynow did not complete this payment.");
+    if (status !== "pending") {
+      setPaymentReference("");
+      const url = new URL(window.location.href);
+      url.searchParams.delete("payment_reference");
+      window.history.replaceState({}, "", url);
+    }
+  }, [paymentStatusQuery.data?.status, paymentReference]);
 
   const redeemReferralMutation = useMutation({
     mutationFn: () => redeemReferralRewardApi(unusedReferralToken?.code),
@@ -116,6 +150,11 @@ const Billing = () => {
       {!online && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200">
           Billing needs an internet connection. Your cached business data still works offline, but plan changes and usage checks will resume when you reconnect.
+        </div>
+      )}
+      {paymentReference && paymentStatusQuery.data?.status === "pending" && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200" role="status">
+          Waiting for Paynow to confirm your payment. This page will update automatically.
         </div>
       )}
       <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
@@ -224,7 +263,9 @@ const Billing = () => {
           <div>
             <h2 className="text-xl font-bold">Change Plan</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Paid upgrades are coming soon. No payments are being collected. Prices are shown for {pricing?.country_name ?? "your region"}.
+              {paynow?.ready && paynow.enabled && pricing?.currency === "USD"
+                ? `Pay securely through Paynow. Prices are shown for ${pricing?.country_name ?? "your region"}.`
+                : `Paynow checkout will appear here after your merchant account is approved and credentials are configured. Prices are shown for ${pricing?.country_name ?? "your region"}.`}
             </p>
           </div>
           <div className="rounded-md border border-border bg-muted/20 p-1 dark:bg-muted/10">
@@ -241,6 +282,7 @@ const Billing = () => {
             const regional = regionalByPlan.get(plan.code);
             const price = regional ? (period === "yearly" ? regional.yearly_price : regional.monthly_price) : (period === "yearly" ? plan.yearly_price : plan.monthly_price);
             const isCurrent = currentCode === plan.code;
+            const canPay = Boolean(paynow?.enabled && paynow.ready && regional?.currency === "USD");
             return (
               <article key={plan.code} className={`rounded-lg border p-5 shadow-soft transition-colors ${planTone[plan.code]}`}>
                 <div className="flex items-center justify-between">
@@ -259,11 +301,13 @@ const Billing = () => {
                 </ul>
                 <button
                   type="button"
-                  disabled={actionMutation.isPending || !billing || isCurrent || plan.code !== "starter"}
-                  onClick={() => actionMutation.mutate({ action: "downgrade", payload: { plan: "starter" } })}
+                  disabled={actionMutation.isPending || checkoutMutation.isPending || !billing || isCurrent || (plan.code === "starter" ? false : !canPay)}
+                  onClick={() => plan.code === "starter"
+                    ? actionMutation.mutate({ action: "downgrade", payload: { plan: "starter" } })
+                    : checkoutMutation.mutate({ plan: plan.code, billing_period: period, country_code: regional?.country_code ?? pricing?.country_code })}
                   className={`mt-6 w-full rounded-md px-4 py-2 text-sm font-bold transition-colors ${isCurrent ? "bg-muted text-muted-foreground dark:bg-muted/40" : "bg-primary text-primary-foreground hover:bg-primary/90"} disabled:opacity-70`}
                 >
-                  {isCurrent ? "Current plan" : plan.code === "starter" ? "Switch to Starter now" : "Paid upgrades coming soon"}
+                  {isCurrent ? "Current plan" : plan.code === "starter" ? "Switch to Starter now" : canPay ? `Continue with Paynow` : "Paynow setup pending"}
                 </button>
               </article>
             );

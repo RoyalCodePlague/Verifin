@@ -255,7 +255,7 @@ def refresh_subscription_state(subscription):
 
 
 @transaction.atomic
-def activate_plan(user, plan_code, billing_period=Subscription.MONTHLY, trial_days=0, actor=None, country_code=None):
+def activate_plan(user, plan_code, billing_period=Subscription.MONTHLY, trial_days=0, actor=None, country_code=None, provider=None, payment_record=None):
     sync_plan_catalog()
     if billing_period not in [Subscription.MONTHLY, Subscription.YEARLY]:
         raise ValidationError({"billing_period": "Use monthly or yearly."})
@@ -268,7 +268,8 @@ def activate_plan(user, plan_code, billing_period=Subscription.MONTHLY, trial_da
     region_price = region_price_for(plan, country_code or DEFAULT_COUNTRY)
 
     subscription.plan = plan
-    subscription.provider = "free" if is_free else Subscription.PROVIDER_MOCK
+    payment_provider = provider or Subscription.PROVIDER_MOCK
+    subscription.provider = "free" if is_free else payment_provider
     subscription.billing_period = billing_period
     subscription.status = Subscription.TRIALING if is_trial else Subscription.ACTIVE
     subscription.billing_country_code = region_price.country_code
@@ -299,8 +300,15 @@ def activate_plan(user, plan_code, billing_period=Subscription.MONTHLY, trial_da
             paid_at=now,
             status="paid",
         )
-        Payment.objects.create(subscription=subscription, amount=amount, currency=region_price.currency, status="paid")
-        record_event(subscription, "mock_payment_succeeded", {"cycle_id": cycle.id, "amount": str(amount), "currency": region_price.currency, "country_code": region_price.country_code}, actor=actor or user)
+        if payment_record:
+            payment_record.subscription = subscription
+            payment_record.amount = amount
+            payment_record.currency = region_price.currency
+            payment_record.status = Payment.PAID
+            payment_record.save(update_fields=["subscription", "amount", "currency", "status", "updated_at"])
+        else:
+            Payment.objects.create(subscription=subscription, amount=amount, currency=region_price.currency, status=Payment.PAID, provider=payment_provider)
+        record_event(subscription, "payment_succeeded" if provider else "mock_payment_succeeded", {"cycle_id": cycle.id, "amount": str(amount), "currency": region_price.currency, "country_code": region_price.country_code}, actor=actor or user, provider=payment_provider)
 
     record_event(subscription, event_type, {"plan": plan.code, "billing_period": billing_period, "country_code": region_price.country_code, "currency": region_price.currency}, actor=actor or user)
     refresh_usage_snapshot(user)

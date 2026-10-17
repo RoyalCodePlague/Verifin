@@ -1,12 +1,16 @@
 from django.conf import settings
+import secrets
+from decimal import Decimal, InvalidOperation
 from rest_framework.exceptions import PermissionDenied
 from django.utils import timezone
+from django.db import transaction
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from .models import Payment, Plan, RegionPrice, Subscription, SubscriptionEvent
+from .paynow import PaynowError, poll_status, verify_hash
 from .providers import get_checkout_provider, get_provider_status
 from .serializers import BillingOverviewSerializer, PaymentSerializer, PlanSerializer, PricingContextSerializer, ReferralProgressSerializer, RegionPriceSerializer, SubscriptionEventSerializer, SubscriptionSerializer
 from .services import (
@@ -57,7 +61,7 @@ class SubscriptionViewSet(viewsets.ReadOnlyModelViewSet):
 
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
-        # Payment verification is not integrated yet. Never grant paid access from a public test action.
+        # Keep old, unfinished providers/actions closed in production.
         if self.action == "pesepay_checkout":
             raise PermissionDenied("Paid upgrades are coming soon. No payment has been taken.")
         if self.action in {"mock_checkout", "mock_trial", "renew", "upgrade", "resume", "expire", "cancel"} and not settings.BILLING_TEST_MODE:
@@ -115,6 +119,125 @@ class SubscriptionViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=["get"], url_path="providers")
     def provider_status(self, request):
         return Response({"providers": get_provider_status()})
+
+    @action(detail=False, methods=["post"], url_path="paynow-checkout")
+    def paynow_checkout(self, request):
+        provider = get_checkout_provider("paynow")
+        if not provider.enabled or not provider.ready:
+            return Response({"detail": provider.status().detail}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        plan_code = request.data.get("plan", "")
+        billing_period = request.data.get("billing_period", Subscription.MONTHLY)
+        country_code = request.data.get("country_code") or "ZW"
+        if billing_period not in (Subscription.MONTHLY, Subscription.YEARLY):
+            return Response({"detail": "Use monthly or yearly billing."}, status=status.HTTP_400_BAD_REQUEST)
+        if plan_code == Plan.STARTER:
+            return Response({"detail": "Starter is free and does not need checkout."}, status=status.HTTP_400_BAD_REQUEST)
+        plan = Plan.objects.filter(code=plan_code, is_deleted=False).first()
+        if not plan:
+            return Response({"detail": "Plan not found."}, status=status.HTTP_400_BAD_REQUEST)
+        from .services import region_price_for
+
+        price = region_price_for(plan, country_code)
+        amount = price.yearly_price if billing_period == Subscription.YEARLY else price.monthly_price
+        if price.currency != "USD" or amount <= 0:
+            return Response({"detail": "Paynow checkout currently supports paid USD plans only."}, status=status.HTTP_400_BAD_REQUEST)
+
+        subscription = get_or_create_subscription(request.user)
+        reference = f"verifin-{secrets.token_hex(12)}"
+        payment = Payment.objects.create(
+            subscription=subscription,
+            amount=amount,
+            currency=price.currency,
+            status=Payment.PENDING,
+            provider_payment_id=reference,
+            provider="paynow",
+            plan_code=plan.code,
+            billing_period=billing_period,
+            country_code=price.country_code,
+        )
+        result_url = request.build_absolute_uri("/api/v1/billing/subscriptions/paynow-result/")
+        return_url = f"{settings.FRONTEND_URL}/billing?payment_reference={reference}"
+        try:
+            payload = provider.initiate_checkout(
+                reference=reference,
+                amount=amount,
+                description=f"Verifin {plan.name} {billing_period} subscription",
+                return_url=return_url,
+                result_url=result_url,
+            )
+        except (PaynowError, RuntimeError) as exc:
+            payment.status = Payment.FAILED
+            payment.save(update_fields=["status", "updated_at"])
+            return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+        payment.provider_poll_url = payload["pollurl"]
+        payment.save(update_fields=["provider_poll_url", "updated_at"])
+        return Response({"reference": reference, "redirect_url": payload["browserurl"], "status": "pending"})
+
+    @action(detail=False, methods=["post"], permission_classes=[AllowAny], authentication_classes=[], url_path="paynow-result")
+    def paynow_result(self, request):
+        fields = {str(key).lower(): str(request.data.get(key, "")) for key in request.data.keys()}
+        if not verify_hash(fields):
+            return Response({"detail": "Invalid Paynow signature."}, status=status.HTTP_400_BAD_REQUEST)
+        reference = fields.get("reference", "")
+        payment = Payment.objects.filter(provider="paynow", provider_payment_id=reference, is_deleted=False).select_related("subscription").first()
+        if not payment:
+            return Response({"detail": "Payment reference not found."}, status=status.HTTP_404_NOT_FOUND)
+        if payment.status == Payment.PAID:
+            return Response({"detail": "Payment already processed."})
+        try:
+            callback_amount = Decimal(fields.get("amount", "0"))
+        except InvalidOperation:
+            return Response({"detail": "Invalid payment amount."}, status=status.HTTP_400_BAD_REQUEST)
+        if callback_amount != payment.amount or not payment.provider_poll_url:
+            return Response({"detail": "Payment details do not match."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            result = poll_status(payment.provider_poll_url)
+        except PaynowError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+        self._apply_paynow_result(payment, result)
+        return Response({"detail": "Payment status received."})
+
+    @action(detail=False, methods=["get"], url_path="paynow-status")
+    def paynow_status(self, request):
+        reference = request.query_params.get("reference", "")
+        payment = Payment.objects.filter(provider="paynow", provider_payment_id=reference, subscription__user=request.user, is_deleted=False).select_related("subscription").first()
+        if not payment:
+            return Response({"detail": "Payment reference not found."}, status=status.HTTP_404_NOT_FOUND)
+        if payment.status == Payment.PENDING and payment.provider_poll_url:
+            try:
+                result = poll_status(payment.provider_poll_url)
+            except PaynowError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+            self._apply_paynow_result(payment, result)
+            payment.refresh_from_db()
+        return Response({"reference": reference, "status": payment.status})
+
+    @staticmethod
+    @transaction.atomic
+    def _apply_paynow_result(payment, result):
+        payment = Payment.objects.select_for_update().select_related("subscription__user").get(pk=payment.pk)
+        if payment.status != Payment.PENDING or result.get("reference") != payment.provider_payment_id:
+            return
+        try:
+            amount = Decimal(result.get("amount", "0"))
+        except InvalidOperation:
+            return
+        if amount != payment.amount:
+            return
+        provider_status = result.get("status", "").strip().lower()
+        if provider_status == "paid" and payment.status == Payment.PENDING:
+            activate_plan(
+                payment.subscription.user,
+                payment.plan_code,
+                payment.billing_period,
+                actor=payment.subscription.user,
+                country_code=payment.country_code,
+                provider="paynow",
+                payment_record=payment,
+            )
+        elif provider_status in {"cancelled", "failed"} and payment.status == Payment.PENDING:
+            payment.status = Payment.FAILED
+            payment.save(update_fields=["status", "updated_at"])
 
     @action(detail=False, methods=["post"], url_path="pesepay-checkout")
     def pesepay_checkout(self, request):

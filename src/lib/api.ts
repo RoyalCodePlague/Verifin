@@ -1293,6 +1293,17 @@ export async function pesepayCheckoutApi(payload: { plan: PlanCode; billing_peri
   });
 }
 
+export async function paynowCheckoutApi(payload: { plan: PlanCode; billing_period: BillingPeriod; country_code?: string }) {
+  return apiFetch<{ reference: string; redirect_url: string; status: string }>("/api/v1/billing/subscriptions/paynow-checkout/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getPaynowStatusApi(reference: string) {
+  return apiFetch<{ reference: string; status: "pending" | "paid" | "failed" }>(`/api/v1/billing/subscriptions/paynow-status/?reference=${encodeURIComponent(reference)}`);
+}
+
 export async function getReferralProgressApi() {
   return apiFetch<ReferralProgress>("/api/v1/billing/referrals/");
 }

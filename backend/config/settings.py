@@ -27,6 +27,13 @@ PESEPAY_ENCRYPTION_KEY = os.getenv("PESEPAY_ENCRYPTION_KEY", "")
 PESEPAY_RESULT_URL = os.getenv("PESEPAY_RESULT_URL", "")
 PESEPAY_RETURN_URL = os.getenv("PESEPAY_RETURN_URL", "")
 
+# Paynow hosted checkout. Keep disabled until the merchant account is approved.
+PAYNOW_ENABLED = os.getenv("PAYNOW_ENABLED", "False").lower() in ("1", "true", "yes")
+PAYNOW_ENV = os.getenv("PAYNOW_ENV", "sandbox").strip().lower()
+PAYNOW_INTEGRATION_ID = os.getenv("PAYNOW_INTEGRATION_ID", "").strip()
+PAYNOW_INTEGRATION_KEY = os.getenv("PAYNOW_INTEGRATION_KEY", "").strip()
+PAYNOW_API_BASE = os.getenv("PAYNOW_API_BASE", "https://www.paynow.co.zw/interface").rstrip("/")
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",

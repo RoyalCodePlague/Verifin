@@ -162,12 +162,19 @@ class SubscriptionEvent(TimeStampedSoftDeleteModel):
 
 
 class Payment(TimeStampedSoftDeleteModel):
+    PENDING = "pending"
+    PAID = "paid"
+    FAILED = "failed"
     subscription = models.ForeignKey(Subscription, on_delete=models.CASCADE, related_name="payments")
     amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
     currency = models.CharField(max_length=10, default="ZAR")
     status = models.CharField(max_length=20, default="paid")
     provider_payment_id = models.CharField(max_length=255, blank=True)
     provider = models.CharField(max_length=30, default=Subscription.PROVIDER_MOCK)
+    plan_code = models.CharField(max_length=30, blank=True)
+    billing_period = models.CharField(max_length=20, blank=True)
+    country_code = models.CharField(max_length=2, blank=True)
+    provider_poll_url = models.URLField(max_length=1000, blank=True)
 
 
 class ReferralCode(TimeStampedSoftDeleteModel):

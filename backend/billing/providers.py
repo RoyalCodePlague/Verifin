@@ -145,9 +145,39 @@ class PesepayProvider(PaymentProvider):
         return initiate_pesepay_checkout(**kwargs)
 
 
+class PaynowProvider(PaymentProvider):
+    provider_name = "paynow"
+    label = "Paynow"
+
+    @property
+    def enabled(self) -> bool:
+        return getattr(settings, "PAYNOW_ENABLED", False)
+
+    @property
+    def ready(self) -> bool:
+        return bool(getattr(settings, "PAYNOW_INTEGRATION_ID", "") and getattr(settings, "PAYNOW_INTEGRATION_KEY", ""))
+
+    def status(self) -> ProviderStatus:
+        if not self.enabled:
+            detail = "Paynow is waiting for merchant account approval and setup."
+        elif not self.ready:
+            detail = "Paynow is enabled but the integration credentials are missing."
+        else:
+            detail = f"Paynow hosted checkout is configured ({getattr(settings, 'PAYNOW_ENV', 'sandbox')})."
+        return ProviderStatus(self.provider_name, self.enabled, self.ready, self.label, detail, {"environment": getattr(settings, "PAYNOW_ENV", "sandbox")})
+
+    def initiate_checkout(self, **kwargs: Any) -> dict[str, Any]:
+        if not self.enabled or not self.ready:
+            raise RuntimeError("Paynow checkout is not ready. Complete merchant approval and configure backend credentials.")
+        from .paynow import initiate_checkout
+
+        return initiate_checkout(**kwargs)
+
+
 _PROVIDER_MAP = {
     "mock": MockProvider(),
     "pesepay": PesepayProvider(),
+    "paynow": PaynowProvider(),
 }
 
 
@@ -158,7 +188,7 @@ def get_checkout_provider(name: str | None = None) -> PaymentProvider:
 
 def get_provider_status() -> list[dict[str, Any]]:
     providers = []
-    for name in ["mock", "pesepay"]:
+    for name in ["mock", "pesepay", "paynow"]:
         provider = get_checkout_provider(name)
         status = provider.status()
         providers.append({
