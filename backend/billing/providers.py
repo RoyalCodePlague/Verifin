@@ -173,6 +173,13 @@ class PaynowProvider(PaymentProvider):
 
         return initiate_checkout(**kwargs)
 
+    def initiate_mobile_checkout(self, **kwargs: Any) -> dict[str, Any]:
+        if not self.enabled or not self.ready:
+            raise RuntimeError("Paynow checkout is not ready. Complete merchant approval and configure backend credentials.")
+        from .paynow import initiate_mobile_checkout
+
+        return initiate_mobile_checkout(**kwargs)
+
 
 _PROVIDER_MAP = {
     "mock": MockProvider(),

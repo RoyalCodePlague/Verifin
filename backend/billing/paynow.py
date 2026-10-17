@@ -79,6 +79,45 @@ def initiate_checkout(*, reference: str, amount: Decimal, description: str, retu
     return response
 
 
+def initiate_mobile_checkout(
+    *,
+    reference: str,
+    amount: Decimal,
+    description: str,
+    return_url: str,
+    result_url: str,
+    method: str,
+    phone: str,
+    auth_email: str,
+) -> dict[str, str]:
+    method = method.lower().strip()
+    if method not in {"ecocash", "onemoney"}:
+        raise PaynowError("Choose EcoCash or OneMoney for mobile checkout.")
+    if not auth_email:
+        raise PaynowError("An email address is required to start a Paynow mobile payment.")
+
+    fields = {
+        "id": settings.PAYNOW_INTEGRATION_ID,
+        "reference": reference,
+        "amount": f"{amount:.2f}",
+        "additionalinfo": description[:255],
+        "returnurl": return_url,
+        "resulturl": result_url,
+        "authemail": auth_email,
+        "authphone": phone,
+        "phone": phone,
+        "method": method,
+        "merchanttrace": reference[:32],
+        "status": "Message",
+    }
+    fields["hash"] = _signature(fields, settings.PAYNOW_INTEGRATION_KEY)
+    response = _post_form(f"{settings.PAYNOW_API_BASE}/remotetransaction", fields)
+    if response.get("status", "").lower() not in {"ok", "awaiting delivery", "sent"} or not response.get("pollurl"):
+        raise PaynowError(response.get("error") or "Paynow could not start the mobile payment.")
+    _validate_paynow_url(response["pollurl"], label="payment status")
+    return response
+
+
 def poll_status(poll_url: str) -> dict[str, str]:
     _validate_paynow_url(poll_url, label="payment status")
     request = Request(poll_url, data=b"", headers={"Content-Length": "0"}, method="POST")

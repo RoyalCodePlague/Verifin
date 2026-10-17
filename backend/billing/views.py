@@ -173,6 +173,79 @@ class SubscriptionViewSet(viewsets.ReadOnlyModelViewSet):
         payment.save(update_fields=["provider_poll_url", "updated_at"])
         return Response({"reference": reference, "redirect_url": payload["browserurl"], "status": "pending"})
 
+    @action(detail=False, methods=["post"], url_path="paynow-mobile-checkout")
+    def paynow_mobile_checkout(self, request):
+        provider = get_checkout_provider("paynow")
+        if not provider.enabled or not provider.ready:
+            return Response({"detail": provider.status().detail}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        plan_code = request.data.get("plan", "")
+        billing_period = request.data.get("billing_period", Subscription.MONTHLY)
+        country_code = request.data.get("country_code") or "ZW"
+        method = str(request.data.get("method", "")).lower().strip()
+        phone = str(request.data.get("phone", "")).strip().replace(" ", "").replace("-", "")
+        if billing_period not in (Subscription.MONTHLY, Subscription.YEARLY):
+            return Response({"detail": "Use monthly or yearly billing."}, status=status.HTTP_400_BAD_REQUEST)
+        if method not in {"ecocash", "onemoney"}:
+            return Response({"detail": "Choose EcoCash or OneMoney."}, status=status.HTTP_400_BAD_REQUEST)
+        if phone.startswith("+263"):
+            phone = "0" + phone[4:]
+        elif phone.startswith("263"):
+            phone = "0" + phone[3:]
+        if len(phone) != 10 or not phone.isdigit() or not phone.startswith("07"):
+            return Response({"detail": "Enter a Zimbabwe mobile number, such as 0771234567."}, status=status.HTTP_400_BAD_REQUEST)
+        if plan_code == Plan.STARTER:
+            return Response({"detail": "Starter is free and does not need checkout."}, status=status.HTTP_400_BAD_REQUEST)
+        plan = Plan.objects.filter(code=plan_code, is_deleted=False).first()
+        if not plan:
+            return Response({"detail": "Plan not found."}, status=status.HTTP_400_BAD_REQUEST)
+        from .services import region_price_for
+
+        price = region_price_for(plan, country_code)
+        amount = price.yearly_price if billing_period == Subscription.YEARLY else price.monthly_price
+        if price.currency != "USD" or amount <= 0:
+            return Response({"detail": "Paynow checkout currently supports paid USD plans only."}, status=status.HTTP_400_BAD_REQUEST)
+        auth_email = request.user.email
+        if getattr(settings, "PAYNOW_ENV", "sandbox") in {"sandbox", "test", "testing"}:
+            auth_email = getattr(settings, "PAYNOW_TEST_EMAIL", "")
+            if not auth_email:
+                return Response({"detail": "Set PAYNOW_TEST_EMAIL to the email address of the Paynow integration owner to test mobile checkout."}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        if not auth_email:
+            return Response({"detail": "Add an email address to your account before starting checkout."}, status=status.HTTP_400_BAD_REQUEST)
+
+        subscription = get_or_create_subscription(request.user)
+        reference = f"verifin-{secrets.token_hex(12)}"
+        payment = Payment.objects.create(
+            subscription=subscription,
+            amount=amount,
+            currency=price.currency,
+            status=Payment.PENDING,
+            provider_payment_id=reference,
+            provider="paynow",
+            plan_code=plan.code,
+            billing_period=billing_period,
+            country_code=price.country_code,
+        )
+        result_url = request.build_absolute_uri("/api/v1/billing/subscriptions/paynow-result/")
+        return_url = f"{settings.FRONTEND_URL}/billing?payment_reference={reference}"
+        try:
+            payload = provider.initiate_mobile_checkout(
+                reference=reference,
+                amount=amount,
+                description=f"Verifin {plan.name} {billing_period} subscription",
+                return_url=return_url,
+                result_url=result_url,
+                method=method,
+                phone=phone,
+                auth_email=auth_email,
+            )
+        except (PaynowError, RuntimeError) as exc:
+            payment.status = Payment.FAILED
+            payment.save(update_fields=["status", "updated_at"])
+            return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+        payment.provider_poll_url = payload["pollurl"]
+        payment.save(update_fields=["provider_poll_url", "updated_at"])
+        return Response({"reference": reference, "status": "pending", "method": method, "phone": phone})
+
     @action(detail=False, methods=["post"], permission_classes=[AllowAny], authentication_classes=[], url_path="paynow-result")
     def paynow_result(self, request):
         fields = {str(key).lower(): str(request.data.get(key, "")) for key in request.data.keys()}

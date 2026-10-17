@@ -1,19 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, Copy, Gift, Lock, Ticket } from "lucide-react";
+import { AlertTriangle, Check, Copy, Gift, Lock, Ticket, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   getBillingOverviewApi,
   getPricingContextApi,
   getProviderStatusApi,
   getPaynowStatusApi,
-  paynowCheckoutApi,
+  paynowMobileCheckoutApi,
   getReferralProgressApi,
   redeemReferralRewardApi,
   subscriptionActionApi,
   type BillingPeriod,
   type FeatureLimit,
   type PlanCode,
+  type PaynowMobileMethod,
 } from "@/lib/api";
 
 const planTone: Record<PlanCode, string> = {
@@ -63,6 +64,9 @@ const Billing = () => {
     return requested === "growth" || requested === "business" || requested === "starter" ? requested : "";
   });
   const [paymentReference, setPaymentReference] = useState(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("payment_reference") ?? "");
+  const [checkoutPlan, setCheckoutPlan] = useState<PlanCode | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<PaynowMobileMethod>("ecocash");
+  const [mobileNumber, setMobileNumber] = useState("");
   const queryClient = useQueryClient();
   const online = typeof navigator === "undefined" || navigator.onLine;
   const billingQuery = useQuery({ queryKey: ["billing-overview"], queryFn: getBillingOverviewApi, staleTime: 60_000, refetchInterval: 60_000, enabled: online });
@@ -106,8 +110,15 @@ const Billing = () => {
   });
 
   const checkoutMutation = useMutation({
-    mutationFn: paynowCheckoutApi,
-    onSuccess: (result) => { window.location.assign(result.redirect_url); },
+    mutationFn: paynowMobileCheckoutApi,
+    onSuccess: (result) => {
+      setPaymentReference(result.reference);
+      const url = new URL(window.location.href);
+      url.searchParams.set("payment_reference", result.reference);
+      window.history.replaceState({}, "", url);
+      setCheckoutPlan(null);
+      toast.success(`Check ${result.phone} and approve the ${result.method === "ecocash" ? "EcoCash" : "OneMoney"} prompt.`);
+    },
     onError: (error) => toast.error(error.message),
   });
 
@@ -162,7 +173,7 @@ const Billing = () => {
       )}
       {paymentReference && paymentStatusQuery.data?.status === "pending" && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-200" role="status">
-          Waiting for Paynow to confirm your payment. This page will update automatically.
+          Waiting for Paynow to confirm your payment. Approve the payment prompt on your phone if you have not done so. This page will update automatically.
         </div>
       )}
       <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
@@ -272,8 +283,8 @@ const Billing = () => {
             <h2 className="text-xl font-bold">Change Plan</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               {paynow?.ready && paynow.enabled && pricing?.currency === "USD"
-                ? `Pay securely through Paynow. Prices are shown for ${pricing?.country_name ?? "your region"}.`
-                : `Paynow checkout is available for eligible USD plans when the provider is enabled and configured. Prices are shown for ${pricing?.country_name ?? "your region"}.`}
+                ? `Pay with EcoCash or OneMoney. Approve the payment prompt on your phone. Prices are shown for ${pricing?.country_name ?? "your region"}.`
+                : `Mobile checkout is available for eligible USD plans when Paynow is enabled and configured. Prices are shown for ${pricing?.country_name ?? "your region"}.`}
             </p>
           </div>
           <div className="rounded-md border border-border bg-muted/20 p-1 dark:bg-muted/10">
@@ -313,16 +324,61 @@ const Billing = () => {
                   disabled={actionMutation.isPending || checkoutMutation.isPending || !billing || isCurrent || (plan.code === "starter" ? false : !canPay)}
                   onClick={() => plan.code === "starter"
                     ? actionMutation.mutate({ action: "downgrade", payload: { plan: "starter" } })
-                    : checkoutMutation.mutate({ plan: plan.code, billing_period: period, country_code: regional?.country_code ?? pricing?.country_code })}
+                    : setCheckoutPlan(plan.code)}
                   className={`mt-6 w-full rounded-md px-4 py-2 text-sm font-bold transition-colors ${isCurrent ? "bg-muted text-muted-foreground dark:bg-muted/40" : "bg-primary text-primary-foreground hover:bg-primary/90"} disabled:opacity-70`}
                 >
-                  {isCurrent ? "Current plan" : plan.code === "starter" ? "Switch to Starter now" : canPay ? `Continue with Paynow` : "Paynow setup pending"}
+                  {isCurrent ? "Current plan" : plan.code === "starter" ? "Switch to Starter now" : canPay ? `Choose mobile payment` : "Paynow setup pending"}
                 </button>
               </article>
             );
           })}
         </div>
       </section>
+
+      {checkoutPlan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setCheckoutPlan(null); }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="paynow-checkout-title" className="w-full max-w-md rounded-xl border border-border bg-background p-6 shadow-xl dark:bg-card">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id="paynow-checkout-title" className="text-xl font-bold">Mobile money checkout</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Enter the Zimbabwe mobile number to receive a payment approval prompt.</p>
+              </div>
+              <button type="button" onClick={() => setCheckoutPlan(null)} aria-label="Close checkout" className="rounded-md p-2 text-muted-foreground hover:bg-muted"><X className="h-4 w-4" /></button>
+            </div>
+            <form className="mt-6 space-y-4" onSubmit={(event) => {
+              event.preventDefault();
+              const selectedPrice = regionalByPlan.get(checkoutPlan);
+              checkoutMutation.mutate({
+                plan: checkoutPlan,
+                billing_period: period,
+                country_code: selectedPrice?.country_code ?? pricing?.country_code,
+                method: paymentMethod,
+                phone: mobileNumber,
+              });
+            }}>
+              <label className="block space-y-1.5 text-sm font-medium" htmlFor="paynow-method">
+                <span>Payment method</span>
+                <select id="paynow-method" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as PaynowMobileMethod)} className="w-full rounded-md border border-border bg-background px-3 py-2.5 dark:bg-muted/20">
+                  <option value="ecocash">EcoCash</option>
+                  <option value="onemoney">OneMoney</option>
+                </select>
+              </label>
+              <label className="block space-y-1.5 text-sm font-medium" htmlFor="paynow-phone">
+                <span>Mobile number</span>
+                <input id="paynow-phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="0771234567" value={mobileNumber} onChange={(event) => setMobileNumber(event.target.value)} required pattern="(?:\\+?263|0)?7[0-9]{8}" title="Enter a Zimbabwe mobile number, such as 0771234567." className="w-full rounded-md border border-border bg-background px-3 py-2.5 dark:bg-muted/20" />
+              </label>
+              <p className="rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">You’ll stay in Verifin. Paynow will send a prompt to your phone; enter your mobile money PIN on your handset to approve the payment.</p>
+              {checkoutMutation.isError && <p className="text-sm text-destructive" role="alert">{checkoutMutation.error.message}</p>}
+              <div className="flex justify-end gap-3 pt-2">
+                <button type="button" onClick={() => setCheckoutPlan(null)} className="rounded-md border border-border px-4 py-2 text-sm font-semibold hover:bg-muted">Cancel</button>
+                <button type="submit" disabled={checkoutMutation.isPending} className="rounded-md bg-primary px-4 py-2 text-sm font-bold text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
+                  {checkoutMutation.isPending ? "Sending prompt…" : "Send payment prompt"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
 
       <section className="grid gap-6 lg:grid-cols-2">
         <div className="rounded-lg border border-border bg-background p-6 dark:bg-card">

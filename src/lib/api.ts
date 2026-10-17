@@ -1300,6 +1300,15 @@ export async function paynowCheckoutApi(payload: { plan: PlanCode; billing_perio
   });
 }
 
+export type PaynowMobileMethod = "ecocash" | "onemoney";
+
+export async function paynowMobileCheckoutApi(payload: { plan: PlanCode; billing_period: BillingPeriod; country_code?: string; method: PaynowMobileMethod; phone: string }) {
+  return apiFetch<{ reference: string; status: string; method: PaynowMobileMethod; phone: string }>("/api/v1/billing/subscriptions/paynow-mobile-checkout/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function getPaynowStatusApi(reference: string) {
   return apiFetch<{ reference: string; status: "pending" | "paid" | "failed" }>(`/api/v1/billing/subscriptions/paynow-status/?reference=${encodeURIComponent(reference)}`);
 }
