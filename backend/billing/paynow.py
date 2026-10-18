@@ -55,6 +55,10 @@ def _post_form(url: str, fields: dict[str, str]) -> dict[str, str]:
             result = _parse_response(response.read())
     except (URLError, TimeoutError, UnicodeDecodeError) as exc:
         raise PaynowError("Could not contact Paynow. Please try again.") from exc
+    has_hash = any(name.lower() == "hash" for name in result)
+    if result.get("status", "").strip().lower() == "error" and not has_hash:
+        detail = "".join(char for char in result.get("error", "") if char.isprintable()).strip()[:240]
+        raise PaynowError(detail or "Paynow rejected the request.")
     if not verify_hash(result):
         raise PaynowError("Paynow response signature could not be verified.")
     return result
