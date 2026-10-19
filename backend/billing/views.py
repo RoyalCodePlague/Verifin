@@ -142,6 +142,15 @@ class SubscriptionViewSet(viewsets.ReadOnlyModelViewSet):
         if price.currency != "USD" or amount <= 0:
             return Response({"detail": "Paynow checkout currently supports paid USD plans only."}, status=status.HTTP_400_BAD_REQUEST)
 
+        auth_email = ""
+        if getattr(settings, "PAYNOW_ENV", "sandbox") in {"sandbox", "test", "testing"}:
+            auth_email = getattr(settings, "PAYNOW_TEST_EMAIL", "")
+            if not auth_email:
+                return Response(
+                    {"detail": "Set PAYNOW_TEST_EMAIL to the Paynow integration owner's email to complete hosted checkout in test mode."},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                )
+
         subscription = get_or_create_subscription(request.user)
         reference = f"verifin-{secrets.token_hex(12)}"
         payment = Payment.objects.create(
@@ -164,6 +173,7 @@ class SubscriptionViewSet(viewsets.ReadOnlyModelViewSet):
                 description=f"Verifin {plan.name} {billing_period} subscription",
                 return_url=return_url,
                 result_url=result_url,
+                auth_email=auth_email,
             )
         except (PaynowError, RuntimeError) as exc:
             payment.status = Payment.FAILED

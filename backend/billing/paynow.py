@@ -64,7 +64,15 @@ def _post_form(url: str, fields: dict[str, str]) -> dict[str, str]:
     return result
 
 
-def initiate_checkout(*, reference: str, amount: Decimal, description: str, return_url: str, result_url: str) -> dict[str, str]:
+def initiate_checkout(
+    *,
+    reference: str,
+    amount: Decimal,
+    description: str,
+    return_url: str,
+    result_url: str,
+    auth_email: str = "",
+) -> dict[str, str]:
     fields = {
         "id": settings.PAYNOW_INTEGRATION_ID,
         "reference": reference,
@@ -74,6 +82,8 @@ def initiate_checkout(*, reference: str, amount: Decimal, description: str, retu
         "resulturl": result_url,
         "status": "Message",
     }
+    if auth_email:
+        fields["authemail"] = auth_email
     fields["hash"] = _signature(fields, settings.PAYNOW_INTEGRATION_KEY)
     response = _post_form(f"{settings.PAYNOW_API_BASE}/initiatetransaction", fields)
     if response.get("status", "").lower() != "ok" or not response.get("browserurl") or not response.get("pollurl"):
