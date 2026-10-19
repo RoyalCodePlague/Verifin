@@ -1,4 +1,4 @@
-const CACHE_NAME = 'verifin-cache-v12';
+const CACHE_NAME = 'verifin-cache-v13';
 const APP_SHELL = '/index.html';
 const OFFLINE_FALLBACK = '<!doctype html><title>Verifin</title><p>Verifin is offline. Reconnect and try again.</p>';
 const STATIC_ASSETS = [
@@ -8,6 +8,10 @@ const STATIC_ASSETS = [
   '/manifest-dark.json',
   '/site.webmanifest',
   '/og-image.png',
+  '/favicomatic-LIGHT/pwa-192.png',
+  '/favicomatic-LIGHT/pwa-512.png',
+  '/favicomatic-DARK/pwa-192.png',
+  '/favicomatic-DARK/pwa-512.png',
   '/favicomatic-LIGHT/favicon-16x16.png',
   '/favicomatic-LIGHT/favicon-32x32.png',
   '/favicomatic-LIGHT/favicon-96x96.png',

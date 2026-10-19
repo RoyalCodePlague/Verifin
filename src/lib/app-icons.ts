@@ -4,6 +4,7 @@ const ICON_FOLDERS = {
 } as const;
 
 type IconMode = keyof typeof ICON_FOLDERS;
+const PWA_MANIFEST_VERSION = "13";
 
 function modeFromStorage(): IconMode | null {
   try {
@@ -24,7 +25,10 @@ function modeFromDocument(): IconMode {
 function applyAppIcons(mode: IconMode) {
   const folder = ICON_FOLDERS[mode];
   const manifest = document.getElementById("app-manifest") as HTMLLinkElement | null;
-  if (manifest) manifest.href = mode === "dark" ? "/manifest-dark.json" : "/manifest-light.json";
+  if (manifest) {
+    const manifestFile = mode === "dark" ? "manifest-dark.json" : "manifest-light.json";
+    manifest.href = `/${manifestFile}?v=${PWA_MANIFEST_VERSION}`;
+  }
 
   document.querySelectorAll<HTMLLinkElement>("link[data-icon-size]").forEach((link) => {
     const size = link.dataset.iconSize;

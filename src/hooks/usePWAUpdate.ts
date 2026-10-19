@@ -6,12 +6,25 @@ export function usePWAUpdate() {
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
 
   useEffect(() => {
+    let mounted = true;
+
     const handleUpdateAvailable = (event: Event) => {
-      setRegistration((event as PWAUpdateEvent).detail);
+      const nextRegistration = (event as PWAUpdateEvent).detail;
+      if (nextRegistration?.waiting) setRegistration(nextRegistration);
     };
 
     window.addEventListener("verifin:pwa-update-available", handleUpdateAvailable);
-    return () => window.removeEventListener("verifin:pwa-update-available", handleUpdateAvailable);
+
+    if ("serviceWorker" in navigator) {
+      void navigator.serviceWorker.getRegistration().then((currentRegistration) => {
+        if (mounted && currentRegistration?.waiting) setRegistration(currentRegistration);
+      }).catch(() => undefined);
+    }
+
+    return () => {
+      mounted = false;
+      window.removeEventListener("verifin:pwa-update-available", handleUpdateAvailable);
+    };
   }, []);
 
   const refreshNow = () => {

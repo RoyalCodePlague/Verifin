@@ -38,25 +38,33 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
 			window.dispatchEvent(new CustomEvent('verifin:pwa-update-available', { detail: registration }));
 		};
 
-		navigator.serviceWorker.register('/service-worker.js').then(
+		const checkForUpdate = (registration: ServiceWorkerRegistration) => {
+			if (navigator.onLine) void registration.update().catch(() => undefined);
+		};
+
+		navigator.serviceWorker.register('/service-worker.js', { updateViaCache: 'none' }).then(
 			registration => {
 				console.log('ServiceWorker registration successful with scope: ', registration.scope);
-				if (registration.waiting && navigator.serviceWorker.controller) {
-					notifyUpdateAvailable(registration);
-				}
+				if (registration.waiting) notifyUpdateAvailable(registration);
+
 				registration.addEventListener('updatefound', () => {
 					const worker = registration.installing;
 					if (!worker) return;
 					worker.addEventListener('statechange', () => {
-						if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+						if (worker.state === 'installed' && registration.waiting) {
 							notifyUpdateAvailable(registration);
 						}
 					});
 				});
 
-				window.setInterval(() => {
-					if (navigator.onLine) void registration.update();
-				}, 60 * 60 * 1000);
+				const checkWhenActive = () => checkForUpdate(registration);
+				window.addEventListener('focus', checkWhenActive);
+				window.addEventListener('online', checkWhenActive);
+				document.addEventListener('visibilitychange', () => {
+					if (document.visibilityState === 'visible') checkWhenActive();
+				});
+				checkWhenActive();
+				window.setInterval(checkWhenActive, 30 * 60 * 1000);
 			},
 			err => {
 				console.log('ServiceWorker registration failed: ', err);

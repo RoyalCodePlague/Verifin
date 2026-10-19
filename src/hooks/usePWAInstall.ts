@@ -1,112 +1,122 @@
-import { useState, useEffect } from 'react';
-
-const INSTALL_PROMPT_SEEN_KEY = "sp_pwa_install_prompt_seen";
-const APP_INSTALLED_KEY = "sp_pwa_installed";
+import { useEffect, useState } from "react";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 };
 
-type NavigatorWithInstalledApps = Navigator & {
-  getInstalledRelatedApps?: () => Promise<Array<{ platform?: string; id?: string; url?: string }>>;
+type InstallInstructions = {
+  title: string;
+  steps: string[];
 };
 
 function isMobileOrTablet() {
   if (typeof window === "undefined") return false;
+
   const ua = navigator.userAgent.toLowerCase();
-  const touchDevice = navigator.maxTouchPoints > 1 || window.matchMedia("(pointer: coarse)").matches;
-  const smallOrTabletScreen = window.matchMedia("(max-width: 1024px)").matches;
-  return touchDevice && (smallOrTabletScreen || /android|iphone|ipad|ipod|mobile|tablet/.test(ua));
+  const isIPadOS = navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+  const mobileBrowser = /android|iphone|ipad|ipod|mobile|tablet/.test(ua);
+  const touchTablet = navigator.maxTouchPoints > 1
+    && window.matchMedia("(max-width: 1024px)").matches;
+
+  return mobileBrowser || isIPadOS || touchTablet;
 }
 
 function isStandalone() {
-  return window.matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  return window.matchMedia("(display-mode: standalone)").matches
+    || (navigator as Navigator & { standalone?: boolean }).standalone === true;
 }
 
-function hasSeenInstallPrompt() {
-  return localStorage.getItem(INSTALL_PROMPT_SEEN_KEY) === "1";
-}
+function getInstallInstructions(): InstallInstructions {
+  const ua = navigator.userAgent.toLowerCase();
+  const isIPadOS = navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+  const isIOS = /iphone|ipad|ipod/.test(ua) || isIPadOS;
 
-function markInstallPromptSeen() {
-  localStorage.setItem(INSTALL_PROMPT_SEEN_KEY, "1");
-}
+  if (isIOS) {
+    return {
+      title: "Install Verifin on your iPhone or iPad",
+      steps: [
+        "Open this page in Safari if it is not already open there.",
+        "Tap the Share button.",
+        "Choose Add to Home Screen, then tap Add.",
+      ],
+    };
+  }
 
-function markInstalled() {
-  localStorage.setItem(APP_INSTALLED_KEY, "1");
-  markInstallPromptSeen();
-}
-
-function isKnownInstalled() {
-  return isStandalone() || localStorage.getItem(APP_INSTALLED_KEY) === "1";
+  return {
+    title: "Install Verifin on your device",
+    steps: [
+      "Open your browser menu (⋮).",
+      "Choose Install app or Add to Home screen.",
+      "Confirm the installation.",
+    ],
+  };
 }
 
 export function usePWAInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [isInstallable, setIsInstallable] = useState(false);
   const [isSupportedDevice, setIsSupportedDevice] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
+  const [instructionsOpen, setInstructionsOpen] = useState(false);
+  const [instructions, setInstructions] = useState<InstallInstructions | null>(null);
 
   useEffect(() => {
-    const knownInstalled = isKnownInstalled();
-    const supported = isMobileOrTablet() && !knownInstalled && !hasSeenInstallPrompt();
-    setIsInstalled(knownInstalled);
+    const supported = isMobileOrTablet();
     setIsSupportedDevice(supported);
+    setIsInstalled(isStandalone());
 
-    const checkInstalledRelatedApps = async () => {
-      try {
-        const apps = await (navigator as NavigatorWithInstalledApps).getInstalledRelatedApps?.();
-        if (apps?.length) {
-          markInstalled();
-          setIsInstalled(true);
-          setIsSupportedDevice(false);
-          setIsInstallable(false);
-        }
-      } catch {
-        /* Unsupported on most browsers. display-mode and appinstalled cover the normal cases. */
-      }
-    };
+    const displayMode = window.matchMedia("(display-mode: standalone)");
+    const syncInstalledState = () => setIsInstalled(isStandalone());
 
-    const handleBeforeInstallPrompt = (e: Event) => {
-      if (!supported || isKnownInstalled() || hasSeenInstallPrompt()) return;
-      e.preventDefault();
-      markInstallPromptSeen();
-      setDeferredPrompt(e as BeforeInstallPromptEvent);
-      setIsInstallable(true);
+    const handleBeforeInstallPrompt = (event: Event) => {
+      if (!supported || isStandalone()) return;
+      event.preventDefault();
+      setDeferredPrompt(event as BeforeInstallPromptEvent);
     };
 
     const handleAppInstalled = () => {
-      markInstalled();
       setDeferredPrompt(null);
-      setIsInstallable(false);
+      setInstructionsOpen(false);
       setIsInstalled(true);
     };
 
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    window.addEventListener('appinstalled', handleAppInstalled);
-    void checkInstalledRelatedApps();
+    displayMode.addEventListener("change", syncInstalledState);
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener("appinstalled", handleAppInstalled);
 
     return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-      window.removeEventListener('appinstalled', handleAppInstalled);
+      displayMode.removeEventListener("change", syncInstalledState);
+      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", handleAppInstalled);
     };
   }, []);
 
   const installPWA = async () => {
-    if (!deferredPrompt) return;
+    if (!deferredPrompt) {
+      setInstructions(getInstallInstructions());
+      setInstructionsOpen(true);
+      return;
+    }
 
     try {
       await deferredPrompt.prompt();
       const choice = await deferredPrompt.userChoice;
-      if (choice.outcome === "accepted") {
-        markInstalled();
-        setIsInstalled(true);
-      }
+      if (choice.outcome === "accepted") setIsInstalled(true);
+    } catch {
+      setInstructions(getInstallInstructions());
+      setInstructionsOpen(true);
     } finally {
       setDeferredPrompt(null);
-      setIsInstallable(false);
     }
   };
 
-  return { installPWA, isInstallable: isSupportedDevice && isInstallable && !isInstalled, isInstalled };
+  const closeInstructions = () => setInstructionsOpen(false);
+
+  return {
+    closeInstructions,
+    installPWA,
+    installInstructions: instructions,
+    isInstallable: isSupportedDevice && !isInstalled,
+    instructionsOpen,
+  };
 }

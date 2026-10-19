@@ -10,6 +10,18 @@
   "theme_color": "#0b1411",
   "icons": [
     {
+      "src": "/favicomatic-DARK/pwa-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicomatic-DARK/pwa-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
       "src": "/favicomatic-DARK/favicon-128.png",
       "sizes": "128x128",
       "type": "image/png",
@@ -23,9 +35,9 @@
     },
     {
       "src": "/favicomatic-DARK/mstile-310x310.png",
-      "sizes": "310x310",
+      "sizes": "558x558",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }
