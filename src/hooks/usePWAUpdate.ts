@@ -19,6 +19,11 @@ export function usePWAUpdate() {
       void navigator.serviceWorker.getRegistration().then((currentRegistration) => {
         if (mounted && currentRegistration?.waiting) setRegistration(currentRegistration);
       }).catch(() => undefined);
+
+      // `ready` also covers the case where this hook mounted before SW registration completed.
+      void navigator.serviceWorker.ready.then((readyRegistration) => {
+        if (mounted && readyRegistration.waiting) setRegistration(readyRegistration);
+      }).catch(() => undefined);
     }
 
     return () => {

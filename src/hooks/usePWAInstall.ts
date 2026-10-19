@@ -10,6 +10,9 @@ type InstallInstructions = {
   steps: string[];
 };
 
+const INSTALL_PROMPT_EVENT = "verifin:pwa-install-available";
+let pendingInstallPrompt: BeforeInstallPromptEvent | null = null;
+
 function isMobileOrTablet() {
   if (typeof window === "undefined") return false;
 
@@ -25,6 +28,19 @@ function isMobileOrTablet() {
 function isStandalone() {
   return window.matchMedia("(display-mode: standalone)").matches
     || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+}
+
+// Capture this before React effects run; Chromium can fire it during startup.
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeinstallprompt", (event: Event) => {
+    if (!isMobileOrTablet() || isStandalone()) return;
+    event.preventDefault();
+    pendingInstallPrompt = event as BeforeInstallPromptEvent;
+    window.dispatchEvent(new Event(INSTALL_PROMPT_EVENT));
+  });
+  window.addEventListener("appinstalled", () => {
+    pendingInstallPrompt = null;
+  });
 }
 
 function getInstallInstructions(): InstallInstructions {
@@ -46,7 +62,7 @@ function getInstallInstructions(): InstallInstructions {
   return {
     title: "Install Verifin on your device",
     steps: [
-      "Open your browser menu (⋮).",
+      "Open your browser menu (three dots).",
       "Choose Install app or Add to Home screen.",
       "Confirm the installation.",
     ],
@@ -68,44 +84,46 @@ export function usePWAInstall() {
     const displayMode = window.matchMedia("(display-mode: standalone)");
     const syncInstalledState = () => setIsInstalled(isStandalone());
 
-    const handleBeforeInstallPrompt = (event: Event) => {
-      if (!supported || isStandalone()) return;
-      event.preventDefault();
-      setDeferredPrompt(event as BeforeInstallPromptEvent);
+    const syncInstallPrompt = () => {
+      setDeferredPrompt(pendingInstallPrompt);
     };
 
     const handleAppInstalled = () => {
+      pendingInstallPrompt = null;
       setDeferredPrompt(null);
       setInstructionsOpen(false);
       setIsInstalled(true);
     };
 
     displayMode.addEventListener("change", syncInstalledState);
-    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    window.addEventListener(INSTALL_PROMPT_EVENT, syncInstallPrompt);
     window.addEventListener("appinstalled", handleAppInstalled);
+    syncInstallPrompt();
 
     return () => {
       displayMode.removeEventListener("change", syncInstalledState);
-      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener(INSTALL_PROMPT_EVENT, syncInstallPrompt);
       window.removeEventListener("appinstalled", handleAppInstalled);
     };
   }, []);
 
   const installPWA = async () => {
-    if (!deferredPrompt) {
+    const prompt = deferredPrompt;
+    if (!prompt) {
       setInstructions(getInstallInstructions());
       setInstructionsOpen(true);
       return;
     }
 
     try {
-      await deferredPrompt.prompt();
-      const choice = await deferredPrompt.userChoice;
+      await prompt.prompt();
+      const choice = await prompt.userChoice;
       if (choice.outcome === "accepted") setIsInstalled(true);
     } catch {
       setInstructions(getInstallInstructions());
       setInstructionsOpen(true);
     } finally {
+      pendingInstallPrompt = null;
       setDeferredPrompt(null);
     }
   };
