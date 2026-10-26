@@ -57,13 +57,13 @@ const HeroSection = () => {
             </motion.div>
             <h1 className="font-display text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1] mb-6">
               <motion.span initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-                Know what you sold,{" "}
+                Know Your Stock.{" "}
               </motion.span>
               <motion.span initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="text-gradient-hero">
-                what is left,
+                Know Your Sales.
               </motion.span>{" "}
               <motion.span initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}>
-                and where your money went.
+                Understand Your Business.
               </motion.span>
             </h1>
             <motion.p 
@@ -96,7 +96,7 @@ const HeroSection = () => {
                 <div className="h-8 w-8 rounded-lg bg-gradient-hero flex items-center justify-center text-primary-foreground">
                   <CheckCircle className="h-5 w-5" />
                 </div>
-                <div><span className="font-display font-semibold text-sm">Tendai's workspace</span><p className="text-[11px] text-muted-foreground">Live overview · Thursday, 24 September</p></div>
+                <div><span className="font-display font-semibold text-sm">Example workspace</span><p className="text-[11px] text-muted-foreground">Illustrative sample data · Not a live account</p></div>
               </div>
               <div className="grid grid-cols-2 gap-3 mb-4">
                 {[

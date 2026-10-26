@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   TrendingUp, TrendingDown, Package, ShoppingCart, AlertTriangle,
-  Receipt, ScanBarcode, ClipboardCheck, Plus, MessageSquare, Share2, HelpCircle,
+  Receipt, ScanBarcode, ClipboardCheck, Plus, MessageSquare, Share2, HelpCircle, CheckCircle2, Circle,
   WalletCards, HandCoins, Truck, HeartPulse,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -194,6 +194,13 @@ const Dashboard = () => {
     ...(discrepancies.filter(d => d.status !== "resolved").length > 0 ? [{ text: `${discrepancies.filter(d => d.status !== "resolved").length} stock discrepancies still need attention`, type: "warning" }] : []),
   ];
 
+  const activationTasks = [
+    { label: "Add your first product", detail: "Set a name, selling price and stock quantity.", done: products.length > 0, to: "/inventory", action: "Add product" },
+    { label: "Record your first sale", detail: "Choose a stocked product and save the transaction.", done: sales.length > 0, to: "/sales", action: "Record sale" },
+    ...(canAccessExpenses ? [{ label: "Record an expense", detail: "Keep business costs together with your sales.", done: expenses.length > 0, to: "/expenses", action: "Add expense" }] : []),
+  ];
+  const completedActivationTasks = activationTasks.filter((task) => task.done).length;
+
   const handleWhatsAppShare = () => {
     if (!canUse("whatsapp_reports")) {
       promptUpgrade("whatsapp_reports", "WhatsApp summaries");
@@ -255,7 +262,7 @@ const Dashboard = () => {
                   promptUpgrade(a.feature, a.label);
                   return;
                 }
-                a.to === "/help-dashboard" ? navigate("/help") : navigate(a.to);
+                navigate(a.to === "/help-dashboard" ? "/help" : a.to);
               }} className="relative flex flex-col items-center gap-2 min-w-[80px] p-3 rounded-xl bg-muted/50 hover:bg-muted transition-colors">
                 {a.feature && !canUse(a.feature) && <span className="absolute right-1 top-1"><LockedBadge label="" /></span>}
                 <div className={`h-10 w-10 rounded-xl ${a.color} flex items-center justify-center`}>
@@ -268,12 +275,40 @@ const Dashboard = () => {
         </CardContent>
       </Card>
 
-      {(products.length === 0 || sales.length === 0) && (
+      {completedActivationTasks < activationTasks.length && (
         <Card className="border-primary/20 bg-primary/5 shadow-soft">
           <CardContent className="p-4 lg:p-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div><p className="font-display font-semibold">Finish your first business loop</p><p className="mt-1 text-sm text-muted-foreground">Add a product, then record a sale to see your workspace come alive.</p></div>
-              <div className="flex gap-2">{products.length === 0 ? <Button size="sm" onClick={() => navigate("/inventory")}>Add product</Button> : <Button size="sm" onClick={() => navigate("/sales")}>Record sale</Button>}<Button size="sm" variant="outline" onClick={() => navigate("/help")}>Get help</Button></div>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="font-display font-semibold">Your first business steps</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Follow the checklist to start tracking real business activity.</p>
+                  </div>
+                  <span className="text-xs font-medium text-muted-foreground">{completedActivationTasks} of {activationTasks.length} complete</span>
+                </div>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-background">
+                  <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${(completedActivationTasks / activationTasks.length) * 100}%` }} />
+                </div>
+                <div className="mt-3 space-y-2">
+                  {activationTasks.map((task) => (
+                    <div key={task.label} className="flex items-center justify-between gap-3 rounded-lg bg-background/70 px-3 py-2">
+                      <div className="flex min-w-0 items-start gap-2">
+                        {task.done ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" /> : <Circle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />}
+                        <div className="min-w-0">
+                          <p className={`text-sm font-medium ${task.done ? "text-muted-foreground line-through" : ""}`}>{task.label}</p>
+                          {!task.done && <p className="text-xs text-muted-foreground">{task.detail}</p>}
+                        </div>
+                      </div>
+                      {!task.done && <Button size="sm" variant="outline" onClick={() => navigate(task.to)}>{task.action}</Button>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <Button size="sm" variant="outline" onClick={() => navigate("/reports")}>View summaries</Button>
+                <Button size="sm" variant="ghost" onClick={() => navigate("/help")}>Get help</Button>
+              </div>
             </div>
           </CardContent>
         </Card>

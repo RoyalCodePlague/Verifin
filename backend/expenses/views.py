@@ -25,6 +25,8 @@ class ExpenseViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
+        from core.analytics import record_activation_event
+        record_activation_event(self.request.user, "first_expense_recorded")
 
     @action(detail=False, methods=["get"], url_path="todays-expenses")
     def todays_expenses(self, request):

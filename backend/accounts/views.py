@@ -79,7 +79,7 @@ class RegisterView(APIView):
         with transaction.atomic():
             user = serializer.save()
             from core.analytics import record_activation_event
-            record_activation_event(user, "account_registered")
+            record_activation_event(user, "signup_completed")
             try:
                 send_verification_email(user)
                 sent, detail = True, "Check your inbox. Verify your email to finish creating your account and sign in."
@@ -242,7 +242,7 @@ class MeView(APIView):
         serializer.save()
         if request.data.get("onboarding_complete") is True:
             from core.analytics import record_activation_event
-            record_activation_event(request.user, "onboarding_completed")
+            record_activation_event(request.user, "business_setup_completed")
         return Response(serializer.data)
 
 

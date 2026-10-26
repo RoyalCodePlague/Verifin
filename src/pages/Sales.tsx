@@ -3,7 +3,7 @@ import { closeTillApi, createSaleApi, deleteSaleApi, fetchReceiptApi, fetchWhats
 import { useAuth } from "@/lib/auth-context";
 import { addToOfflineQueue, canQueueOfflineAction } from "@/lib/offlineQueue";
 import { motion } from "framer-motion";
-import { Plus, Search, ArrowUpRight, Trash2, ShoppingCart, Receipt, Wallet, ScanBarcode, MessageCircle, Printer } from "lucide-react";
+import { Plus, Search, ArrowUpRight, ArrowDownRight, Trash2, ShoppingCart, Receipt, Wallet, ScanBarcode, MessageCircle, Printer } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,7 @@ import { symbolForCurrency } from "@/lib/currency";
 import { useFeatureAccess, useUpgradePrompt } from "@/lib/features";
 import { barcodeMatches, normalizeBarcode } from "@/lib/barcodes";
 import { displayBusinessDate, isSameBusinessDay } from "@/lib/reporting";
+import { useNavigate } from "react-router-dom";
 
 interface SaleLineItem {
   productId: string;
@@ -38,6 +39,7 @@ function createSaleIntegrationId() {
 }
 
 const Sales = () => {
+  const navigate = useNavigate();
   const { sales, deleteSale, profile, products, customers, addSale } = useStore();
   const { refreshUser } = useAuth();
   const { canUse } = useFeatureAccess();
@@ -100,6 +102,16 @@ const Sales = () => {
   const filtered = sales.filter(s => String(s.items || "").toLowerCase().includes(search.toLowerCase()));
   const todayTotal = sales.filter(s => isSameBusinessDay(s.date)).reduce((sum, s) => sum + s.total, 0);
   const todayCount = sales.filter(s => isSameBusinessDay(s.date)).length;
+  const previousDay = new Date();
+  previousDay.setDate(previousDay.getDate() - 1);
+  const previousDaySales = sales.filter(s => isSameBusinessDay(s.date, previousDay));
+  const previousDayTotal = previousDaySales.reduce((sum, s) => sum + s.total, 0);
+  const salesChangeLabel = previousDayTotal > 0
+    ? `${Math.round(((todayTotal - previousDayTotal) / previousDayTotal) * 100)}% vs yesterday`
+    : todayTotal > 0 ? "No prior-day baseline" : "No sales recorded today";
+  const transactionChangeLabel = previousDaySales.length > 0
+    ? `${todayCount - previousDaySales.length >= 0 ? "+" : ""}${todayCount - previousDaySales.length} vs yesterday`
+    : todayCount > 0 ? "No prior-day baseline" : "No transactions today";
   const saleTotal = lineItems.reduce((sum, l) => sum + l.quantity * l.unitPrice, 0);
   const alternateCurrency = SHOW_SPLIT_PAYMENT
     ? paymentCurrency === baseCurrency ? secondaryCurrency : baseCurrency
@@ -429,15 +441,18 @@ const Sales = () => {
     <div className="space-y-6">
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         {[
-          { label: "Today's Sales", value: `${sym}${todayTotal.toLocaleString()}`, change: "+12%" },
-          { label: "Transactions", value: String(todayCount), change: `+${todayCount}` },
-          { label: "Avg. Transaction", value: `${sym}${todayCount > 0 ? Math.round(todayTotal / todayCount) : 0}`, change: "+5%" },
+          { label: "Today's Sales", value: `${sym}${todayTotal.toLocaleString()}`, change: salesChangeLabel, trend: previousDayTotal === 0 ? "neutral" : todayTotal >= previousDayTotal ? "positive" : "negative" },
+          { label: "Transactions", value: String(todayCount), change: transactionChangeLabel, trend: previousDaySales.length === 0 ? "neutral" : todayCount >= previousDaySales.length ? "positive" : "negative" },
+          { label: "Avg. Transaction", value: `${sym}${todayCount > 0 ? Math.round(todayTotal / todayCount) : 0}`, change: "Today's average", trend: "neutral" },
         ].map((m) => (
           <Card key={m.label} className="shadow-soft">
             <CardContent className="p-4">
               <p className="text-xs text-muted-foreground">{m.label}</p>
               <p className="text-xl font-display font-bold mt-1">{m.value}</p>
-              <span className="text-xs text-success flex items-center gap-0.5 mt-1"><ArrowUpRight className="h-3 w-3" /> {m.change}</span>
+              <span className={`text-xs flex items-center gap-0.5 mt-1 ${m.trend === "positive" ? "text-success" : m.trend === "negative" ? "text-destructive" : "text-muted-foreground"}`}>
+                {m.trend === "positive" ? <ArrowUpRight className="h-3 w-3" /> : m.trend === "negative" ? <ArrowDownRight className="h-3 w-3" /> : null}
+                {m.change}
+              </span>
             </CardContent>
           </Card>
         ))}
@@ -467,7 +482,13 @@ const Sales = () => {
       </div>
 
       {filtered.length === 0 ? (
-        <EmptyState icon={ShoppingCart} title="No sales yet" description="Record your first sale to see it here" actionLabel="Record Sale" onAction={() => setAddOpen(true)} />
+        <EmptyState
+          icon={ShoppingCart}
+          title="No sales yet"
+          description={products.length === 0 ? "Add your first product before recording a sale. Your stock and prices will be ready to select here." : "Choose a product, add the quantity and record your first sale."}
+          actionLabel={products.length === 0 ? "Add Your First Product" : "Record Sale"}
+          onAction={() => products.length === 0 ? navigate("/inventory") : setAddOpen(true)}
+        />
       ) : (
         <Card className="shadow-soft">
           <CardHeader className="pb-2"><CardTitle className="text-base font-display">Transactions</CardTitle></CardHeader>
@@ -508,6 +529,27 @@ const Sales = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            {products.some((product) => product.stock > 0) ? (
+              <div>
+                <Label>Quick add a product</Label>
+                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {products.filter((product) => product.stock > 0).slice(0, 6).map((product) => (
+                    <Button
+                      key={product.id}
+                      type="button"
+                      variant="outline"
+                      className="h-auto min-h-14 justify-between gap-2 whitespace-normal px-3 py-2 text-left"
+                      onClick={() => {
+                        if (addProductToSale(product.id)) toast.success(`${product.name} added to this sale`);
+                      }}
+                    >
+                      <span className="min-w-0 truncate">{product.name}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{sym}{Number(product.price).toLocaleString()}</span>
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <div className="space-y-2">
               <Label>Barcode</Label>
               <div className="flex gap-2">

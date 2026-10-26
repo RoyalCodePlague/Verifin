@@ -3,6 +3,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
+from core.models import ProductEvent
 
 User = get_user_model()
 
@@ -31,6 +32,7 @@ class AccountAuthTests(TestCase):
         self.assertFalse(user.is_active)
         self.assertFalse(user.email_verified)
         self.assertTrue(user.email_verification_pending)
+        self.assertTrue(ProductEvent.objects.filter(user=user, event="signup_completed").exists())
 
     def test_unverified_email_blocks_login(self):
         User.objects.create_user(

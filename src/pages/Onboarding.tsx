@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { createProductApi, ensureInventoryCategoryId, patchMe } from "@/lib/api";
@@ -107,6 +107,37 @@ interface QuickProduct {
   category: string;
 }
 
+interface OnboardingProgress {
+  step: number;
+  bizName: string;
+  businessType: BusinessType;
+  goals: SetupGoal[];
+  currency: string;
+  categories: string[];
+  quickProducts: QuickProduct[];
+}
+
+function loadOnboardingProgress(userId: number | undefined): OnboardingProgress | null {
+  if (!userId) return null;
+  try {
+    const value = localStorage.getItem(`verifin:onboarding:${userId}`);
+    if (!value) return null;
+    const parsed = JSON.parse(value) as Partial<OnboardingProgress>;
+    const validStep = Number.isInteger(parsed.step) && parsed.step! >= 0 && parsed.step! < steps.length;
+    const validBusinessType = businessTypes.some((type) => type.id === parsed.businessType);
+    const validGoals = Array.isArray(parsed.goals) && parsed.goals.every((goal) => setupGoals.some((item) => item.id === goal));
+    const validCurrency = currencies.some((item) => item.code === parsed.currency);
+    const validCategories = Array.isArray(parsed.categories) && parsed.categories.every((category) => typeof category === "string");
+    const validProducts = Array.isArray(parsed.quickProducts) && parsed.quickProducts.every((product) =>
+      product && ["name", "price", "stock", "category"].every((field) => typeof product[field as keyof QuickProduct] === "string")
+    );
+    if (!validStep || typeof parsed.bizName !== "string" || !validBusinessType || !validGoals || !validCurrency || !validCategories || !validProducts) return null;
+    return parsed as OnboardingProgress;
+  } catch {
+    return null;
+  }
+}
+
 function starterProductsFor(type: BusinessType, categories: string[]): QuickProduct[] {
   const business = businessTypes.find((item) => item.id === type) || businessTypes[0];
   const defaultCategory = categories[0] || business.categories[0] || "General";
@@ -121,16 +152,19 @@ function starterProductsFor(type: BusinessType, categories: string[]): QuickProd
 const Onboarding = () => {
   const navigate = useNavigate();
   const { setProfile, profile } = useStore();
-  const { refreshUser } = useAuth();
-  const [step, setStep] = useState(0);
+  const { refreshUser, user } = useAuth();
+  const progressKey = user ? `verifin:onboarding:${user.id}` : null;
+  const progressSaveFailed = useRef(false);
+  const [savedProgress] = useState(() => loadOnboardingProgress(user?.id));
+  const [step, setStep] = useState(savedProgress?.step ?? 0);
   const [saving, setSaving] = useState(false);
-  const [bizName, setBizName] = useState("");
-  const [businessType, setBusinessType] = useState<BusinessType>("retail");
-  const [goals, setGoals] = useState<SetupGoal[]>(["sales", "stock"]);
-  const [currency, setCurrency] = useState(() => getRegionalCurrencyDefaults().baseCurrency);
-  const [categories, setCategories] = useState<string[]>(businessTypes[0].categories);
+  const [bizName, setBizName] = useState(savedProgress?.bizName ?? "");
+  const [businessType, setBusinessType] = useState<BusinessType>(savedProgress?.businessType ?? "retail");
+  const [goals, setGoals] = useState<SetupGoal[]>(savedProgress?.goals ?? ["sales", "stock"]);
+  const [currency, setCurrency] = useState(savedProgress?.currency ?? getRegionalCurrencyDefaults().baseCurrency);
+  const [categories, setCategories] = useState<string[]>(savedProgress?.categories ?? businessTypes[0].categories);
   const [newCategory, setNewCategory] = useState("");
-  const [quickProducts, setQuickProducts] = useState<QuickProduct[]>(() => starterProductsFor("retail", businessTypes[0].categories));
+  const [quickProducts, setQuickProducts] = useState<QuickProduct[]>(savedProgress?.quickProducts ?? starterProductsFor("retail", businessTypes[0].categories));
   const [showSkipWarning, setShowSkipWarning] = useState(false);
 
   const currencyObj = currencies.find((item) => item.code === currency) || currencies[0];
@@ -161,6 +195,27 @@ const Onboarding = () => {
     })));
   }, []);
 
+  useEffect(() => {
+    if (!progressKey) return;
+    try {
+      localStorage.setItem(progressKey, JSON.stringify({
+        step,
+        bizName,
+        businessType,
+        goals,
+        currency,
+        categories,
+        quickProducts,
+      } satisfies OnboardingProgress));
+      progressSaveFailed.current = false;
+    } catch (error) {
+      if (!progressSaveFailed.current) {
+        toast.error(error instanceof Error ? `Could not save onboarding progress: ${error.message}` : "Could not save onboarding progress on this device.");
+        progressSaveFailed.current = true;
+      }
+    }
+  }, [bizName, businessType, categories, currency, goals, progressKey, quickProducts, step]);
+
   const toggleGoal = (goal: SetupGoal) => {
     setGoals((current) => current.includes(goal) ? current.filter((item) => item !== goal) : [...current, goal]);
   };
@@ -184,7 +239,6 @@ const Onboarding = () => {
         business_name: bizName || "My Business",
         currency,
         currency_symbol: currencyObj.symbol,
-        onboarding_complete: true,
       });
 
       const categoryPairs = await Promise.all(
@@ -208,6 +262,7 @@ const Onboarding = () => {
         })
       )));
 
+      await patchMe({ onboarding_complete: true });
       setProfile({
         ...profile,
         name: bizName || "My Business",
@@ -217,6 +272,7 @@ const Onboarding = () => {
         onboardingComplete: true,
       });
       await refreshUser();
+      if (progressKey) localStorage.removeItem(progressKey);
       toast.success("Your workspace is ready");
       navigate("/dashboard");
     } catch (e) {
@@ -233,6 +289,7 @@ const Onboarding = () => {
       await patchMe({ onboarding_complete: true });
       setProfile({ ...profile, onboardingComplete: true });
       await refreshUser();
+      if (progressKey) localStorage.removeItem(progressKey);
       navigate("/dashboard");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not update profile");
