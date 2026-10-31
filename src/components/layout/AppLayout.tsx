@@ -109,10 +109,17 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
     };
 
     const cleanup = setupOfflineSync(async () => syncQueuedActions(true));
-    if (navigator.onLine) {
-      window.setTimeout(() => void syncQueuedActions(false), 1500);
-    }
-    return cleanup;
+    const startupSync = navigator.onLine
+      ? window.setTimeout(() => void syncQueuedActions(false), 1500)
+      : undefined;
+    const retryInterval = window.setInterval(() => {
+      if (getOfflineQueue().length > 0) void syncQueuedActions(false);
+    }, 15000);
+    return () => {
+      cleanup();
+      if (startupSync !== undefined) window.clearTimeout(startupSync);
+      window.clearInterval(retryInterval);
+    };
   }, [refreshUser]);
   const handleLogout = async () => {
     await logout();

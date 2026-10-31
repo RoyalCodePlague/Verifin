@@ -1,8 +1,10 @@
 import type { Product, SupplyEntry } from "@/lib/store";
+import { markNetworkAvailable, markNetworkUnavailable } from "@/lib/offlineQueue";
 
 const ACCESS_KEY = "sp_access_token";
 const REFRESH_KEY = "sp_refresh_token";
 const AUTH_EXPIRED_EVENT = "verifin:auth-expired";
+const API_REQUEST_TIMEOUT_MS = 12000;
 
 export const apiBase = () => (import.meta.env.VITE_API_URL as string | undefined)?.trim() ?? "";
 
@@ -42,10 +44,34 @@ export function onAuthExpired(handler: () => void) {
   return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handler);
 }
 
+async function fetchWithTimeout(url: string, options: RequestInit) {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, API_REQUEST_TIMEOUT_MS);
+  const abortFromCaller = () => controller.abort(options.signal?.reason);
+  if (options.signal?.aborted) abortFromCaller();
+  else options.signal?.addEventListener("abort", abortFromCaller, { once: true });
+
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    markNetworkAvailable();
+    return response;
+  } catch (error) {
+    if (timedOut || error instanceof TypeError) markNetworkUnavailable();
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    options.signal?.removeEventListener("abort", abortFromCaller);
+  }
+}
+
 async function refreshAccessToken(): Promise<string | null> {
   const refresh = getRefreshToken();
   if (!refresh) return null;
-  const res = await fetch(apiUrl("/api/v1/accounts/token/refresh/"), {
+  const res = await fetchWithTimeout(apiUrl("/api/v1/accounts/token/refresh/"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ refresh }),
@@ -99,7 +125,7 @@ export async function apiFetch<T = unknown>(
   const doFetch = async (token: string | null) => {
     const h = new Headers(headers);
     if (token) h.set("Authorization", `Bearer ${token}`);
-    return fetch(apiUrl(path), { ...options, headers: h });
+    return fetchWithTimeout(apiUrl(path), { ...options, headers: h });
   };
 
   let res = await doFetch(access);

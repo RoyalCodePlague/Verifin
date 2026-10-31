@@ -410,7 +410,7 @@ const Inventory = () => {
   };
 
   const formDialog = (
-    <DialogContent>
+    <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
       <DialogHeader>
         <DialogTitle className="font-display">{editProduct ? "Edit Product" : "Add Product"}</DialogTitle>
         <DialogDescription>

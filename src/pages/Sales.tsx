@@ -521,7 +521,7 @@ const Sales = () => {
       )}
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
           <DialogHeader>
             <DialogTitle className="font-display">Record Sale</DialogTitle>
             <DialogDescription>
@@ -537,11 +537,9 @@ const Sales = () => {
                     <Button
                       key={product.id}
                       type="button"
-                      variant="outline"
+                      variant={selectedProduct === product.id ? "default" : "outline"}
                       className="h-auto min-h-14 justify-between gap-2 whitespace-normal px-3 py-2 text-left"
-                      onClick={() => {
-                        if (addProductToSale(product.id)) toast.success(`${product.name} added to this sale`);
-                      }}
+                      onClick={() => setSelectedProduct(product.id)}
                     >
                       <span className="min-w-0 truncate">{product.name}</span>
                       <span className="shrink-0 text-xs text-muted-foreground">{sym}{Number(product.price).toLocaleString()}</span>

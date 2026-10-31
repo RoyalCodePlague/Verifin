@@ -4,6 +4,7 @@ const SESSION_KEY = "sp_offline_logged_in";
 const AUTHENTICATED_SESSION_KEY = "sp_offline_authenticated";
 const DASHBOARD_SESSION_KEY = "sp_offline_dashboard_session";
 const OFFLINE_ACCESS_ENABLED_KEY = "sp_offline_access_enabled";
+const NETWORK_UNAVAILABLE_KEY = "sp_network_unavailable";
 const ACCESS_KEY = "sp_access_token";
 const CACHED_USER_KEY = "sp_cached_user";
 export const LAST_SUCCESSFUL_SYNC_KEY = "sp_last_successful_sync_at";
@@ -135,7 +136,15 @@ export function canQueueOfflineAction() {
 }
 
 export function isOnline(): boolean {
-  return navigator.onLine;
+  return navigator.onLine && localStorage.getItem(NETWORK_UNAVAILABLE_KEY) !== "1";
+}
+
+export function markNetworkUnavailable() {
+  localStorage.setItem(NETWORK_UNAVAILABLE_KEY, "1");
+}
+
+export function markNetworkAvailable() {
+  localStorage.removeItem(NETWORK_UNAVAILABLE_KEY);
 }
 
 export function isOfflineAccessEnabled(): boolean {

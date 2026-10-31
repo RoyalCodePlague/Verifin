@@ -7,6 +7,8 @@ import {
   hasQueuedProductCreate,
   markDashboardOfflineSession,
   markAuthenticatedOfflineSession,
+  markNetworkAvailable,
+  markNetworkUnavailable,
   removeQueuedProductCreate,
   setOfflineAccessEnabled,
   setupOfflineSync,
@@ -82,6 +84,21 @@ describe("offline queue", () => {
 
     markAuthenticatedOfflineSession();
 
+    expect(canQueueOfflineAction()).toBe(false);
+  });
+
+  it("allows offline queueing after a network failure while the browser reports online", () => {
+    setOfflineAccessEnabled(true);
+    localStorage.setItem("sp_access_token", "token");
+    localStorage.setItem("sp_cached_user", JSON.stringify({ id: 1 }));
+    markAuthenticatedOfflineSession();
+    markDashboardOfflineSession();
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
+
+    markNetworkUnavailable();
+    expect(canQueueOfflineAction()).toBe(true);
+
+    markNetworkAvailable();
     expect(canQueueOfflineAction()).toBe(false);
   });
 });
