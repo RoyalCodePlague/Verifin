@@ -134,10 +134,10 @@ class PurchaseOrder(TimeStampedSoftDeleteModel):
         unique_together = ("user", "order_number")
 
     def save(self, *args, **kwargs):
-        if not self.order_number:
-            count = PurchaseOrder.objects.filter(user=self.user).count() + 1
-            self.order_number = f"PO-{count:05d}"
         super().save(*args, **kwargs)
+        if not self.order_number:
+            self.order_number = f"PO-{self.pk:05d}"
+            PurchaseOrder.objects.filter(pk=self.pk).update(order_number=self.order_number)
 
 
 class PurchaseOrderItem(TimeStampedSoftDeleteModel):

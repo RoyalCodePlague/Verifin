@@ -18,7 +18,7 @@ import { symbolForCurrency } from "@/lib/currency";
 import { useFeatureAccess, useUpgradePrompt } from "@/lib/features";
 import { barcodeMatches, normalizeBarcode } from "@/lib/barcodes";
 import { displayBusinessDate, isSameBusinessDay } from "@/lib/reporting";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 interface SaleLineItem {
   productId: string;
@@ -40,6 +40,7 @@ function createSaleIntegrationId() {
 
 const Sales = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { sales, deleteSale, profile, products, customers, addSale } = useStore();
   const { refreshUser } = useAuth();
   const { canUse } = useFeatureAccess();
@@ -53,6 +54,7 @@ const Sales = () => {
   const [receiptText, setReceiptText] = useState("");
   const [receiptSaleId, setReceiptSaleId] = useState<string | null>(null);
   const [receiptPhone, setReceiptPhone] = useState("");
+  const [firstSalePrompt, setFirstSalePrompt] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [till, setTill] = useState<ApiTillSession | null>(null);
   const [tillForm, setTillForm] = useState({ cashier: "", openingCash: "0", closingCash: "" });
@@ -98,6 +100,21 @@ const Sales = () => {
     }, 50);
     return () => window.clearTimeout(timeout);
   }, [addOpen]);
+
+  useEffect(() => {
+    if (searchParams.get("action") !== "add") return;
+    if (!products.some((product) => product.stock > 0 && product.price > 0)) {
+      toast.info("Add a product with opening stock and a selling price before recording a sale.");
+      navigate("/inventory?action=add&onboarding=first-product", { replace: true });
+      return;
+    }
+    setAddOpen(true);
+    setFirstSalePrompt(searchParams.get("onboarding") === "first-sale");
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("action");
+    nextParams.delete("onboarding");
+    setSearchParams(nextParams, { replace: true });
+  }, [navigate, products, searchParams, setSearchParams]);
 
   const filtered = sales.filter(s => String(s.items || "").toLowerCase().includes(search.toLowerCase()));
   const todayTotal = sales.filter(s => isSameBusinessDay(s.date)).reduce((sum, s) => sum + s.total, 0);
@@ -326,7 +343,10 @@ const Sales = () => {
       createOfflineSale();
       addToOfflineQueue({ type: "sale", payload: offlinePayload });
       saleIntegrationIdRef.current = null;
-      toast.success("Sale saved locally while offline. It will sync automatically when you are back online.");
+      toast.success(firstSalePrompt
+        ? "First sale saved locally. It will sync automatically when you are back online."
+        : "Sale saved locally while offline. It will sync automatically when you are back online.");
+      setFirstSalePrompt(false);
       setLineItems([]);
       setBarcodeInput("");
       setSelectedProduct("");
@@ -340,16 +360,6 @@ const Sales = () => {
 
     try {
       await createSaleApi(apiPayload);
-      saleIntegrationIdRef.current = null;
-      toast.success("Sale recorded");
-      setLineItems([]);
-      setBarcodeInput("");
-      setSelectedProduct("");
-      setSelectedCustomerId("");
-      setQty("1");
-      resetPaymentForm();
-      setAddOpen(false);
-      await refreshUser();
     } catch (e) {
       if (canQueueOfflineAction()) {
         createOfflineSale();
@@ -358,6 +368,27 @@ const Sales = () => {
       } else {
         toast.error(e instanceof Error ? e.message : "Could not record sale");
       }
+      setSaving(false);
+      return;
+    }
+
+    saleIntegrationIdRef.current = null;
+    toast.success(firstSalePrompt ? "Your first sale is recorded. You’re ready for daily sales." : "Sale recorded");
+    setFirstSalePrompt(false);
+    setLineItems([]);
+    setBarcodeInput("");
+    setSelectedProduct("");
+    setSelectedCustomerId("");
+    setQty("1");
+    resetPaymentForm();
+    setAddOpen(false);
+
+    try {
+      await refreshUser();
+    } catch (error) {
+      toast.error(error instanceof Error
+        ? `Sale recorded, but the latest data could not be refreshed: ${error.message}`
+        : "Sale recorded, but the latest data could not be refreshed. Reload the page.");
     } finally {
       setSaving(false);
     }
@@ -522,12 +553,14 @@ const Sales = () => {
         </Card>
       )}
 
-      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+      <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) setFirstSalePrompt(false); }}>
         <DialogContent className="max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
           <DialogHeader>
             <DialogTitle className="font-display">Record Sale</DialogTitle>
             <DialogDescription>
-              Add products, choose payment currency, and save the sale total in your base currency.
+              {firstSalePrompt
+                ? "You’re ready for your first sale. Choose a product, enter the quantity, and save."
+                : "Add products, choose payment currency, and save the sale total in your base currency."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">

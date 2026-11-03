@@ -4,7 +4,7 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 from customers.models import Customer, LoyaltyTransaction
 from inventory.models import Product, StockMovement
-from django.db.models import Sum
+from django.db.models import Prefetch, Sum
 from django.db.models.functions import TruncDay, TruncMonth, TruncWeek
 from urllib.parse import quote
 from rest_framework import viewsets
@@ -65,7 +65,12 @@ class SaleViewSet(viewsets.ModelViewSet):
     filterset_fields = ["payment_method", "customer"]
 
     def get_queryset(self):
-        return Sale.objects.filter(created_by=self.request.user, is_deleted=False)
+        sale_items = SaleItem.objects.filter(is_deleted=False).select_related("product")
+        return (
+            Sale.objects.filter(created_by=self.request.user, is_deleted=False)
+            .select_related("branch", "customer", "till_session")
+            .prefetch_related(Prefetch("sale_items", queryset=sale_items))
+        )
 
     def get_serializer_context(self):
         context = super().get_serializer_context()

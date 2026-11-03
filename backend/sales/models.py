@@ -30,13 +30,16 @@ class Sale(TimeStampedSoftDeleteModel):
         ]
 
     def save(self, *args, **kwargs):
-        if not self.receipt_number and self.created_by_id:
-            count = Sale.objects.filter(created_by=self.created_by).count() + 1
-            self.receipt_number = f"R-{count:06d}"
-        if not self.invoice_number and self.customer_id:
-            count = Sale.objects.filter(created_by=self.created_by, customer__isnull=False).count() + 1
-            self.invoice_number = f"INV-{count:06d}"
         super().save(*args, **kwargs)
+        generated_fields = {}
+        if not self.receipt_number and self.created_by_id:
+            self.receipt_number = f"R-{self.pk:06d}"
+            generated_fields["receipt_number"] = self.receipt_number
+        if not self.invoice_number and self.customer_id:
+            self.invoice_number = f"INV-{self.pk:06d}"
+            generated_fields["invoice_number"] = self.invoice_number
+        if generated_fields:
+            Sale.objects.filter(pk=self.pk).update(**generated_fields)
 
 
 class SaleItem(TimeStampedSoftDeleteModel):

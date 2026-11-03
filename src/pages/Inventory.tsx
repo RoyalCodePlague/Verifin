@@ -69,6 +69,7 @@ const Inventory = () => {
   const [category, setCategory] = useState("All");
   const [addOpen, setAddOpen] = useState(false);
   const [editProduct, setEditProduct] = useState<string | null>(null);
+  const [firstProductPrompt, setFirstProductPrompt] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
   const [form, setForm] = useState({ name: "", category: "", branchId: "", supplierId: "", stock: "", reorder: "", costPrice: "", price: "", barcode: "" });
@@ -192,6 +193,21 @@ const Inventory = () => {
     setAddOpen(true);
   };
 
+  useEffect(() => {
+    const addAction = searchParams.get("action") === "add";
+    const onboardingProduct = searchParams.get("onboarding") === "first-product";
+    if (!addAction && !onboardingProduct) return;
+    if (onboardingProduct) setFirstProductPrompt(true);
+    if (addAction) {
+      setForm({ name: "", category: profile.categories[0] || allCategories[0], branchId: "", supplierId: "", stock: "", reorder: "5", costPrice: "", price: "", barcode: "" });
+      setAddOpen(true);
+    }
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("action");
+    nextParams.delete("onboarding");
+    setSearchParams(nextParams, { replace: true });
+  }, [profile.categories, searchParams, setSearchParams]);
+
   const openEdit = (id: string) => {
     const p = products.find(x => x.id === id);
     if (!p) return;
@@ -291,6 +307,10 @@ const Inventory = () => {
 
     if (canQueueOfflineAction()) {
       saveOffline();
+      if (firstProductPrompt) {
+        setFirstProductPrompt(false);
+        toast.info("Sync this product before recording your first sale.");
+      }
       setSaving(false);
       return;
     }
@@ -326,7 +346,17 @@ const Inventory = () => {
         upsertProduct(mapProductResponse(created));
         setAddOpen(false);
         addActivity({ text: `Added product: ${form.name}`, time: "Just now", type: "restock" });
-        toast.success("Product added!");
+        if (firstProductPrompt && stock > 0 && price > 0) {
+          setFirstProductPrompt(false);
+          toast.success("First product added. Let’s record your first sale.");
+          navigate("/sales?action=add&onboarding=first-sale");
+        } else {
+          toast.success("Product added!");
+          if (firstProductPrompt && stock <= 0) {
+            setFirstProductPrompt(false);
+            toast.info("Add opening stock before recording a sale.");
+          }
+        }
       }
     } catch (e) {
       if (canQueueOfflineAction()) {
@@ -414,7 +444,9 @@ const Inventory = () => {
       <DialogHeader>
         <DialogTitle className="font-display">{editProduct ? "Edit Product" : "Add Product"}</DialogTitle>
         <DialogDescription>
-          Save stock levels, reorder points, and base cost for this product.
+          {firstProductPrompt
+            ? "Add one product with its selling price and opening stock. Then we’ll guide you through your first sale."
+            : "Save stock levels, reorder points, and base cost for this product."}
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-3">

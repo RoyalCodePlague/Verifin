@@ -136,6 +136,36 @@ function buildRollingWeek(reference = new Date()) {
   return { start, end, labels };
 }
 
+export function getBestSellingProduct(sales: Sale[], reference = new Date()): string {
+  const end = startOfDay(reference);
+  const start = addDays(end, -6);
+  const quantities = new Map<string, number>();
+
+  for (const sale of sales) {
+    const date = parseBusinessDate(sale.date);
+    if (!date) continue;
+    const saleDay = startOfDay(date);
+    if (saleDay < start || saleDay > end) continue;
+
+    const items = sale.saleItems?.length
+      ? sale.saleItems.map((item) => ({ name: item.productName, quantity: item.quantity }))
+      : sale.items.split(",").map((label) => {
+          const parsed = label.trim().match(/^(\d+)\s*x?\s*(.+)$/i);
+          return parsed
+            ? { name: parsed[2].trim(), quantity: Number(parsed[1]) }
+            : { name: label.trim(), quantity: 1 };
+        });
+
+    for (const item of items) {
+      if (item.name && Number.isFinite(item.quantity) && item.quantity > 0) {
+        quantities.set(item.name, (quantities.get(item.name) || 0) + item.quantity);
+      }
+    }
+  }
+
+  return [...quantities.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
+}
+
 export function buildWeeklyFinanceData(
   sales: Sale[],
   expenses: Expense[],

@@ -21,6 +21,7 @@ import {
   formatCompactMoney,
   formatDashboardMoney,
   formatMoney,
+  getBestSellingProduct,
   parseBusinessDate,
   supplyInvoiceAmountBase,
   type FinancePeriod,
@@ -94,6 +95,10 @@ const Dashboard = () => {
   const inventoryValue = products.reduce((sum, p) => sum + p.stock * p.costPrice, 0);
   const lowStockCount = products.filter(p => p.status === "low" || p.status === "out").length;
   const todayExpenses = effectiveExpenses.filter((expense) => isSameCalendarDay(expense.date, new Date())).reduce((sum, e) => sum + expenseBaseAmount(e), 0);
+  const todayGrossProfit = sales
+    .filter((sale) => isSameCalendarDay(sale.date, new Date()))
+    .reduce((sum, sale) => sum + (sale.grossProfit ?? 0), 0);
+  const todayEstimatedNetProfit = todayGrossProfit - todayExpenses;
 
   const displayName = profile.name || "there";
 
@@ -149,35 +154,22 @@ const Dashboard = () => {
   const metrics = [
     { label: "Today's Sales", value: formatDashboardMoney(todayTotal, sym), secondaryValue: formatSecondaryMoney(todayTotal), change: changeLabel(salesChange, todayTotal, yesterdayTotal), up: changeTrendUp(salesChange, todayTotal, yesterdayTotal), icon: ShoppingCart },
     { label: "Paid Supply Today", value: formatDashboardMoney(todayPaidSupply, sym), secondaryValue: formatSecondaryMoney(todayPaidSupply), change: changeLabel(supplyRevenueChange, todayPaidSupply, yesterdayPaidSupply), up: changeTrendUp(supplyRevenueChange, todayPaidSupply, yesterdayPaidSupply), icon: TrendingUp },
-    { label: "This Week", value: formatDashboardMoney(weeklySalesTotal, sym), secondaryValue: formatSecondaryMoney(weeklySalesTotal), change: `${weeklySalesTotal >= todayTotal ? 'Up' : 'Down'}`, up: weeklySalesTotal >= todayTotal, icon: TrendingUp },
+    { label: "Sales (last 7 days)", value: formatDashboardMoney(weeklySalesTotal, sym), secondaryValue: formatSecondaryMoney(weeklySalesTotal), change: "Rolling 7 days", up: true, icon: TrendingUp },
     { label: "Inventory Value", value: formatDashboardMoney(inventoryValue, sym), secondaryValue: formatSecondaryMoney(inventoryValue), change: `${lowStockCount} low`, up: lowStockCount === 0, icon: Package },
     { label: "Open Supply Invoices", value: formatDashboardMoney(openSupplyInvoiceValue, sym), secondaryValue: outstandingSupplyCount > 0 ? `${outstandingSupplyCount} open` : null, change: outstandingSupplyCount > 0 ? `${outstandingSupplyCount} pending` : "0 pending", up: outstandingSupplyCount === 0, icon: Receipt },
-    { label: "Low Stock Items", value: String(lowStockCount), secondaryValue: null, change: `${lowStockCount}`, up: false, icon: AlertTriangle },
+    { label: "Low Stock Items", value: String(lowStockCount), secondaryValue: null, change: `${lowStockCount}`, up: lowStockCount === 0, icon: AlertTriangle },
     ...(canAccessExpenses ? [{ label: "Today's Expenses", value: formatDashboardMoney(todayExpenses, sym), secondaryValue: formatSecondaryMoney(todayExpenses), change: changeLabel(expensesChange, todayExpenses, yesterdayExpenses), up: expensesChange == null ? todayExpenses <= yesterdayExpenses : expensesChange <= 0, icon: Receipt }] : []),
+    ...(canAccessExpenses ? [{ label: "Est. Net Profit Today", value: formatDashboardMoney(todayEstimatedNetProfit, sym), secondaryValue: null, change: "Gross profit less recorded expenses", up: todayEstimatedNetProfit >= 0, icon: WalletCards }] : []),
   ];
 
-  const topProduct = useMemo(() => {
-    const salesCount: Record<string, number> = {};
-    sales.forEach((sale) => {
-      sale.items.split(",").forEach((item) => {
-        const trimmed = item.trim();
-        if (!trimmed) return;
-        const parsed = trimmed.match(/^(\d+)\s*(.+)$/);
-        const qty = parsed ? Number(parsed[1]) : 1;
-        const name = parsed ? parsed[2].trim() : trimmed;
-        if (!name) return;
-        salesCount[name] = (salesCount[name] || 0) + qty;
-      });
-    });
-    return Object.entries(salesCount).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
-  }, [sales]);
+  const topProduct = useMemo(() => getBestSellingProduct(sales), [sales]);
 
   const expenseAlert = todayExpenses > todayTotal * 0.5 ? `Expenses are running high today at ${formatMoney(todayExpenses, sym)}` : null;
 
   const quickActions = [
-    { label: "Record Sale", icon: ShoppingCart, color: "bg-primary/10 text-primary", to: "/sales" },
+    { label: "Record Sale", icon: ShoppingCart, color: "bg-primary/10 text-primary", to: "/sales?action=add" },
     ...(canAccessExpenses ? [{ label: "Add Expense", icon: Receipt, color: "bg-accent/10 text-accent", to: "/expenses" }] : []),
-    { label: "Restock", icon: Plus, color: "bg-success/10 text-success", to: "/inventory" },
+    { label: "Add Product", icon: Plus, color: "bg-success/10 text-success", to: "/inventory?action=add" },
     { label: "Scan Product", icon: ScanBarcode, color: "bg-primary/10 text-primary", to: "/inventory", feature: "barcode_scanning" },
     { label: "Run Audit", icon: ClipboardCheck, color: "bg-warning/10 text-warning", to: "/audits", feature: "audits" },
     { label: "Help", icon: HelpCircle, color: "bg-muted text-muted-foreground", to: "/help-dashboard" },

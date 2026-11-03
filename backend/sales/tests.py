@@ -170,3 +170,17 @@ class PosApiIntegrationTests(TestCase):
         self.assertEqual(summary.data["open_till"]["id"], opened.data["id"])
         self.assertEqual(closed.status_code, 200, closed.data)
         self.assertEqual(closed.data["status"], "closed")
+
+
+class SaleNumberingTests(TestCase):
+    def test_receipt_numbers_use_the_sale_primary_key_without_counting_history(self):
+        user = get_user_model().objects.create_user(
+            username="number-owner", email="number@example.com", password="test-pass-123",
+        )
+
+        first = Sale.objects.create(created_by=user)
+        second = Sale.objects.create(created_by=user)
+
+        self.assertEqual(first.receipt_number, f"R-{first.pk:06d}")
+        self.assertEqual(second.receipt_number, f"R-{second.pk:06d}")
+        self.assertNotEqual(first.receipt_number, second.receipt_number)

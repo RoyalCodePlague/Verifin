@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { createProductApi, ensureInventoryCategoryId, patchMe } from "@/lib/api";
+import { createProductApi, ensureInventoryCategoryId, fetchAllPages, mapProductResponse, patchMe, type ApiProduct } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -151,7 +151,7 @@ function starterProductsFor(type: BusinessType, categories: string[]): QuickProd
 
 const Onboarding = () => {
   const navigate = useNavigate();
-  const { setProfile, profile } = useStore();
+  const { setProfile, profile, products, sales, upsertProduct } = useStore();
   const { refreshUser, user } = useAuth();
   const progressKey = user ? `verifin:onboarding:${user.id}` : null;
   const progressSaveFailed = useRef(false);
@@ -248,19 +248,42 @@ const Onboarding = () => {
       const productsToCreate = quickProducts
         .map((product, index) => ({ ...product, originalIndex: index }))
         .filter((product) => product.name.trim() && (product.price.trim() || product.stock.trim()));
+      const hasSaleableProduct = products.some((product) => product.stock > 0 && product.price > 0)
+        || productsToCreate.some((product) => toNumberOrZero(product.stock) > 0 && toNumberOrZero(product.price) > 0);
 
-      await Promise.all(productsToCreate.map((product) => (
-        createProductApi({
-          name: product.name.trim(),
-          sku: `PRD${String(product.originalIndex + 100).padStart(3, "0")}`,
-          categoryName: product.category,
-          categoryId: categoryIdByName.get(product.category.toLowerCase()),
-          stock: toNumberOrZero(product.stock),
-          reorder_level: 5,
-          cost_price: 0,
-          price: toNumberOrZero(product.price),
-        })
-      )));
+      for (const product of productsToCreate) {
+        const sku = `ONB-${user?.id ?? "0"}-${String(product.originalIndex + 1).padStart(3, "0")}`;
+        const existing = products.find((item) => item.sku === sku);
+        if (existing) {
+          if (existing.name.toLowerCase() !== product.name.trim().toLowerCase()) {
+            throw new Error(`The setup product code ${sku} is already used by ${existing.name}. Please contact support before retrying setup.`);
+          }
+          continue;
+        }
+
+        let created: ApiProduct;
+        try {
+          created = await createProductApi({
+            name: product.name.trim(),
+            sku,
+            categoryName: product.category,
+            categoryId: categoryIdByName.get(product.category.toLowerCase()),
+            stock: toNumberOrZero(product.stock),
+            reorder_level: 5,
+            cost_price: 0,
+            price: toNumberOrZero(product.price),
+          });
+        } catch (createError) {
+          const currentProducts = await fetchAllPages<ApiProduct>("/api/v1/inventory/products/");
+          const alreadyCreated = currentProducts.find((item) => item.sku === sku);
+          if (!alreadyCreated) throw createError;
+          if (alreadyCreated.name.toLowerCase() !== product.name.trim().toLowerCase()) {
+            throw new Error(`The setup product code ${sku} is already used by ${alreadyCreated.name}. Please contact support before retrying setup.`);
+          }
+          created = alreadyCreated;
+        }
+        upsertProduct(mapProductResponse(created));
+      }
 
       await patchMe({ onboarding_complete: true });
       setProfile({
@@ -274,7 +297,11 @@ const Onboarding = () => {
       await refreshUser();
       if (progressKey) localStorage.removeItem(progressKey);
       toast.success("Your workspace is ready");
-      navigate("/dashboard");
+      navigate(sales.length > 0
+        ? "/dashboard"
+        : hasSaleableProduct
+          ? "/sales?action=add&onboarding=first-sale"
+          : "/inventory?action=add&onboarding=first-product");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not save setup");
     } finally {
