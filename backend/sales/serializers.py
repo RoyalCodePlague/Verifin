@@ -1,9 +1,10 @@
 from django.db import transaction
+from django.db.models import F, Q, Sum
 from decimal import Decimal, InvalidOperation
 from django.utils import timezone
 from rest_framework import serializers
 from customers.models import Customer, LoyaltyTransaction
-from inventory.models import Product, StockMovement
+from inventory.models import Product, ProductBatch, StockMovement
 from core.currency import normalize_allocations, get_rate_to_base
 from .models import Sale, SaleItem, TillSession
 
@@ -160,7 +161,17 @@ class SaleSerializer(serializers.ModelSerializer):
             product = locked_products.get(product_id)
             if not product or product.user_id != sale.created_by_id or product.is_deleted:
                 raise serializers.ValidationError({"sale_items": "A product is no longer available."})
-            if product.stock < quantity:
+            batch_totals = ProductBatch.objects.filter(product=product, is_deleted=False).aggregate(
+                remaining=Sum("quantity_remaining"),
+                sellable=Sum(
+                    "quantity_remaining",
+                    filter=Q(expiry_date__isnull=True) | Q(expiry_date__gte=timezone.localdate()),
+                ),
+            )
+            tracked_quantity = batch_totals["remaining"] or 0
+            legacy_quantity = max(product.stock - tracked_quantity, 0)
+            sellable_quantity = (batch_totals["sellable"] or 0) + legacy_quantity
+            if product.stock < quantity or sellable_quantity < quantity:
                 raise serializers.ValidationError({"sale_items": f"Insufficient stock for {product.name}."})
 
         for item in items:
@@ -168,11 +179,31 @@ class SaleSerializer(serializers.ModelSerializer):
             qty = item["quantity"]
             unit_price = item["unit_price"]
             subtotal = unit_price * qty
-            unit_cost = product.cost_price
-            cost_total = unit_cost * qty
+            remaining_to_allocate = qty
+            batch_allocations = []
+            cost_total = Decimal("0")
+            batches = ProductBatch.objects.select_for_update().filter(
+                product=product,
+                is_deleted=False,
+                quantity_remaining__gt=0,
+            ).filter(
+                Q(expiry_date__isnull=True) | Q(expiry_date__gte=timezone.localdate())
+            ).order_by(F("expiry_date").asc(nulls_last=True), "received_at", "id")
+            for batch in batches:
+                allocated = min(remaining_to_allocate, batch.quantity_remaining)
+                if allocated <= 0:
+                    continue
+                batch_allocations.append((batch, allocated))
+                batch_cost = batch.unit_cost_base if batch.unit_cost_base > 0 else product.cost_price
+                cost_total += batch_cost * allocated
+                batch.quantity_remaining -= allocated
+                batch.save(update_fields=["quantity_remaining", "updated_at"])
+                remaining_to_allocate -= allocated
+                if remaining_to_allocate == 0:
+                    break
+            cost_total += product.cost_price * remaining_to_allocate
+            unit_cost = (cost_total / qty).quantize(Decimal("0.01"))
             profit = subtotal - cost_total
-            
-            # Create SaleItem without spreading item dict since it contains subtotal
             SaleItem.objects.create(
                 sale=sale,
                 product=product,
@@ -183,8 +214,23 @@ class SaleSerializer(serializers.ModelSerializer):
                 cost_total=cost_total,
                 profit=profit,
             )
-            
-            StockMovement.objects.create(product=product, quantity=qty, movement_type="out", created_by=sale.created_by, reason=sale.receipt_number)
+            for batch, allocated in batch_allocations:
+                StockMovement.objects.create(
+                    product=product,
+                    batch=batch,
+                    quantity=allocated,
+                    movement_type="out",
+                    created_by=sale.created_by,
+                    reason=sale.receipt_number,
+                )
+            if remaining_to_allocate:
+                StockMovement.objects.create(
+                    product=product,
+                    quantity=remaining_to_allocate,
+                    movement_type="out",
+                    created_by=sale.created_by,
+                    reason=sale.receipt_number,
+                )
             total += subtotal
             total_cost += cost_total
             item_labels.append(f"{qty}x {product.name}")

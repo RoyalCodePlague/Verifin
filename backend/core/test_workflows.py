@@ -3,7 +3,7 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
-from inventory.models import Product, SupplyEntry, Supplier, PurchaseOrder, PurchaseOrderItem
+from inventory.models import Product, ProductBatch, SupplyEntry, Supplier, PurchaseOrder, PurchaseOrderItem
 from sales.models import Sale
 from customers.models import Customer
 from accounts.models import Staff
@@ -102,11 +102,142 @@ class ConnectedWorkflowTests(TestCase):
         first = self.client.post("/api/v1/sync/push/", payload, format="json")
         self.assertEqual(first.status_code, 200, first.data)
         self.assertEqual(first.data["processed"], 1, first.data)
+        self.assertEqual(first.data["processed_action_ids"], ["offline-sale"])
         second = self.client.post("/api/v1/sync/push/", payload, format="json")
         self.assertEqual(second.data["processed"], 0)
+        self.assertEqual(second.data["processed_action_ids"], ["offline-sale"])
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock, 97)
         self.assertEqual(Sale.objects.get().payment_currency, "ZAR")
+
+    def test_partial_offline_sync_reports_only_successful_action_ids(self):
+        from sync.models import SyncConflict
+
+        payload = {
+            "actions": [
+                {"id": "valid-offline-sale", "type": "sale", "payload": self.sale_payload()},
+                {
+                    "id": "invalid-offline-sale",
+                    "type": "sale",
+                    "payload": {
+                        "payment_method": "Cash",
+                        "sale_items": [{"product": 999999, "quantity": 1, "unit_price": "10.00"}],
+                    },
+                },
+            ]
+        }
+
+        response = self.client.post("/api/v1/sync/push/", payload, format="json")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["processed_action_ids"], ["valid-offline-sale"])
+        self.assertEqual(len(response.data["errors"]), 1)
+        self.assertEqual(Sale.objects.count(), 1)
+        retry = self.client.post(
+            "/api/v1/sync/push/",
+            {"actions": [payload["actions"][1]]},
+            format="json",
+        )
+        self.assertEqual(len(retry.data["conflicts"]), 1)
+        self.assertEqual(SyncConflict.objects.filter(user=self.owner, action_id="invalid-offline-sale").count(), 1)
+
+    def test_sale_depletes_earliest_expiring_batches_and_reversal_restores_them(self):
+        from datetime import timedelta
+        from django.utils import timezone
+
+        self.product.stock = 7
+        self.product.save()
+        earlier = ProductBatch.objects.create(
+            product=self.product,
+            batch_number="EARLY",
+            expiry_date=timezone.localdate() + timedelta(days=4),
+            quantity_received=2,
+            quantity_remaining=2,
+            unit_cost_base=5,
+        )
+        later = ProductBatch.objects.create(
+            product=self.product,
+            batch_number="LATER",
+            expiry_date=timezone.localdate() + timedelta(days=20),
+            quantity_received=5,
+            quantity_remaining=5,
+            unit_cost_base=3,
+        )
+
+        response = self.client.post(
+            "/api/v1/sales/",
+            {**self.sale_payload(), "integration_id": "batch-fefo-sale"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.data)
+        earlier.refresh_from_db()
+        later.refresh_from_db()
+        sale = Sale.objects.get(pk=response.data["id"])
+        sale_item = sale.sale_items.get()
+        self.assertEqual(earlier.quantity_remaining, 0)
+        self.assertEqual(later.quantity_remaining, 4)
+        self.assertEqual(sale_item.cost_total, Decimal("13.00"))
+        self.assertEqual(sale_item.unit_cost, Decimal("4.33"))
+
+        self.assertEqual(self.client.delete(f"/api/v1/sales/{sale.id}/").status_code, 204)
+        earlier.refresh_from_db()
+        later.refresh_from_db()
+        self.assertEqual(earlier.quantity_remaining, 2)
+        self.assertEqual(later.quantity_remaining, 5)
+
+    def test_sale_cannot_consume_expired_batch_stock(self):
+        from datetime import timedelta
+        from django.utils import timezone
+
+        self.product.stock = 3
+        self.product.save()
+        batch = ProductBatch.objects.create(
+            product=self.product,
+            batch_number="EXPIRED",
+            expiry_date=timezone.localdate() - timedelta(days=1),
+            quantity_received=3,
+            quantity_remaining=3,
+        )
+
+        response = self.client.post(
+            "/api/v1/sales/",
+            {**self.sale_payload(), "integration_id": "expired-batch-sale"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Sale.objects.count(), 0)
+        self.product.refresh_from_db()
+        batch.refresh_from_db()
+        self.assertEqual(self.product.stock, 3)
+        self.assertEqual(batch.quantity_remaining, 3)
+
+    def test_offline_batch_receipt_is_idempotent(self):
+        from inventory.models import ProductBatch
+
+        payload = {
+            "actions": [{
+                "id": "offline-batch-receipt",
+                "type": "batch_receive",
+                "payload": {
+                    "product": self.product.id,
+                    "batch_number": "OFFLINE-LOT-1",
+                    "expiry_date": "2027-01-31",
+                    "quantity_received": 4,
+                    "unit_cost_base": "2.50",
+                },
+            }]
+        }
+
+        first = self.client.post("/api/v1/sync/push/", payload, format="json")
+        second = self.client.post("/api/v1/sync/push/", payload, format="json")
+
+        self.assertEqual(first.data["processed_action_ids"], ["offline-batch-receipt"])
+        self.assertEqual(second.data["processed_action_ids"], ["offline-batch-receipt"])
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.stock, 104)
+        self.assertEqual(ProductBatch.objects.filter(product=self.product).count(), 1)
 
     def test_supply_persists_updates_stock_and_is_idempotent(self):
         response = self.client.post("/api/v1/inventory/supply-entries/", self.supply_payload(), format="json")

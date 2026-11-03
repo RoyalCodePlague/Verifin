@@ -4,13 +4,13 @@ import {
   LayoutDashboard, Package, ShoppingCart, Receipt, ClipboardCheck,
   BarChart3, Users, UserCog, Settings, Menu, X, LogOut,
   Moon, Sun, Clock, Truck, CreditCard, MessageCircle,
-  Lock,
+  Lock, Landmark,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth-context";
 import { getAccessToken, pushOfflineActions } from "@/lib/api";
 import {
-  clearOfflineQueue,
+  removeQueuedActions,
   setLastSuccessfulSync,
   getOfflineQueue,
   hasAuthenticatedOfflineSession,
@@ -31,6 +31,7 @@ const navItems = [
   { to: "/expenses", icon: Receipt, label: "Expenses", permission: "expenses" },
   { to: "/audits", icon: ClipboardCheck, label: "Audits", permission: "audits", feature: "audits" },
   { to: "/reports", icon: BarChart3, label: "Reports", permission: "reports" },
+  { to: "/banking", icon: Landmark, label: "Banking", permission: "reports" },
   { to: "/customers", icon: Users, label: "Customers", permission: "customers" },
   { to: "/suppliers", icon: Truck, label: "Suppliers", permission: "suppliers" },
   { to: "/staff", icon: UserCog, label: "Staff", permission: "staff" },
@@ -74,46 +75,55 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     const syncQueuedActions = async (showErrors = true) => {
-      if (syncInFlightRef.current || !navigator.onLine || !getAccessToken()) return false;
+      if (syncInFlightRef.current || !navigator.onLine || !getAccessToken()) return null;
       const queue = getOfflineQueue();
-      if (queue.length === 0) {
-        clearOfflineQueue();
-        return true;
-      }
+      if (queue.length === 0) return [];
 
       syncInFlightRef.current = true;
       try {
         const result = await pushOfflineActions(queue);
-        const syncSucceeded = (result.errors?.length ?? 0) === 0;
-        if (syncSucceeded) {
-          clearOfflineQueue();
-          setLastSuccessfulSync(new Date().toISOString());
+        if (!Array.isArray(result.processed_action_ids)) {
+          throw new Error("The sync server did not confirm which changes were processed.");
         }
-        if (syncSucceeded) {
-          toast.success(`Synced ${result.processed} offline changes`);
-          await refreshUser();
+        const processedIds = result.processed_action_ids;
+        removeQueuedActions(processedIds);
+        if (processedIds.length > 0) {
+          setLastSuccessfulSync(new Date().toISOString());
+          window.dispatchEvent(new Event("verifin:offline-sync-complete"));
+          toast.success(`Synced ${processedIds.length} offline changes`);
+          try {
+            await refreshUser();
+          } catch (error) {
+            toast.error(error instanceof Error
+              ? `Changes synced, but the latest data could not be refreshed: ${error.message}`
+              : "Changes synced, but the latest data could not be refreshed. Reload the page.");
+          }
         }
         if (result.errors?.length) {
           toast.warning(`${result.errors.length} offline changes need review.`, { description: "Open Settings to resolve sync conflicts." });
         }
-        return syncSucceeded;
+        return processedIds;
       } catch (error) {
         console.warn("Offline sync failed", error);
         if (showErrors) {
           toast.error("Offline sync failed. We will retry when your connection is stable.");
         }
-        return false;
+        return null;
       } finally {
         syncInFlightRef.current = false;
       }
     };
 
-    const cleanup = setupOfflineSync(async () => syncQueuedActions(true));
+    const cleanup = setupOfflineSync(syncQueuedActions);
+    const runSync = async (showErrors = false) => {
+      const completedIds = await syncQueuedActions(showErrors);
+      if (completedIds) removeQueuedActions(completedIds);
+    };
     const startupSync = navigator.onLine
-      ? window.setTimeout(() => void syncQueuedActions(false), 1500)
+      ? window.setTimeout(() => void runSync(false), 1500)
       : undefined;
     const retryInterval = window.setInterval(() => {
-      if (getOfflineQueue().length > 0) void syncQueuedActions(false);
+      if (getOfflineQueue().length > 0) void runSync(false);
     }, 15000);
     return () => {
       cleanup();

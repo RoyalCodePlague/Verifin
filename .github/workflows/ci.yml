@@ -26,4 +26,4 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python manage.py check
       - run: python manage.py makemigrations --check --dry-run
-      - run: python manage.py test sales.tests.SaleNumberingTests inventory.tests.PurchaseOrderNumberingTests
+      - run: python manage.py test sales.tests.SaleNumberingTests inventory.tests.PurchaseOrderNumberingTests inventory.tests.ProductBatchTests inventory.tests.SupplierPaymentTests reports.tests.BankReconciliationTests core.test_workflows.ConnectedWorkflowTests.test_authorized_offline_sale_is_applied_once core.test_workflows.ConnectedWorkflowTests.test_partial_offline_sync_reports_only_successful_action_ids core.test_workflows.ConnectedWorkflowTests.test_sale_depletes_earliest_expiring_batches_and_reversal_restores_them core.test_workflows.ConnectedWorkflowTests.test_sale_cannot_consume_expired_batch_stock core.test_workflows.ConnectedWorkflowTests.test_offline_batch_receipt_is_idempotent

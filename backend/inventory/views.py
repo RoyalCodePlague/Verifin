@@ -4,6 +4,7 @@ import httpx
 from django.db import models, transaction
 from django.db.models import Count, Sum
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -11,8 +12,8 @@ from rest_framework.response import Response
 from accounts.activity import log_staff_activity
 from billing.services import enforce_feature, enforce_limit
 from sales.models import SaleItem
-from .models import BarcodeLookupCache, Branch, Category, Product, PurchaseOrder, StockMovement, StockTransfer, Supplier
-from .serializers import BranchSerializer, CategorySerializer, ProductSerializer, PurchaseOrderSerializer, StockMovementSerializer, StockTransferSerializer, SupplierSerializer
+from .models import BarcodeLookupCache, Branch, Category, Product, ProductBatch, PurchaseOrder, PurchaseOrderItem, StockMovement, StockTransfer, Supplier, SupplierPayment
+from .serializers import BranchSerializer, CategorySerializer, ProductBatchSerializer, ProductSerializer, PurchaseOrderSerializer, StockMovementSerializer, StockTransferSerializer, SupplierPaymentSerializer, SupplierSerializer
 
 BARCODE_IDENTIFICATION_SOURCES = [
     ("open_food_facts", "https://world.openfoodfacts.org/api/v2/product/{barcode}"),
@@ -371,6 +372,8 @@ class ProductViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def transfer(self, request, pk=None):
         product = self.get_object()
+        if ProductBatch.objects.filter(product=product, is_deleted=False).exists():
+            return Response({"detail": "Transfer tracked stock using batch-aware transfers."}, status=status.HTTP_400_BAD_REQUEST)
         to_branch_id = request.data.get("to_branch")
         quantity = int(request.data.get("quantity", 0))
         if quantity <= 0:
@@ -431,16 +434,86 @@ class StockMovementViewSet(viewsets.ModelViewSet):
         product = Product.objects.select_for_update().get(pk=serializer.validated_data["product"].pk)
         quantity = serializer.validated_data["quantity"]
         movement_type = serializer.validated_data["movement_type"]
+        batch = serializer.validated_data.get("batch")
+        if batch and batch.product_id != product.id:
+            raise ValidationError({"batch": "Batch does not belong to this product."})
+        if batch and movement_type != "adjustment":
+            raise ValidationError({"batch": "Use a batch adjustment to change a specific batch."})
+        batch_delta = quantity - batch.quantity_remaining if batch else 0
+        if batch and product.stock + batch_delta < 0:
+            raise ValidationError({"quantity": "Batch adjustment cannot create negative product stock."})
         if quantity < 0 or (movement_type == "out" and product.stock < quantity):
             raise ValidationError("Stock movements cannot create negative stock.")
-        movement = serializer.save(created_by=self.request.user)
-        if movement.movement_type == "in":
+        movement = serializer.save(
+            created_by=self.request.user,
+            quantity=batch_delta if batch else quantity,
+        )
+        if batch:
+            batch.quantity_remaining = quantity
+            batch.quantity_received = max(batch.quantity_received, quantity)
+            batch.save(update_fields=["quantity_remaining", "quantity_received", "updated_at"])
+            product.stock += batch_delta
+        elif movement.movement_type == "in":
             product.stock += movement.quantity
         elif movement.movement_type == "out":
+            batched_quantity = ProductBatch.objects.filter(
+                product=product,
+                is_deleted=False,
+            ).aggregate(total=Sum("quantity_remaining"))["total"] or 0
+            if product.stock - quantity < batched_quantity:
+                raise ValidationError({"quantity": "Adjust tracked batches individually before reducing this product's total stock."})
             product.stock -= movement.quantity
         else:
+            batched_quantity = ProductBatch.objects.filter(
+                product=product,
+                is_deleted=False,
+            ).aggregate(total=Sum("quantity_remaining"))["total"] or 0
+            if quantity < batched_quantity:
+                raise ValidationError({"quantity": "Product stock cannot be set below the quantity in tracked batches."})
             product.stock = movement.quantity
         product.save()
+
+
+class ProductBatchViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = ProductBatchSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ["product", "supplier"]
+    search_fields = ["batch_number", "product__name", "product__sku", "supplier__name"]
+
+    def get_queryset(self):
+        return ProductBatch.objects.filter(
+            product__user=self.request.user,
+            is_deleted=False,
+            product__is_deleted=False,
+        ).select_related("product", "supplier").order_by("expiry_date", "received_at", "id")
+
+    @action(detail=False, methods=["post"], url_path="receive")
+    @transaction.atomic
+    def receive(self, request):
+        from rest_framework.exceptions import ValidationError
+
+        serializer = ProductBatchSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        product = Product.objects.select_for_update().get(
+            pk=serializer.validated_data["product"].pk,
+            user=request.user,
+            is_deleted=False,
+        )
+        if ProductBatch.objects.filter(product=product, batch_number=serializer.validated_data["batch_number"]).exists():
+            raise ValidationError({"batch_number": "This batch number is already recorded for the product."})
+        quantity = serializer.validated_data["quantity_received"]
+        batch = serializer.save(quantity_remaining=quantity)
+        product.stock += quantity
+        product.save()
+        StockMovement.objects.create(
+            product=product,
+            batch=batch,
+            quantity=quantity,
+            movement_type="in",
+            reason=f"Received batch {batch.batch_number}",
+            created_by=request.user,
+        )
+        return Response(ProductBatchSerializer(batch, context={"request": request}).data, status=status.HTTP_201_CREATED)
 
 
 class StockTransferViewSet(viewsets.ReadOnlyModelViewSet):
@@ -503,6 +576,52 @@ class SupplierViewSet(viewsets.ModelViewSet):
         return Response({"items": cards})
 
 
+class SupplierPaymentViewSet(viewsets.ModelViewSet):
+    serializer_class = SupplierPaymentSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ["get", "post", "head", "options"]
+    filterset_fields = ["supplier", "purchase_order", "method", "payment_date"]
+    search_fields = ["supplier__name", "purchase_order__order_number", "reference", "notes"]
+    ordering_fields = ["payment_date", "amount_base", "created_at"]
+    ordering = ["-payment_date", "-id"]
+
+    def get_queryset(self):
+        return SupplierPayment.objects.filter(
+            user=self.request.user,
+            is_deleted=False,
+        ).select_related("supplier", "purchase_order")
+
+    @action(detail=False, methods=["get"], url_path="balances")
+    def balances(self, request):
+        received = PurchaseOrderItem.objects.filter(
+            purchase_order__user=request.user,
+            purchase_order__status__in=["partially_received", "received"],
+            purchase_order__is_deleted=False,
+            is_deleted=False,
+        ).values("purchase_order__supplier_id").annotate(
+            total=Sum(models.F("unit_cost_base") * models.F("quantity_received"))
+        )
+        paid = SupplierPayment.objects.filter(
+            user=request.user,
+            is_deleted=False,
+        ).values("supplier_id").annotate(total=Sum("amount_base"))
+        received_by_supplier = {row["purchase_order__supplier_id"]: row["total"] or Decimal("0") for row in received}
+        paid_by_supplier = {row["supplier_id"]: row["total"] or Decimal("0") for row in paid}
+        rows = []
+        for supplier in Supplier.objects.filter(user=request.user, is_deleted=False).order_by("name"):
+            total_received = received_by_supplier.get(supplier.id, Decimal("0"))
+            total_paid = paid_by_supplier.get(supplier.id, Decimal("0"))
+            rows.append({
+                "supplier": supplier.id,
+                "supplier_name": supplier.name,
+                "currency": request.user.currency,
+                "received_total_base": total_received,
+                "paid_total_base": total_paid,
+                "outstanding_base": total_received - total_paid,
+            })
+        return Response({"items": rows})
+
+
 class PurchaseOrderViewSet(viewsets.ModelViewSet):
     serializer_class = PurchaseOrderSerializer
     permission_classes = [IsAuthenticated]
@@ -524,12 +643,46 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             from rest_framework.exceptions import ValidationError
             raise ValidationError("Cannot receive a cancelled order.")
         received_any = False
+        batch_details = request.data.get("batches", {})
+        if not isinstance(batch_details, dict):
+            raise ValidationError({"batches": "Expected a mapping of order item IDs to batch details."})
         for item in order.items.select_related("product"):
             qty = int(request.data.get(str(item.id), item.quantity_ordered - item.quantity_received))
             qty = max(0, min(qty, item.quantity_ordered - item.quantity_received))
             if qty <= 0:
                 continue
             product = Product.objects.select_for_update().get(pk=item.product_id)
+            details = batch_details.get(str(item.id), {})
+            batch = None
+            if details:
+                if not isinstance(details, dict) or not str(details.get("batch_number", "")).strip():
+                    raise ValidationError({"batches": f"Enter a batch number for {product.name}."})
+                batch_number = str(details["batch_number"]).strip()
+                expiry_raw = details.get("expiry_date") or ""
+                expiry_date = parse_date(expiry_raw) if expiry_raw else None
+                if expiry_raw and not expiry_date:
+                    raise ValidationError({"batches": f"Enter a valid expiry date for {product.name}."})
+                batch = ProductBatch.objects.select_for_update().filter(
+                    product=product,
+                    batch_number=batch_number,
+                    is_deleted=False,
+                ).first()
+                if batch and batch.expiry_date != expiry_date:
+                    raise ValidationError({"batches": f"Batch {batch_number} already exists with a different expiry date."})
+                if batch:
+                    batch.quantity_received += qty
+                    batch.quantity_remaining += qty
+                    batch.save(update_fields=["quantity_received", "quantity_remaining", "updated_at"])
+                else:
+                    batch = ProductBatch.objects.create(
+                        product=product,
+                        batch_number=batch_number,
+                        expiry_date=expiry_date,
+                        quantity_received=qty,
+                        quantity_remaining=qty,
+                        unit_cost_base=item.unit_cost_base or item.unit_cost,
+                        supplier=order.supplier,
+                    )
             product.stock += qty
             product.cost_price = item.unit_cost_base or item.unit_cost
             product.cost_currency = order.currency
@@ -537,6 +690,14 @@ class PurchaseOrderViewSet(viewsets.ModelViewSet):
             product.save()
             item.quantity_received += qty
             item.save()
+            StockMovement.objects.create(
+                product=product,
+                batch=batch,
+                quantity=qty,
+                movement_type="in",
+                reason=f"Received {order.order_number}",
+                created_by=request.user,
+            )
             received_any = True
         if received_any:
             remaining = order.items.filter(quantity_received__lt=models.F("quantity_ordered")).exists()

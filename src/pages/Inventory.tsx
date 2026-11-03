@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useAuth } from "@/lib/auth-context";
 import { motion } from "framer-motion";
 import { Search, Plus, Package, Edit2, Trash2, ScanBarcode, Calendar, TrendingUp } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -8,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { useStore } from "@/lib/store";
-import { createProductApi, deleteProductApi, fetchInventoryForecast, identifyBarcodeProductApi, mapProductResponse, updateProductApi, type ApiForecastItem } from "@/lib/api";
+import { createProductApi, deleteProductApi, fetchInventoryForecast, identifyBarcodeProductApi, listProductBatchesApi, mapProductResponse, receiveProductBatchApi, updateProductApi, type ApiForecastItem, type ApiProductBatch } from "@/lib/api";
 import { addToOfflineQueue, canQueueOfflineAction, hasQueuedProductCreate, removeQueuedProductCreate } from "@/lib/offlineQueue";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
@@ -60,6 +61,7 @@ function forecastRiskMeta(risk: ApiForecastItem["risk"], horizonDays: number, da
 
 const Inventory = () => {
   const { products, sales, addProduct, upsertProduct, updateProduct, deleteProduct, profile, addActivity } = useStore();
+  const { refreshUser } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { canUse } = useFeatureAccess();
@@ -76,6 +78,10 @@ const Inventory = () => {
   const [forecast, setForecast] = useState<ApiForecastItem[]>([]);
   const [forecastHorizon, setForecastHorizon] = useState(7);
   const [saving, setSaving] = useState(false);
+  const [batches, setBatches] = useState<ApiProductBatch[]>([]);
+  const [batchDialogOpen, setBatchDialogOpen] = useState(false);
+  const [batchSaving, setBatchSaving] = useState(false);
+  const [batchForm, setBatchForm] = useState({ product: "", batchNumber: "", expiryDate: "", quantity: "", unitCost: "" });
   const [canUseCameraScan, setCanUseCameraScan] = useState(false);
   const productNameInputRef = useRef<HTMLInputElement>(null);
   const sym = profile.currencySymbol || "R";
@@ -135,6 +141,18 @@ const Inventory = () => {
   }, [canUseForecasting, products.length]);
 
   useEffect(() => {
+    if (!navigator.onLine) return;
+    const refreshBatches = () => {
+      listProductBatchesApi()
+        .then(setBatches)
+        .catch((error) => toast.error(error instanceof Error ? `Could not load stock batches: ${error.message}` : "Could not load stock batches."));
+    };
+    refreshBatches();
+    window.addEventListener("verifin:offline-sync-complete", refreshBatches);
+    return () => window.removeEventListener("verifin:offline-sync-complete", refreshBatches);
+  }, []);
+
+  useEffect(() => {
     if (flaggedView) {
       setCategory("All");
       if (!search.trim()) {
@@ -191,6 +209,69 @@ const Inventory = () => {
   const openAdd = () => {
     setForm({ name: "", category: mergedCategories[0] || "", branchId: "", supplierId: "", stock: "", reorder: "5", costPrice: "", price: "", barcode: "" });
     setAddOpen(true);
+  };
+
+  const receiveBatch = async () => {
+    const productId = Number(batchForm.product);
+    const selectedBatchProduct = products.find((product) => product.id === batchForm.product);
+    const quantity = Number(batchForm.quantity);
+    if (!selectedBatchProduct || !batchForm.batchNumber.trim() || !Number.isInteger(quantity) || quantity <= 0) {
+      toast.error("Choose a product, enter a batch number, and enter a whole-number quantity greater than zero.");
+      return;
+    }
+    const payload = {
+      product: Number.isSafeInteger(productId) && productId > 0 ? productId : null,
+      product_local_id: selectedBatchProduct.id,
+      batch_number: batchForm.batchNumber.trim(),
+      expiry_date: batchForm.expiryDate || null,
+      quantity_received: quantity,
+      unit_cost_base: Number(batchForm.unitCost) || 0,
+    };
+    if (canQueueOfflineAction()) {
+      addToOfflineQueue({ type: "batch_receive", payload });
+      upsertProduct({ ...selectedBatchProduct, stock: selectedBatchProduct.stock + quantity });
+      setBatches((current) => [{
+        id: -Date.now(),
+        product: productId,
+        product_name: selectedBatchProduct.name,
+        sku: selectedBatchProduct.sku,
+        batch_number: payload.batch_number,
+        expiry_date: payload.expiry_date,
+        quantity_received: quantity,
+        quantity_remaining: quantity,
+        unit_cost_base: String(payload.unit_cost_base),
+        supplier: null,
+        supplier_name: null,
+        received_at: new Date().toISOString(),
+      }, ...current]);
+      setBatchForm({ product: "", batchNumber: "", expiryDate: "", quantity: "", unitCost: "" });
+      setBatchDialogOpen(false);
+      toast.success(`Batch ${payload.batch_number} saved locally and will sync when online.`);
+      return;
+    }
+    if (!navigator.onLine) {
+      toast.error("You need to sign in on this device before receiving tracked batches offline.");
+      return;
+    }
+    setBatchSaving(true);
+    try {
+      const batch = await receiveProductBatchApi({ ...payload, product: productId });
+      setBatches((current) => [batch, ...current]);
+      setBatchForm({ product: "", batchNumber: "", expiryDate: "", quantity: "", unitCost: "" });
+      setBatchDialogOpen(false);
+      try {
+        await refreshUser();
+      } catch (error) {
+        toast.error(error instanceof Error
+          ? `Batch received, but product totals could not refresh: ${error.message}`
+          : "Batch received, but product totals could not refresh. Reload the page.");
+      }
+      toast.success(`${quantity} units received in batch ${batch.batch_number}.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not receive this batch.");
+    } finally {
+      setBatchSaving(false);
+    }
   };
 
   useEffect(() => {
@@ -619,6 +700,59 @@ const Inventory = () => {
         </Card>
       )}
 
+      <Card className="space-y-4 p-4 shadow-soft">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="font-medium">Stock batches & expiry</p>
+            <p className="text-xs text-muted-foreground">Track received lots. Sales use earliest-expiring unexpired stock first.</p>
+          </div>
+          <Button variant="outline" onClick={() => setBatchDialogOpen(true)} disabled={products.length === 0}>
+            <Plus className="mr-2 h-4 w-4" /> Receive batch
+          </Button>
+        </div>
+        {batches.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No tracked batches yet. Existing stock remains available as untracked stock.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-xs text-muted-foreground">
+                  <th className="p-2">Product / batch</th>
+                  <th className="p-2">Expiry</th>
+                  <th className="p-2 text-right">Remaining</th>
+                  <th className="p-2">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {batches.slice(0, 8).map((batch) => {
+                  const daysToExpiry = batch.expiry_date
+                    ? Math.ceil((new Date(`${batch.expiry_date}T00:00:00`).getTime() - new Date(new Date().toDateString()).getTime()) / 86_400_000)
+                    : null;
+                  const isExpired = daysToExpiry != null && daysToExpiry < 0;
+                  const expiresSoon = daysToExpiry != null && daysToExpiry <= 30;
+                  return (
+                    <tr key={batch.id} className="border-b last:border-0">
+                      <td className="p-2">
+                        <p className="font-medium">{batch.product_name}</p>
+                        <p className="text-xs text-muted-foreground">{batch.batch_number} · {batch.sku}</p>
+                      </td>
+                      <td className="p-2">{batch.expiry_date || "Not set"}</td>
+                      <td className="p-2 text-right">{batch.quantity_remaining}</td>
+                      <td className="p-2">
+                        <Badge variant={isExpired ? "destructive" : expiresSoon ? "secondary" : "outline"}>
+                          {isExpired ? "Expired" : daysToExpiry == null ? "No expiry date" : daysToExpiry <= 30 ? `Expires in ${Math.max(daysToExpiry, 0)}d` : "In date"}
+                        </Badge>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            {batches.length > 8 && <p className="pt-2 text-xs text-muted-foreground">Showing 8 of {batches.length} batches.</p>}
+          </div>
+        )}
+      </Card>
+
       {filtered.length === 0 ? (
         <EmptyState icon={Package} title="No products found" description={search ? "Try a different search term" : "Add your first product to get started"} actionLabel="Add Product" onAction={openAdd} />
       ) : (
@@ -692,6 +826,28 @@ const Inventory = () => {
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>{formDialog}</Dialog>
       <Dialog open={!!editProduct} onOpenChange={() => setEditProduct(null)}>{formDialog}</Dialog>
+      <Dialog open={batchDialogOpen} onOpenChange={setBatchDialogOpen}>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
+          <DialogHeader>
+            <DialogTitle>Receive stock batch</DialogTitle>
+            <DialogDescription>Receiving a batch adds its quantity to product stock and records its expiry for sales rotation.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Product</Label>
+              <select value={batchForm.product} onChange={(event) => setBatchForm({ ...batchForm, product: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                <option value="">Choose product</option>
+                {products.map((product) => <option key={product.id} value={product.id}>{product.name} ({product.sku})</option>)}
+              </select>
+            </div>
+            <div><Label>Batch / lot number</Label><Input className="mt-1" value={batchForm.batchNumber} onChange={(event) => setBatchForm({ ...batchForm, batchNumber: event.target.value })} /></div>
+            <div><Label>Expiry date (optional)</Label><Input type="date" className="mt-1" value={batchForm.expiryDate} onChange={(event) => setBatchForm({ ...batchForm, expiryDate: event.target.value })} /></div>
+            <div><Label>Quantity received</Label><Input type="number" min="1" step="1" className="mt-1" value={batchForm.quantity} onChange={(event) => setBatchForm({ ...batchForm, quantity: event.target.value })} /></div>
+            <div><Label>Unit cost in base currency (optional)</Label><Input type="number" min="0" step="0.01" className="mt-1" value={batchForm.unitCost} onChange={(event) => setBatchForm({ ...batchForm, unitCost: event.target.value })} /></div>
+            <Button className="w-full" disabled={batchSaving} onClick={() => void receiveBatch()}>{batchSaving ? "Receiving…" : "Receive batch"}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       <ConfirmationModal
         open={!!deleteId}
         onOpenChange={() => setDeleteId(null)}

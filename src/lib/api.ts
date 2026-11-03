@@ -434,6 +434,145 @@ export async function deleteProductApi(id: string) {
   await apiFetch(`/api/v1/inventory/products/${id}/`, { method: "DELETE" });
 }
 
+export type ApiProductBatch = {
+  id: number;
+  product: number;
+  product_name: string;
+  sku: string;
+  batch_number: string;
+  expiry_date: string | null;
+  quantity_received: number;
+  quantity_remaining: number;
+  unit_cost_base: string;
+  supplier: number | null;
+  supplier_name: string | null;
+  received_at: string;
+};
+
+export async function listProductBatchesApi() {
+  return fetchAllPages<ApiProductBatch>("/api/v1/inventory/batches/");
+}
+
+export async function receiveProductBatchApi(payload: {
+  product: number;
+  batch_number: string;
+  expiry_date?: string | null;
+  quantity_received: number;
+  unit_cost_base?: number;
+  supplier?: number | null;
+}) {
+  return apiFetch<ApiProductBatch>("/api/v1/inventory/batches/receive/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export type ApiBankAccount = {
+  id: number;
+  name: string;
+  currency: string;
+  opening_balance: string;
+  statement_balance: string;
+  unreconciled_count: number;
+  is_active: boolean;
+  created_at: string;
+};
+
+export type ApiCashFlowSummary = {
+  accounts: Array<{
+    id: number;
+    name: string;
+    currency: string;
+    balance: string;
+    unreconciled_count: number;
+  }>;
+  monthly: Array<{
+    account_id: number;
+    account_name: string;
+    currency: string;
+    month: string;
+    inflows: string;
+    outflows: string;
+    net: string;
+  }>;
+};
+
+export type ApiBankStatementLine = {
+  id: number;
+  account: number;
+  account_name: string;
+  transaction_date: string;
+  description: string;
+  reference: string;
+  amount: string;
+  is_reconciled: boolean;
+  matched_transaction_type: "sale" | "expense" | "supplier_payment" | null;
+  matched_transaction_id: number | null;
+  matched_at: string | null;
+};
+
+export type ApiReconciliationCandidate = {
+  type: "sale" | "expense" | "supplier_payment";
+  id: number;
+  date: string;
+  amount: string;
+  label: string;
+};
+
+export async function listBankAccountsApi() {
+  return fetchAllPages<ApiBankAccount>("/api/v1/reports/bank-accounts/");
+}
+
+export async function getCashFlowSummaryApi() {
+  return apiFetch<ApiCashFlowSummary>("/api/v1/reports/cash-flow/");
+}
+
+export async function createBankAccountApi(payload: {
+  name: string;
+  currency: string;
+  opening_balance: string;
+}) {
+  return apiFetch<ApiBankAccount>("/api/v1/reports/bank-accounts/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function importBankStatementApi(accountId: number, file: File) {
+  const body = new FormData();
+  body.append("file", file);
+  return apiFetch<{ created: number; skipped: number }>(
+    `/api/v1/reports/bank-accounts/${accountId}/import-statement/`,
+    { method: "POST", body }
+  );
+}
+
+export async function listBankStatementLinesApi(accountId: number) {
+  return fetchAllPages<ApiBankStatementLine>(`/api/v1/reports/bank-statement-lines/?account=${accountId}`);
+}
+
+export async function getReconciliationCandidatesApi(lineId: number) {
+  return apiFetch<ApiReconciliationCandidate[]>(
+    `/api/v1/reports/bank-statement-lines/${lineId}/candidates/`
+  );
+}
+
+export async function matchBankStatementLineApi(
+  lineId: number,
+  candidate: Pick<ApiReconciliationCandidate, "type" | "id">
+) {
+  return apiFetch<ApiBankStatementLine>(`/api/v1/reports/bank-statement-lines/${lineId}/match/`, {
+    method: "POST",
+    body: JSON.stringify({ transaction_type: candidate.type, transaction_id: candidate.id }),
+  });
+}
+
+export async function unmatchBankStatementLineApi(lineId: number) {
+  return apiFetch<ApiBankStatementLine>(`/api/v1/reports/bank-statement-lines/${lineId}/unmatch/`, {
+    method: "POST",
+  });
+}
+
 export type ApiBranch = {
   id: number;
   name: string;
@@ -640,8 +779,20 @@ export async function createPurchaseOrderApi(payload: {
   });
 }
 
-export async function receivePurchaseOrderApi(id: number) {
-  return apiFetch<ApiPurchaseOrder>(`/api/v1/inventory/purchase-orders/${id}/receive/`, { method: "POST" });
+export async function receivePurchaseOrderApi(
+  id: number,
+  batch?: { itemIds: number[]; batch_number: string; expiry_date?: string | null }
+) {
+  const batches = batch
+    ? Object.fromEntries(batch.itemIds.map((itemId) => [String(itemId), {
+      batch_number: batch.batch_number,
+      expiry_date: batch.expiry_date || null,
+    }]))
+    : undefined;
+  return apiFetch<ApiPurchaseOrder>(`/api/v1/inventory/purchase-orders/${id}/receive/`, {
+    method: "POST",
+    body: JSON.stringify(batches ? { batches } : {}),
+  });
 }
 
 export async function fetchPurchaseSuggestions(days = 7) {
@@ -658,6 +809,56 @@ export async function fetchSmartReorderApi() {
 
 export async function fetchSupplierScorecardsApi() {
   return apiFetch<{ items: Array<{ supplier: ApiSupplier; product_count: number; open_purchase_orders: number; low_stock_products: number; total_spend: string; lead_time_days: number; payment_terms_days: number; reliability_score: number; health: "strong" | "watch" | "risk" }> }>("/api/v1/inventory/suppliers/scorecards/");
+}
+
+export type ApiSupplierPayment = {
+  id: number;
+  supplier: number;
+  supplier_name: string;
+  purchase_order: number;
+  order_number: string;
+  amount: string;
+  currency: string;
+  fx_rate_to_base: string;
+  amount_base: string;
+  payment_date: string;
+  method: "cash" | "bank" | "mobile_money" | "card" | "other";
+  reference: string;
+  notes: string;
+  created_at: string;
+};
+
+export type ApiSupplierBalance = {
+  supplier: number;
+  supplier_name: string;
+  currency: string;
+  received_total_base: string;
+  paid_total_base: string;
+  outstanding_base: string;
+};
+
+export async function listSupplierPaymentsApi() {
+  return fetchAllPages<ApiSupplierPayment>("/api/v1/inventory/supplier-payments/");
+}
+
+export async function listSupplierPaymentBalancesApi() {
+  return apiFetch<{ items: ApiSupplierBalance[] }>("/api/v1/inventory/supplier-payments/balances/");
+}
+
+export async function createSupplierPaymentApi(payload: {
+  supplier: number;
+  purchase_order: number;
+  amount: number;
+  currency: string;
+  payment_date: string;
+  method: ApiSupplierPayment["method"];
+  reference?: string;
+  notes?: string;
+}) {
+  return apiFetch<ApiSupplierPayment>("/api/v1/inventory/supplier-payments/", {
+    method: "POST",
+    body: JSON.stringify({ ...payload, amount: payload.amount.toFixed(2) }),
+  });
 }
 
 export async function identifyBarcodeProductApi(code: string) {
@@ -922,6 +1123,7 @@ type ApiOfflineAction = {
     | "product_create"
     | "product_update"
     | "product_delete"
+    | "batch_receive"
     | "restock"
     | "customer_create"
     | "customer_update"
@@ -939,7 +1141,7 @@ type ApiOfflineAction = {
 };
 
 export async function pushOfflineActions(actions: ApiOfflineAction[]) {
-  return apiFetch<{ processed: number; conflicts?: number[]; errors?: unknown[]; resolution: string }>("/api/v1/sync/push/", {
+  return apiFetch<{ processed: number; processed_action_ids: string[]; conflicts?: number[]; errors?: unknown[]; resolution: string }>("/api/v1/sync/push/", {
     method: "POST",
     body: JSON.stringify({ actions }),
   });

@@ -12,14 +12,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { SupplyInvoiceWorkspace } from "@/components/invoices/SupplyInvoiceWorkspace";
 import {
   createPurchaseOrderApi,
+  createSupplierPaymentApi,
   createSupplierApi,
   fetchPurchaseSuggestions,
   fetchSmartReorderApi,
   fetchSupplierScorecardsApi,
+  listSupplierPaymentBalancesApi,
+  listSupplierPaymentsApi,
   listPurchaseOrdersApi,
   listSuppliersApi,
   receivePurchaseOrderApi,
   type ApiPurchaseOrder,
+  type ApiSupplierBalance,
+  type ApiSupplierPayment,
   type ApiSupplier,
 } from "@/lib/api";
 import { useStore } from "@/lib/store";
@@ -84,8 +89,23 @@ const Suppliers = () => {
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [smartReorders, setSmartReorders] = useState<SmartReorderItem[]>([]);
   const [scorecards, setScorecards] = useState<SupplierScorecard[]>([]);
+  const [supplierPayments, setSupplierPayments] = useState<ApiSupplierPayment[]>([]);
+  const [supplierBalances, setSupplierBalances] = useState<ApiSupplierBalance[]>([]);
+  const [savingPayment, setSavingPayment] = useState(false);
+  const [paymentForm, setPaymentForm] = useState({
+    purchaseOrder: "",
+    amount: "",
+    currency: profile.currency,
+    paymentDate: todayIso(),
+    method: "bank" as ApiSupplierPayment["method"],
+    reference: "",
+    notes: "",
+  });
   const [supplierOpen, setSupplierOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
+  const [receivingOrder, setReceivingOrder] = useState<ApiPurchaseOrder | null>(null);
+  const [receiveBatchForm, setReceiveBatchForm] = useState({ batchNumber: "", expiryDate: "" });
+  const [receiving, setReceiving] = useState(false);
   const [activeTab, setActiveTab] = useState("log");
   const [supplierForm, setSupplierForm] = useState(emptySupplier);
   const [entryForm, setEntryForm] = useState({
@@ -122,20 +142,26 @@ const Suppliers = () => {
       setSuggestions(readCache<Suggestion[]>(PURCHASE_SUGGESTIONS_CACHE_KEY, []));
       setSmartReorders(readCache<SmartReorderItem[]>(SMART_REORDER_CACHE_KEY, []));
       setScorecards(readCache<SupplierScorecard[]>(SUPPLIER_SCORECARDS_CACHE_KEY, []));
+      setSupplierPayments([]);
+      setSupplierBalances([]);
       return;
     }
-    const [nextSuppliers, nextOrders, nextSuggestions, nextSmartReorders, nextScorecards] = await Promise.all([
+    const [nextSuppliers, nextOrders, nextSuggestions, nextSmartReorders, nextScorecards, nextSupplierPayments, nextSupplierBalances] = await Promise.all([
       listSuppliersApi(),
       listPurchaseOrdersApi(),
       fetchPurchaseSuggestions(7),
       fetchSmartReorderApi().catch(() => ({ items: [] })),
       fetchSupplierScorecardsApi().catch(() => ({ items: [] })),
+      listSupplierPaymentsApi(),
+      listSupplierPaymentBalancesApi(),
     ]);
     setSuppliers(nextSuppliers);
     setOrders(nextOrders);
     setSuggestions(nextSuggestions.items);
     setSmartReorders(nextSmartReorders.items);
     setScorecards(nextScorecards.items);
+    setSupplierPayments(nextSupplierPayments);
+    setSupplierBalances(nextSupplierBalances.items);
     writeCache(SUPPLIERS_CACHE_KEY, nextSuppliers);
     writeCache(PURCHASE_ORDERS_CACHE_KEY, nextOrders);
     writeCache(PURCHASE_SUGGESTIONS_CACHE_KEY, nextSuggestions.items);
@@ -150,12 +176,45 @@ const Suppliers = () => {
       setSuggestions(readCache<Suggestion[]>(PURCHASE_SUGGESTIONS_CACHE_KEY, []));
       setSmartReorders(readCache<SmartReorderItem[]>(SMART_REORDER_CACHE_KEY, []));
       setScorecards(readCache<SupplierScorecard[]>(SUPPLIER_SCORECARDS_CACHE_KEY, []));
+      setSupplierPayments([]);
+      setSupplierBalances([]);
     });
   }, []);
 
   useEffect(() => {
     setOrderForm((current) => ({ ...current, currency: profile.currency }));
+    setPaymentForm((current) => ({ ...current, currency: profile.currency }));
   }, [profile.currency]);
+
+  const saveSupplierPayment = async () => {
+    const order = orders.find((item) => String(item.id) === paymentForm.purchaseOrder);
+    const amount = Number(paymentForm.amount);
+    if (!order || !Number.isFinite(amount) || amount <= 0 || !paymentForm.paymentDate) {
+      toast.error("Choose a received purchase order, enter a valid payment amount, and select the payment date.");
+      return;
+    }
+    setSavingPayment(true);
+    try {
+      const payment = await createSupplierPaymentApi({
+        supplier: order.supplier,
+        purchase_order: order.id,
+        amount,
+        currency: paymentForm.currency || profile.currency,
+        payment_date: paymentForm.paymentDate,
+        method: paymentForm.method,
+        reference: paymentForm.reference.trim(),
+        notes: paymentForm.notes.trim(),
+      });
+      setSupplierPayments((current) => [payment, ...current]);
+      setPaymentForm((current) => ({ ...current, amount: "", reference: "", notes: "" }));
+      await loadData();
+      toast.success("Supplier payment recorded");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not record supplier payment");
+    } finally {
+      setSavingPayment(false);
+    }
+  };
 
   useEffect(() => {
     setEntryForm((current) => ({
@@ -302,14 +361,34 @@ const Suppliers = () => {
     }
   };
 
-  const receiveOrder = async (order: ApiPurchaseOrder) => {
+  const openReceiveOrder = (order: ApiPurchaseOrder) => {
+    setReceivingOrder(order);
+    setReceiveBatchForm({ batchNumber: "", expiryDate: "" });
+  };
+
+  const receiveOrder = async () => {
+    if (!receivingOrder || receiving) return;
+    setReceiving(true);
     try {
-      const updated = await receivePurchaseOrderApi(order.id);
+      const batch = receiveBatchForm.batchNumber.trim()
+        ? {
+          itemIds: receivingOrder.items
+            .filter((item) => item.quantity_ordered > (item.quantity_received || 0))
+            .map((item) => item.id)
+            .filter((id): id is number => id != null),
+          batch_number: receiveBatchForm.batchNumber.trim(),
+          expiry_date: receiveBatchForm.expiryDate || null,
+        }
+        : undefined;
+      const updated = await receivePurchaseOrderApi(receivingOrder.id, batch);
       setOrders((prev) => prev.map((item) => item.id === updated.id ? updated : item));
       await refreshUser();
-      toast.success("Stock received and inventory updated");
+      setReceivingOrder(null);
+      toast.success(batch ? "Stock and batch details received successfully" : "Stock received and inventory updated");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not receive order");
+    } finally {
+      setReceiving(false);
     }
   };
 
@@ -449,9 +528,10 @@ const Suppliers = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
           <TabsTrigger value="log">Supply Log</TabsTrigger>
           <TabsTrigger value="orders">Purchase Orders</TabsTrigger>
+          <TabsTrigger value="payments">Supplier Payments</TabsTrigger>
           <TabsTrigger value="invoices">Invoices</TabsTrigger>
         </TabsList>
 
@@ -752,7 +832,7 @@ const Suppliers = () => {
                       <Badge>{order.status}</Badge>
                     </div>
                     {order.status !== "received" && order.status !== "cancelled" && (
-                      <Button size="sm" variant="outline" className="mt-3" onClick={() => receiveOrder(order)}>Receive Stock</Button>
+                      <Button size="sm" variant="outline" className="mt-3" onClick={() => openReceiveOrder(order)}>Receive Stock</Button>
                     )}
                   </div>
                 ))}
@@ -767,6 +847,83 @@ const Suppliers = () => {
             title="Supply Invoices"
             description="Use the same invoice tools here inside Suppliers: filter, search, update payment status, print, and download PDF invoices."
           />
+        </TabsContent>
+
+        <TabsContent value="payments" className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {supplierBalances.map((balance) => (
+              <Card key={balance.supplier} className="shadow-soft">
+                <CardContent className="p-4">
+                  <p className="text-sm font-medium">{balance.supplier_name}</p>
+                  <p className="mt-2 text-xs text-muted-foreground">Received: {sym}{Number(balance.received_total_base).toFixed(2)}</p>
+                  <p className="text-xs text-muted-foreground">Paid: {sym}{Number(balance.paid_total_base).toFixed(2)}</p>
+                  <p className="mt-1 text-sm font-semibold">Outstanding: {sym}{Number(balance.outstanding_base).toFixed(2)}</p>
+                </CardContent>
+              </Card>
+            ))}
+            {supplierBalances.length === 0 && (
+              <p className="text-sm text-muted-foreground">No supplier balances yet. Receive a purchase order to start tracking amounts due.</p>
+            )}
+          </div>
+
+          <Card className="shadow-soft">
+            <CardHeader><CardTitle className="text-base font-display">Record supplier payment</CardTitle></CardHeader>
+            <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="sm:col-span-2 lg:col-span-3">
+                <Label>Received purchase order</Label>
+                <select
+                  value={paymentForm.purchaseOrder}
+                  onChange={(event) => setPaymentForm({ ...paymentForm, purchaseOrder: event.target.value })}
+                  className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="">Choose purchase order</option>
+                  {orders.filter((order) => ["partially_received", "received"].includes(order.status)).map((order) => (
+                    <option key={order.id} value={order.id}>{order.order_number} · {order.supplier_name} · {order.status}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label>Amount</Label>
+                <Input type="number" min="0.01" step="0.01" className="mt-1" value={paymentForm.amount} onChange={(event) => setPaymentForm({ ...paymentForm, amount: event.target.value })} />
+              </div>
+              <div>
+                <Label>Paid in</Label>
+                <select value={paymentForm.currency} onChange={(event) => setPaymentForm({ ...paymentForm, currency: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                  {Array.from(new Set([profile.currency, ...enabledCurrencies])).map((currency) => <option key={currency} value={currency}>{currency}</option>)}
+                </select>
+              </div>
+              <div><Label>Payment date</Label><Input type="date" className="mt-1" value={paymentForm.paymentDate} onChange={(event) => setPaymentForm({ ...paymentForm, paymentDate: event.target.value })} /></div>
+              <div>
+                <Label>Method</Label>
+                <select value={paymentForm.method} onChange={(event) => setPaymentForm({ ...paymentForm, method: event.target.value as ApiSupplierPayment["method"] })} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                  <option value="bank">Bank transfer</option>
+                  <option value="cash">Cash</option>
+                  <option value="mobile_money">Mobile money</option>
+                  <option value="card">Card</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div><Label>Reference (optional)</Label><Input className="mt-1" value={paymentForm.reference} onChange={(event) => setPaymentForm({ ...paymentForm, reference: event.target.value })} /></div>
+              <div className="sm:col-span-2 lg:col-span-3"><Label>Notes (optional)</Label><Input className="mt-1" value={paymentForm.notes} onChange={(event) => setPaymentForm({ ...paymentForm, notes: event.target.value })} /></div>
+              <Button className="sm:col-span-2 lg:col-span-3" disabled={savingPayment} onClick={() => void saveSupplierPayment()}>{savingPayment ? "Saving…" : "Record Payment"}</Button>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-soft">
+            <CardHeader><CardTitle className="text-base font-display">Payment history</CardTitle></CardHeader>
+            <CardContent className="space-y-3">
+              {supplierPayments.map((payment) => (
+                <div key={payment.id} className="flex flex-col gap-1 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium">{payment.supplier_name} · {payment.order_number}</p>
+                    <p className="text-xs text-muted-foreground">{prettyDate(payment.payment_date)} · {payment.method.replace("_", " ")}{payment.reference ? ` · Ref ${payment.reference}` : ""}</p>
+                  </div>
+                  <div className="text-sm font-semibold">{payment.currency} {Number(payment.amount).toFixed(2)} <span className="text-xs font-normal text-muted-foreground">({sym}{Number(payment.amount_base).toFixed(2)} base)</span></div>
+                </div>
+              ))}
+              {supplierPayments.length === 0 && <p className="text-sm text-muted-foreground">No supplier payments recorded yet.</p>}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 
@@ -818,6 +975,19 @@ const Suppliers = () => {
               Base estimate: {sym}{((Number(orderForm.quantity) || 0) * (Number(orderForm.unitCost) || 0) * (orderForm.currency === profile.currency ? 1 : (Number(orderForm.fxRate) || profile.exchangeRates?.[orderForm.currency] || 0))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
             <Button onClick={createOrder} disabled={!orderForm.supplier || !orderForm.product} className="w-full">Create Order</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!receivingOrder} onOpenChange={(open) => { if (!open && !receiving) setReceivingOrder(null); }}>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
+          <DialogHeader>
+            <DialogTitle>Receive {receivingOrder?.order_number}</DialogTitle>
+            <DialogDescription>Record a batch number and optional expiry to enable expiry-aware stock rotation. Leave the batch blank to receive legacy untracked stock.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div><Label>Batch / lot number (optional)</Label><Input className="mt-1" value={receiveBatchForm.batchNumber} onChange={(event) => setReceiveBatchForm({ ...receiveBatchForm, batchNumber: event.target.value })} /></div>
+            <div><Label>Expiry date (optional)</Label><Input type="date" className="mt-1" value={receiveBatchForm.expiryDate} onChange={(event) => setReceiveBatchForm({ ...receiveBatchForm, expiryDate: event.target.value })} /></div>
+            <Button className="w-full" disabled={receiving} onClick={() => void receiveOrder()}>{receiving ? "Receiving…" : "Confirm receipt"}</Button>
           </div>
         </DialogContent>
       </Dialog>

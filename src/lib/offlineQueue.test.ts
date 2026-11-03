@@ -10,6 +10,7 @@ import {
   markNetworkAvailable,
   markNetworkUnavailable,
   removeQueuedProductCreate,
+  removeQueuedActions,
   setOfflineAccessEnabled,
   setupOfflineSync,
 } from "./offlineQueue";
@@ -53,16 +54,46 @@ describe("offline queue", () => {
     expect(getOfflineQueue()[0].type).toBe("sale");
   });
 
-  it("clears the queue after a successful online sync callback", async () => {
+  it("removes only actions acknowledged by the server", async () => {
     addToOfflineQueue({ type: "expense", payload: { description: "Transport", amount: 5 } });
     Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
-    const onSync = vi.fn().mockResolvedValue(true);
+    const firstId = getOfflineQueue()[0].id;
+    let finishSync: (ids: string[]) => void = () => undefined;
+    const onSync = vi.fn(() => new Promise<string[]>((resolve) => {
+      finishSync = resolve;
+    }));
 
     const cleanup = setupOfflineSync(onSync);
     window.dispatchEvent(new Event("online"));
     await vi.waitFor(() => expect(onSync).toHaveBeenCalledTimes(1));
 
-    expect(getOfflineQueue()).toEqual([]);
+    addToOfflineQueue({ type: "sale", payload: { payment_method: "Cash" } });
+    finishSync([firstId]);
+    await vi.waitFor(() => expect(getOfflineQueue()).toHaveLength(1));
+    expect(getOfflineQueue()[0].type).toBe("sale");
+    cleanup();
+  });
+
+  it("keeps actions that the server did not acknowledge", () => {
+    addToOfflineQueue({ type: "expense", payload: { description: "Transport", amount: 5 } });
+    const failedId = getOfflineQueue()[0].id;
+    addToOfflineQueue({ type: "sale", payload: { payment_method: "Cash" } });
+
+    removeQueuedActions([getOfflineQueue()[1].id]);
+
+    expect(getOfflineQueue().map((action) => action.id)).toEqual([failedId]);
+  });
+
+  it("keeps queued actions when the sync request fails", async () => {
+    addToOfflineQueue({ type: "expense", payload: { description: "Transport", amount: 5 } });
+    Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
+    const onSync = vi.fn().mockResolvedValue(null);
+
+    const cleanup = setupOfflineSync(onSync);
+    window.dispatchEvent(new Event("online"));
+    await vi.waitFor(() => expect(onSync).toHaveBeenCalledTimes(1));
+
+    expect(getOfflineQueue()).toHaveLength(1);
     cleanup();
   });
 

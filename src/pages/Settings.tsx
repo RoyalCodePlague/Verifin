@@ -36,7 +36,6 @@ import {
 } from "@/lib/api";
 import {
   clearAuthenticatedOfflineSession,
-  clearOfflineQueue,
   getLastSuccessfulSync,
   getOfflineQueue,
   hasAuthenticatedOfflineSession,
@@ -44,6 +43,7 @@ import {
   isOnline,
   LAST_SUCCESSFUL_SYNC_KEY,
   markAuthenticatedOfflineSession,
+  removeQueuedActions,
   setLastSuccessfulSync,
   setOfflineAccessEnabled,
 } from "@/lib/offlineQueue";
@@ -511,24 +511,36 @@ const SettingsPage = () => {
     setSyncing(true);
     try {
       const result = await pushOfflineActions(queue);
-      const syncSucceeded = (result.errors?.length ?? 0) === 0;
-
-      if (syncSucceeded) {
-        clearOfflineQueue();
+      if (!Array.isArray(result.processed_action_ids)) {
+        throw new Error("The sync server did not confirm which changes were processed.");
+      }
+      const processedIds = result.processed_action_ids;
+      removeQueuedActions(processedIds);
+      if (processedIds.length > 0) {
         const syncedAt = new Date().toISOString();
         setLastSuccessfulSync(syncedAt);
+        window.dispatchEvent(new Event("verifin:offline-sync-complete"));
         localStorage.setItem(LAST_SUCCESSFUL_SYNC_KEY, syncedAt);
         setLastSyncAt(syncedAt);
-        setQueueCount(0);
-        await refreshUser();
-        toast.success(`Synced ${result.processed} offline change${result.processed === 1 ? "" : "s"}.`);
-      } else {
+        setQueueCount(getOfflineQueue().length);
+        toast.success(`Synced ${processedIds.length} offline change${processedIds.length === 1 ? "" : "s"}.`);
+        try {
+          await refreshUser();
+        } catch (error) {
+          toast.error(error instanceof Error
+            ? `Changes synced, but the latest data could not be refreshed: ${error.message}`
+            : "Changes synced, but the latest data could not be refreshed. Reload the page.");
+        }
+      }
+
+      if (result.errors?.length) {
         toast.warning("Some offline changes still need review.");
       }
 
       if (result.errors?.length) {
         setConflictCount(result.errors.length);
       }
+      setQueueCount(getOfflineQueue().length);
     } catch (error) {
       toast.error("Offline sync failed.", {
         description: error instanceof Error ? error.message : "We will retry when your connection is stable.",

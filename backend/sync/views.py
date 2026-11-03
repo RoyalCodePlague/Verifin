@@ -14,8 +14,8 @@ from audits.models import Audit, Discrepancy
 from sales.serializers import SaleSerializer
 from expenses.serializers import ExpenseSerializer
 from expenses.models import ExpenseCategory
-from inventory.models import Category, Product
-from inventory.serializers import ProductSerializer, SupplierSerializer
+from inventory.models import Category, Product, ProductBatch, StockMovement
+from inventory.serializers import ProductBatchSerializer, ProductSerializer, SupplierSerializer
 from customers.models import Customer
 from customers.serializers import CustomerSerializer
 from accounts.models import Staff
@@ -24,9 +24,22 @@ from billing.services import enforce_feature
 
 
 def record_conflict(user, action, reason):
+    action_id = str(action.get("id", ""))[:40]
+    if action_id:
+        conflict = SyncConflict.objects.filter(
+            user=user,
+            action_id=action_id,
+            status="open",
+            is_deleted=False,
+        ).first()
+        if conflict:
+            conflict.payload = action
+            conflict.reason = reason
+            conflict.save(update_fields=["payload", "reason", "updated_at"])
+            return conflict
     return SyncConflict.objects.create(
         user=user,
-        action_id=action.get("id", ""),
+        action_id=action_id,
         action_type=action.get("type", ""),
         payload=action,
         reason=reason,
@@ -108,10 +121,17 @@ class SyncPushView(APIView):
             raise ValidationError({"actions": "Expected a list."})
         # Authorize the entire batch before any writes, including cached/replayed actions.
         for queued in actions:
-            if not isinstance(queued, dict) or not isinstance(queued.get("payload", {}), dict) or not isinstance(queued.get("type"), str):
-                raise ValidationError({"actions": "Each action needs a type and an object payload."})
+            if (
+                not isinstance(queued, dict)
+                or not isinstance(queued.get("payload", {}), dict)
+                or not isinstance(queued.get("type"), str)
+                or not isinstance(queued.get("id"), str)
+                or not queued["id"].strip()
+                or len(queued["id"]) > 40
+            ):
+                raise ValidationError({"actions": "Each action needs an ID, type, and object payload."})
             kind = queued.get("type", "")
-            area = {"sale": "sales", "expense": "expenses", "restock": "inventory"}.get(kind)
+            area = {"sale": "sales", "expense": "expenses", "restock": "inventory", "batch_receive": "inventory"}.get(kind)
             if area is None:
                 prefix = kind.split("_")[0]
                 area = {"product": "inventory", "customer": "customers", "staff": "staff", "supplier": "suppliers", "supply": "suppliers", "audit": "audits", "discrepancy": "audits"}.get(prefix)
@@ -119,6 +139,7 @@ class SyncPushView(APIView):
                 raise ValidationError({"actions": "Unsupported sync action type."})
             require_area(request, area)
         processed = 0
+        processed_action_ids = []
         conflicts = []
         errors = []
         local_audit_ids = {}
@@ -128,6 +149,7 @@ class SyncPushView(APIView):
             action_id = str(action.get("id", "")).strip()
             previous = ProcessedSyncAction.objects.filter(user=request.user, action_id=action_id).first() if action_id else None
             if previous:
+                processed_action_ids.append(action_id)
                 local_id = str(action.get("payload", {}).get("local_id", ""))
                 if previous.result_id and previous.action_type == "product_create":
                     local_product_ids[local_id] = previous.result_id
@@ -144,6 +166,7 @@ class SyncPushView(APIView):
                 try:
                     sale_payload = {
                         **payload,
+                        "integration_id": payload.get("integration_id") or f"offline-{action_id}",
                         "sale_items": self._resolve_sale_items(
                             request,
                             payload.get("sale_items", []),
@@ -209,6 +232,49 @@ class SyncPushView(APIView):
                 else:
                     errors.append({"action": action, "errors": serializer.errors})
                     conflicts.append(record_conflict(request.user, action, "Product create sync failed").id)
+            elif action_type == "batch_receive":
+                batch_payload = dict(payload)
+                product_local_id = str(batch_payload.pop("product_local_id", ""))
+                product_id = batch_payload.get("product")
+                if not product_id and product_local_id:
+                    product_id = local_product_ids.get(product_local_id)
+                if not product_id:
+                    errors.append({"action": action, "detail": "Product for batch receipt was not found."})
+                    conflicts.append(record_conflict(request.user, action, "Batch product not found").id)
+                    continue
+                batch_payload["product"] = product_id
+                serializer = ProductBatchSerializer(data=batch_payload, context={"request": request})
+                if serializer.is_valid():
+                    product = Product.objects.select_for_update().filter(
+                        pk=product_id,
+                        user=request.user,
+                        is_deleted=False,
+                    ).first()
+                    if not product:
+                        errors.append({"action": action, "detail": "Product for batch receipt was not found."})
+                        conflicts.append(record_conflict(request.user, action, "Batch product not found").id)
+                        continue
+                    if ProductBatch.objects.filter(product=product, batch_number=serializer.validated_data["batch_number"]).exists():
+                        errors.append({"action": action, "detail": "This batch number is already recorded for the product."})
+                        conflicts.append(record_conflict(request.user, action, "Duplicate product batch").id)
+                        continue
+                    quantity = serializer.validated_data["quantity_received"]
+                    batch = serializer.save(quantity_remaining=quantity)
+                    product.stock += quantity
+                    product.save()
+                    StockMovement.objects.create(
+                        product=product,
+                        batch=batch,
+                        quantity=quantity,
+                        movement_type="in",
+                        reason=f"Received batch {batch.batch_number}",
+                        created_by=request.user,
+                    )
+                    result_id = batch.id
+                    processed += 1
+                else:
+                    errors.append({"action": action, "errors": serializer.errors})
+                    conflicts.append(record_conflict(request.user, action, "Batch receipt sync failed").id)
             elif action_type == "product_update":
                 try:
                     product = Product.objects.select_for_update().get(id=payload.get("id") or local_product_ids.get(str(payload.get("local_id"))), user=request.user, is_deleted=False)
@@ -431,9 +497,11 @@ class SyncPushView(APIView):
                     action_id=action_id,
                     defaults={"action_type": str(action_type or ""), "result_id": result_id},
                 )
+                processed_action_ids.append(action_id)
 
         response_data = {
             "processed": processed,
+            "processed_action_ids": processed_action_ids,
             "conflicts": conflicts,
             "errors": errors,
             "resolution": "server_wins",

@@ -1,11 +1,12 @@
 from decimal import Decimal
 from uuid import uuid4
 from django.db import transaction
+from django.db.models import Sum
 from django.contrib.auth import get_user_model
 from rest_framework import serializers, viewsets, mixins
 from rest_framework.permissions import IsAuthenticated
 from core.currency import get_rate_to_base
-from .models import SupplyEntry, Product, StockMovement
+from .models import ProductBatch, SupplyEntry, Product, StockMovement
 
 
 class SupplyEntrySerializer(serializers.ModelSerializer):
@@ -58,8 +59,14 @@ class SupplyEntrySerializer(serializers.ModelSerializer):
         product = Product.objects.select_for_update().get(pk=validated_data["product"].pk, user=user, is_deleted=False)
         quantity = validated_data["quantity"]
         incoming = validated_data["direction"] == "incoming"
-        if not incoming and product.stock < quantity:
-            raise serializers.ValidationError({"quantity": "Insufficient stock."})
+        if not incoming:
+            if product.stock < quantity:
+                raise serializers.ValidationError({"quantity": "Insufficient stock."})
+            tracked_quantity = ProductBatch.objects.filter(product=product, is_deleted=False).aggregate(
+                total=Sum("quantity_remaining")
+            )["total"] or 0
+            if product.stock - quantity < tracked_quantity:
+                raise serializers.ValidationError({"quantity": "Record an outgoing sale through POS so tracked batches are depleted by expiry date."})
         product.stock += quantity if incoming else -quantity
         if incoming:
             product.cost_price = (validated_data["unit_cost"] * validated_data["fx_rate_to_base"]).quantize(Decimal("0.01"))

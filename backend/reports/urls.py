@@ -1,4 +1,6 @@
-from django.urls import path
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
+from .banking import BankAccountViewSet, BankStatementLineViewSet, CashFlowSummaryView
 from .views import (
     DailySalesView,
     AdvancedAnalyticsView,
@@ -18,7 +20,13 @@ from .views import (
 
 from .business_views import insights, whatsapp_summary
 
+router = DefaultRouter()
+router.register("bank-accounts", BankAccountViewSet, basename="bank-accounts")
+router.register("bank-statement-lines", BankStatementLineViewSet, basename="bank-statement-lines")
+
 urlpatterns = [
+    path("", include(router.urls)),
+    path("cash-flow/", CashFlowSummaryView.as_view()),
     path("insights/", insights),
     path("whatsapp-summary/", whatsapp_summary),
     path("daily-sales/", DailySalesView.as_view()),

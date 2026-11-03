@@ -92,9 +92,27 @@ class Product(TimeStampedSoftDeleteModel):
         super().save(*args, **kwargs)
 
 
+class ProductBatch(TimeStampedSoftDeleteModel):
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="batches")
+    batch_number = models.CharField(max_length=100)
+    expiry_date = models.DateField(blank=True, null=True, db_index=True)
+    quantity_received = models.PositiveIntegerField()
+    quantity_remaining = models.PositiveIntegerField()
+    unit_cost_base = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    supplier = models.ForeignKey(Supplier, on_delete=models.SET_NULL, blank=True, null=True, related_name="product_batches")
+    received_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["product", "batch_number"], name="unique_product_batch_number"),
+        ]
+        indexes = [models.Index(fields=["product", "expiry_date"])]
+
+
 class StockMovement(TimeStampedSoftDeleteModel):
     MOVEMENT_CHOICES = [("in", "in"), ("out", "out"), ("adjustment", "adjustment")]
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="movements")
+    batch = models.ForeignKey(ProductBatch, on_delete=models.SET_NULL, blank=True, null=True, related_name="movements")
     quantity = models.IntegerField()
     movement_type = models.CharField(max_length=20, choices=MOVEMENT_CHOICES)
     reason = models.CharField(max_length=255, blank=True)
@@ -149,6 +167,31 @@ class PurchaseOrderItem(TimeStampedSoftDeleteModel):
     unit_cost_base = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     line_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     line_total_base = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+
+
+class SupplierPayment(TimeStampedSoftDeleteModel):
+    METHOD_CHOICES = [
+        ("cash", "Cash"),
+        ("bank", "Bank transfer"),
+        ("mobile_money", "Mobile money"),
+        ("card", "Card"),
+        ("other", "Other"),
+    ]
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="supplier_payments")
+    supplier = models.ForeignKey(Supplier, on_delete=models.PROTECT, related_name="payments")
+    purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.PROTECT, related_name="payments")
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    currency = models.CharField(max_length=10)
+    fx_rate_to_base = models.DecimalField(max_digits=18, decimal_places=6, default=1)
+    amount_base = models.DecimalField(max_digits=12, decimal_places=2)
+    payment_date = models.DateField()
+    method = models.CharField(max_length=20, choices=METHOD_CHOICES, default="cash")
+    reference = models.CharField(max_length=120, blank=True)
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="recorded_supplier_payments")
+
+    class Meta:
+        indexes = [models.Index(fields=["user", "supplier", "payment_date"])]
 
 
 class SupplyEntry(TimeStampedSoftDeleteModel):

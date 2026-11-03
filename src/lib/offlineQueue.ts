@@ -18,6 +18,7 @@ export type OfflineActionType =
   | "product_create"
   | "product_update"
   | "product_delete"
+  | "batch_receive"
   | "restock"
   | "customer_create"
   | "customer_update"
@@ -38,6 +39,13 @@ export interface OfflineAction {
   timestamp: number;
 }
 
+function createActionId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
+}
+
 export function getOfflineQueue(): OfflineAction[] {
   try {
     return JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]");
@@ -50,7 +58,7 @@ export function addToOfflineQueue(action: Omit<OfflineAction, "id" | "timestamp"
   const queue = getOfflineQueue();
   queue.push({
     ...action,
-    id: Math.random().toString(36).slice(2, 10),
+    id: createActionId(),
     timestamp: Date.now(),
   });
   localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
@@ -66,6 +74,14 @@ export function setOfflineQueue(actions: OfflineAction[]) {
     return;
   }
   localStorage.setItem(QUEUE_KEY, JSON.stringify(actions));
+}
+
+export function removeQueuedActions(actionIds: string[]) {
+  if (actionIds.length === 0) return;
+  const completedIds = new Set(actionIds);
+  const remaining = getOfflineQueue().filter((action) => !completedIds.has(action.id));
+  setOfflineQueue(remaining);
+  if (remaining.length === 0) clearOfflineSession();
 }
 
 export function removeQueuedProductCreate(localId: string) {
@@ -165,14 +181,13 @@ export function getLastSuccessfulSync(): string | null {
 }
 
 // Listen for online status and trigger sync when the app is back online
-export function setupOfflineSync(onSync: (actions: OfflineAction[]) => Promise<boolean>) {
+export function setupOfflineSync(onSync: (actions: OfflineAction[]) => Promise<string[] | null>) {
   const handleOnline = async () => {
     const queue = getOfflineQueue();
     if (queue.length > 0) {
-      const success = await onSync(queue);
-      if (success) {
-        clearOfflineQueue();
-        clearOfflineSession();
+      const completedIds = await onSync(queue);
+      if (completedIds) {
+        removeQueuedActions(completedIds);
       }
     }
   };

@@ -176,6 +176,26 @@ class SaleViewSet(viewsets.ModelViewSet):
         sale = Sale.objects.select_for_update().get(pk=instance.pk)
         if sale.is_deleted:
             return
+        batch_out_movements = StockMovement.objects.filter(
+            product__sale_items__sale=sale,
+            product__sale_items__is_deleted=False,
+            movement_type="out",
+            reason=sale.receipt_number,
+            batch__isnull=False,
+            is_deleted=False,
+        ).select_related("batch").distinct()
+        for movement in batch_out_movements:
+            batch = movement.batch
+            batch.quantity_remaining += movement.quantity
+            batch.save(update_fields=["quantity_remaining", "updated_at"])
+            StockMovement.objects.create(
+                product=movement.product,
+                batch=batch,
+                quantity=movement.quantity,
+                movement_type="in",
+                created_by=self.request.user,
+                reason=f"Reversed {sale.receipt_number}",
+            )
         for item in sale.sale_items.filter(is_deleted=False).order_by("product_id"):
             product = Product.objects.select_for_update().get(pk=item.product_id)
             product.stock += item.quantity

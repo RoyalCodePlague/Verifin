@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import BarcodeLookupCache, Branch, Category, Product, PurchaseOrder, PurchaseOrderItem, StockMovement, StockTransfer, Supplier
+from .models import BarcodeLookupCache, Branch, Category, Product, ProductBatch, PurchaseOrder, PurchaseOrderItem, StockMovement, StockTransfer, Supplier, SupplierPayment
 
 
 @admin.register(Branch)
@@ -40,8 +40,15 @@ class BarcodeLookupCacheAdmin(admin.ModelAdmin):
 
 @admin.register(StockMovement)
 class StockMovementAdmin(admin.ModelAdmin):
-    list_display = ("product", "quantity", "movement_type", "created_by", "created_at")
-    search_fields = ("product__name", "created_by__email")
+    list_display = ("product", "batch", "quantity", "movement_type", "created_by", "created_at")
+    search_fields = ("product__name", "batch__batch_number", "created_by__email")
+
+
+@admin.register(ProductBatch)
+class ProductBatchAdmin(admin.ModelAdmin):
+    list_display = ("batch_number", "product", "expiry_date", "quantity_received", "quantity_remaining", "supplier", "received_at")
+    list_filter = ("expiry_date", "supplier")
+    search_fields = ("batch_number", "product__name", "product__sku", "supplier__name")
 
 
 @admin.register(StockTransfer)
@@ -61,3 +68,10 @@ class PurchaseOrderAdmin(admin.ModelAdmin):
     list_filter = ("status", "supplier", "branch")
     search_fields = ("order_number", "supplier__name")
     inlines = [PurchaseOrderItemInline]
+
+
+@admin.register(SupplierPayment)
+class SupplierPaymentAdmin(admin.ModelAdmin):
+    list_display = ("supplier", "purchase_order", "amount", "currency", "amount_base", "payment_date", "method", "created_by")
+    list_filter = ("method", "currency", "payment_date")
+    search_fields = ("supplier__name", "purchase_order__order_number", "reference", "created_by__email")
