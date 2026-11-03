@@ -7,7 +7,6 @@ import {
   CloudOff,
   Eye,
   EyeOff,
-  KeyRound,
   Loader2,
   Lock,
   Moon,
@@ -25,19 +24,15 @@ import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/lib/auth-context";
 import {
   createNotificationPreferencesApi,
-  createApiKeyApi,
   changePasswordRequest,
   fetchNotificationPreferencesApi,
   getAccessToken,
-  listApiKeysApi,
   listSyncConflicts,
   logoutOtherDevicesRequest,
   patchMe,
   pushOfflineActions,
-  revokeApiKeyApi,
   updateNotificationPreferencesApi,
   apiFetch,
-  type ApiIntegrationKey,
 } from "@/lib/api";
 import {
   clearAuthenticatedOfflineSession,
@@ -58,14 +53,6 @@ import { LockedBadge, useFeatureAccess, useUpgradePrompt } from "@/lib/features"
 
 const SECURITY_PREFS_KEY = "sp_security_prefs";
 const EXTENDED_NOTIFICATION_PREFS_KEY = "sp_extended_notification_prefs";
-const apiPermissionOptions = [
-  { id: "inventory", label: "Inventory (read catalog, barcode lookup)" },
-  { id: "sales", label: "Sales (checkout, till sessions)" },
-  { id: "customers", label: "Customers" },
-  { id: "reports", label: "Reports" },
-  { id: "suppliers", label: "Suppliers" },
-  { id: "audits", label: "Audits" },
-];
 const PASSWORD_STAGE_PROMPTS = [
   "First, confirm it is really you.",
   "Now choose the new password carefully.",
@@ -238,11 +225,6 @@ const SettingsPage = () => {
   const [passwordCelebration, setPasswordCelebration] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [loggingOutOthers, setLoggingOutOthers] = useState(false);
-  const [apiKeys, setApiKeys] = useState<ApiIntegrationKey[]>([]);
-  const [apiKeyName, setApiKeyName] = useState("POS terminal");
-  const [apiKeyPermissions, setApiKeyPermissions] = useState(["inventory", "sales", "customers"]);
-  const [newApiKey, setNewApiKey] = useState("");
-  const [apiKeyLoading, setApiKeyLoading] = useState(false);
   const detectedCountry = getDetectedCountryCode();
   const detectedDefaults = getRegionalCurrencyDefaults(detectedCountry);
 
@@ -298,21 +280,6 @@ const SettingsPage = () => {
       .catch(() => { if (!cancelled) setAutomationEvents([]); });
     return () => { cancelled = true; };
   }, [automationEnabled]);
-
-  useEffect(() => {
-    if (!getAccessToken()) return;
-    let cancelled = false;
-    void listApiKeysApi()
-      .then((items) => {
-        if (!cancelled) setApiKeys(items);
-      })
-      .catch(() => {
-        if (!cancelled) setApiKeys([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     if (!online || !getAccessToken()) {
@@ -519,49 +486,6 @@ const SettingsPage = () => {
       });
     } finally {
       setLoggingOutOthers(false);
-    }
-  };
-
-  const toggleApiPermission = (permission: string) => {
-    setApiKeyPermissions((current) =>
-      current.includes(permission) ? current.filter((item) => item !== permission) : [...current, permission]
-    );
-  };
-
-  const handleCreateApiKey = async () => {
-    if (!canUse("api_access")) { promptUpgrade("api_access", "API Access"); return; }
-    if (!apiKeyName.trim() || apiKeyPermissions.length === 0) {
-      toast.error("Name the key and choose at least one permission.");
-      return;
-    }
-    setApiKeyLoading(true);
-    try {
-      const created = await createApiKeyApi({ name: apiKeyName.trim(), permissions: apiKeyPermissions });
-      setApiKeys((current) => [created, ...current]);
-      setNewApiKey(created.raw_key || "");
-      toast.success("API key created. Copy it now; it will only be shown once.");
-    } catch (error) {
-      toast.error("Could not create API key.", {
-        description: error instanceof Error ? error.message : "Check that API access is enabled on this plan.",
-      });
-    } finally {
-      setApiKeyLoading(false);
-    }
-  };
-
-  const handleRevokeApiKey = async (id: number) => {
-    if (!canUse("api_access")) { promptUpgrade("api_access", "API Access"); return; }
-    setApiKeyLoading(true);
-    try {
-      const updated = await revokeApiKeyApi(id);
-      setApiKeys((current) => current.map((key) => (key.id === id ? updated : key)));
-      toast.success("API key revoked.");
-    } catch (error) {
-      toast.error("Could not revoke API key.", {
-        description: error instanceof Error ? error.message : "Please try again.",
-      });
-    } finally {
-      setApiKeyLoading(false);
     }
   };
 
@@ -888,67 +812,6 @@ const SettingsPage = () => {
           <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm">Alert severity<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={automationRules.severity} onChange={e=>{if(!canUse("automation_rules")){promptUpgrade("automation_rules","Automation Rules");return;}updateAutomation({...automationRules,severity:e.target.value});}}><option value="info">Informational</option><option value="warning">Warning</option><option value="critical">Critical</option></select></label><label className="text-sm">Notification channel<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={automationRules.channel} onChange={e=>{if(!canUse("automation_rules")){promptUpgrade("automation_rules","Automation Rules");return;}updateAutomation({...automationRules,channel:e.target.value});}}><option value="in_app">In app</option><option value="email">Email preference</option><option value="whatsapp">WhatsApp preference</option></select></label></div>
           <p className="text-xs text-muted-foreground">Email and WhatsApp delivery require server notification setup. Rule evaluation is available in the in-app automation feed.</p>
           <div className="space-y-2"><p className="text-sm font-medium">Recent rule evaluations</p>{automationEvents.length ? automationEvents.map((event,index)=><div key={`${event.rule}-${index}`} className="rounded-md border p-3"><p className="text-sm font-medium">{event.message}</p><p className="text-xs capitalize text-muted-foreground">{event.rule.replace(/_/g," ")} · {event.severity}</p></div>) : <p className="rounded-md border p-3 text-sm text-muted-foreground">No active alerts right now.</p>}</div>
-        </CardContent>
-      </Card>
-
-      <Card className="shadow-soft">
-        <CardHeader>
-          <CardTitle className="font-display flex items-center gap-2 text-base">
-            <KeyRound className="h-4 w-4 text-primary" />
-            API Access {canUse("api_access") ? <span className="text-xs font-normal text-success">Enabled</span> : <LockedBadge />}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">Create scoped API keys, revoke access, and review last use. POS terminals need Inventory and Sales scopes. Keys are shown once when created. <button type="button" className="text-primary underline" onClick={() => navigate("/api")}>View endpoint documentation</button></p>
-          <div className="rounded-lg border border-border bg-muted/20 p-4 dark:bg-muted/10">
-            <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
-              <div>
-                <Label>Key Name</Label>
-                <Input className="mt-1.5" value={apiKeyName} onChange={(e) => setApiKeyName(e.target.value)} />
-              </div>
-              <Button onClick={() => void handleCreateApiKey()} disabled={apiKeyLoading || !apiKeyName.trim() || apiKeyPermissions.length === 0}>
-                {apiKeyLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                Create Key
-              </Button>
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {apiPermissionOptions.map((permission) => (
-                <label key={permission.id} className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-xs dark:bg-card">
-                  <input type="checkbox" checked={apiKeyPermissions.includes(permission.id)} onChange={() => toggleApiPermission(permission.id)} />
-                  <span>{permission.label}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          {newApiKey ? (
-            <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950 dark:border-amber-800/70 dark:bg-amber-950/30 dark:text-amber-100">
-              <p className="text-sm font-medium">Copy this key now</p>
-              <div className="mt-2 overflow-x-auto rounded-md border border-amber-200 bg-white px-3 py-2 font-mono text-xs dark:border-amber-800 dark:bg-background">
-                {newApiKey}
-              </div>
-            </div>
-          ) : null}
-
-          <div className="space-y-2">
-            {apiKeys.length ? apiKeys.map((key) => (
-              <div key={key.id} className="flex flex-col gap-3 rounded-lg border border-border p-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm font-medium">{key.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {key.key_prefix}... · {key.permissions.join(", ")} · {key.last_used_at ? `Last used ${formatRelativeSync(key.last_used_at)}` : "Never used"}
-                  </p>
-                </div>
-                <Button variant="outline" size="sm" disabled={apiKeyLoading || key.status === "revoked"} onClick={() => void handleRevokeApiKey(key.id)}>
-                  {key.status === "revoked" ? "Revoked" : "Revoke"}
-                </Button>
-              </div>
-            )) : (
-              <p className="rounded-lg border border-border p-4 text-sm text-muted-foreground">
-                No API keys yet. Create one for POS terminals, barcode devices, or external integrations.
-              </p>
-            )}
-          </div>
         </CardContent>
       </Card>
 

@@ -3,7 +3,7 @@ import { googleConfigRequest } from "@/lib/api";
 
 type GoogleIdentity = {
   initialize: (options: { client_id: string; nonce: string; callback: (response: { credential: string }) => void; auto_select: boolean }) => void;
-  renderButton: (element: HTMLElement, options: { type: string; theme: string; size: string; text: string; width: number }) => void;
+  renderButton: (element: HTMLElement, options: { type: string; theme: string; size: string; text: string; width: number; ux_mode: "popup" }) => void;
 };
 declare global { interface Window { google?: { accounts: { id: GoogleIdentity } }; } }
 let loadingScript: Promise<void> | undefined;
@@ -49,7 +49,7 @@ export function GoogleSignIn({ onCredential, disabled }: { onCredential: (creden
       window.google.accounts.id.initialize({ client_id: config.client_id, nonce, auto_select: false, callback: (response) => {
         if (!cancelled && !busy.current) void callback.current(response.credential, nonce).finally(() => { if (!cancelled) setAttempt((value) => value + 1); });
       } });
-      window.google.accounts.id.renderButton(target, { type: "standard", theme: "outline", size: "large", text: "continue_with", width: 320 });
+      window.google.accounts.id.renderButton(target, { type: "standard", theme: "outline", size: "large", text: "continue_with", width: 320, ux_mode: "popup" });
       setMessage("");
     })().catch(() => { if (!cancelled) { setMessage("Google sign-in could not load. Try again or use email below."); setFailed(true); } });
     // Refresh the server-signed nonce before its ten-minute expiry.

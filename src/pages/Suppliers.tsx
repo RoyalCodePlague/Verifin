@@ -789,7 +789,7 @@ const Suppliers = () => {
       </Dialog>
 
       <Dialog open={orderOpen} onOpenChange={setOrderOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
           <DialogHeader>
             <DialogTitle className="font-display">Create Purchase Order</DialogTitle>
             <DialogDescription>Create a purchase order for a saved supplier and track its expected stock delivery.</DialogDescription>

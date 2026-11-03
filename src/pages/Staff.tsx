@@ -321,7 +321,7 @@ const Staff = () => {
       )}
 
       <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) resetForm(); }}>
-        <DialogContent className="sm:max-w-xl">
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain sm:max-w-xl">
           <DialogHeader>
             <DialogTitle className="font-display">Add Staff Login</DialogTitle>
             <DialogDescription>Create a username, password, role, and access list for this staff member.</DialogDescription>

@@ -44,4 +44,16 @@ describe("API network timeout", () => {
     await rejection;
     expect(canQueueOfflineAction()).toBe(true);
   });
+
+  it("supports longer timeouts for slow requests such as receipt OCR", async () => {
+    const request = apiFetch("/api/v1/test/", { timeoutMs: 60_000 });
+    const rejection = expect(request).rejects.toMatchObject({ name: "AbortError" });
+
+    await vi.advanceTimersByTimeAsync(12_000);
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(48_000);
+
+    await rejection;
+  });
 });

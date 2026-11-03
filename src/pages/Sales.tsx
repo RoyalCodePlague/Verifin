@@ -496,22 +496,24 @@ const Sales = () => {
             <div className="divide-y divide-border">
               {filtered.map((s, i) => (
                 <motion.div key={s.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }} className="flex items-center justify-between p-4 hover:bg-muted/30 transition-colors group">
-                  <div>
-                    <p className="font-medium text-sm">{s.items}</p>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <span>{s.time} · {s.date} · {s.method}</span>
-                      {s.paymentCurrency ? <span className="rounded border border-border px-2 py-0.5">{s.paymentCurrency}</span> : null}
+                  <button type="button" onClick={() => showReceipt(s.id)} className="flex min-w-0 flex-1 items-center justify-between gap-4 text-left">
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm">{s.items}</p>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <span>{s.time} · {s.date} · {s.method}</span>
+                        {s.paymentCurrency ? <span className="rounded border border-border px-2 py-0.5">{s.paymentCurrency}</span> : null}
+                      </div>
+                      {s.paymentAllocations?.length && s.paymentAllocations.length > 1 ? (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Split: {s.paymentAllocations.map((row) => `${symbolForCurrency(row.currency)}${row.amount.toLocaleString()} ${row.currency}`).join(" + ")}
+                        </p>
+                      ) : null}
                     </div>
-                    {s.paymentAllocations?.length && s.paymentAllocations.length > 1 ? (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Split: {s.paymentAllocations.map((row) => `${symbolForCurrency(row.currency)}${row.amount.toLocaleString()} ${row.currency}`).join(" + ")}
-                      </p>
-                    ) : null}
-                  </div>
+                    <p className="shrink-0 font-display font-bold">{sym}{s.total.toLocaleString()}</p>
+                  </button>
                   <div className="flex items-center gap-2">
-                    <p className="font-display font-bold">{sym}{s.total.toLocaleString()}</p>
-                    <button onClick={() => showReceipt(s.id)} className="p-1.5 rounded hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"><Receipt className="h-3.5 w-3.5 text-muted-foreground" /></button>
-                    <button onClick={() => setDeleteId(s.id)} className="p-1.5 rounded hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="h-3.5 w-3.5 text-destructive" /></button>
+                    <button type="button" aria-label="View receipt" onClick={() => showReceipt(s.id)} className="p-1.5 rounded hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"><Receipt className="h-3.5 w-3.5 text-muted-foreground" /></button>
+                    <button type="button" aria-label="Delete sale" onClick={() => setDeleteId(s.id)} className="p-1.5 rounded hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="h-3.5 w-3.5 text-destructive" /></button>
                   </div>
                 </motion.div>
               ))}
@@ -755,7 +757,7 @@ const Sales = () => {
         </Dialog>
       )}
       <Dialog open={receiptOpen} onOpenChange={setReceiptOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
           <DialogHeader>
             <DialogTitle className="font-display">Receipt</DialogTitle>
             <DialogDescription>
@@ -772,10 +774,10 @@ const Sales = () => {
               placeholder="Leave blank to choose contact in WhatsApp"
             />
           </div>
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-2">
             <Button variant="outline" onClick={() => window.print()}><Printer className="mr-2 h-4 w-4" />Print</Button>
             <Button variant="outline" onClick={() => navigator.clipboard.writeText(receiptText)}>Copy Receipt</Button>
-            <Button onClick={() => void shareReceiptOnWhatsApp()}>
+            <Button className="sm:col-span-2" onClick={() => void shareReceiptOnWhatsApp()}>
               <MessageCircle className="mr-2 h-4 w-4" />
               WhatsApp Receipt
             </Button>

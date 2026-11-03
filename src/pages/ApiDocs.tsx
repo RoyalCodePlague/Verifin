@@ -34,7 +34,7 @@ const endpoints = [
 ];
 
 const posSteps = [
-  { icon: Key, title: "Authenticate", desc: "Create a scoped API key in Settings and send it as X-API-Key." },
+  { icon: Key, title: "Authenticate", desc: "Use an existing scoped API key as X-API-Key. Self-service key management is temporarily unavailable." },
   { icon: Boxes, title: "Sync Products", desc: "Pull products and barcode data before opening the till or when the POS comes online." },
   { icon: ShoppingCart, title: "Post Sales", desc: "Send each completed receipt to Verifin so inventory, customers, and reports stay current." },
   { icon: ReceiptText, title: "Print Receipts", desc: "Use the receipt endpoint to reprint or render a receipt in another POS application." },
@@ -329,10 +329,10 @@ const ApiDocs = () => (
         <Card className="shadow-soft mb-8">
           <CardContent className="p-5">
             <p className="text-sm text-muted-foreground">
-              Create a dedicated API key in Settings → API Access. Send it in X-API-Key on every request and grant Inventory and Sales for catalog lookup, checkout, and tills. Keep it in secure device storage, not source code. Send a stable unique integration_id with each completed receipt so retries never deduct stock twice.
+              Send your scoped API key in X-API-Key on every request and grant Inventory and Sales for catalog lookup, checkout, and tills. Keep it in secure device storage, not source code. Send a stable unique integration_id with each completed receipt so retries never deduct stock twice. Self-service API key management is temporarily unavailable.
             </p>
             <p className="mt-3 text-sm text-muted-foreground">
-              The full key is shown only once when created. Save it securely and reuse it for requests; Settings only shows its prefix afterward. If it is lost, create a replacement and revoke the old key. Use separate keys for separate terminals so one can be revoked without interrupting the others.
+              Keep your full API key secure. Use separate keys for separate terminals so one can be revoked without interrupting the others.
             </p>
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
               {posSteps.map((step) => (
@@ -401,8 +401,8 @@ const ApiDocs = () => (
         </Card>
 
         <div className="mt-10 text-center p-8 rounded-2xl bg-muted/50">
-          <h3 className="font-display font-semibold text-lg mb-2">Need API access?</h3>
-          <p className="text-sm text-muted-foreground">Upgrade to the Business plan to enable API Access, then create and manage scoped integration keys in Settings.</p>
+          <h3 className="font-display font-semibold text-lg mb-2">Using an existing API integration?</h3>
+          <p className="text-sm text-muted-foreground">Existing integrations can continue using their scoped API keys. Self-service key management is temporarily unavailable.</p>
         </div>
       </div>
     </section>

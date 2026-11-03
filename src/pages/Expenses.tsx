@@ -127,7 +127,9 @@ const Expenses = () => {
       setAddOpen(true);
       toast.success(result.message || "Receipt scanned. Review the expense before saving.");
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not scan receipt");
+      toast.error(e instanceof Error && e.name === "AbortError"
+        ? "Receipt scanning timed out. Check your connection or try a smaller image."
+        : e instanceof Error ? e.message : "Could not scan receipt");
     } finally {
       setScanning(false);
     }
@@ -316,7 +318,7 @@ const Expenses = () => {
       )}
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
           <DialogHeader>
             <DialogTitle className="font-display">Add Expense</DialogTitle>
             <DialogDescription>Record an operating expense and optionally convert it into your base reporting currency.</DialogDescription>
@@ -387,7 +389,7 @@ const Expenses = () => {
         </DialogContent>
       </Dialog>
       <Dialog open={scanOpen} onOpenChange={setScanOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
           <DialogHeader>
             <DialogTitle className="font-display">Scan Receipt</DialogTitle>
             <DialogDescription>Upload or take a receipt photo, then review the extracted expense details before saving.</DialogDescription>

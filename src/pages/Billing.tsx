@@ -64,6 +64,7 @@ const Billing = () => {
     const requested = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("plan");
     return requested === "growth" || requested === "business" || requested === "starter" ? requested : "";
   });
+  const [activeSection, setActiveSection] = useState<"overview" | "plans" | "referrals">(() => requestedPlan ? "plans" : "overview");
   const [paymentReference, setPaymentReference] = useState(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("payment_reference") ?? "");
   const [checkoutPlan, setCheckoutPlan] = useState<PlanCode | null>(null);
   const [checkoutMethod, setCheckoutMethod] = useState<"hosted" | "mobile">("hosted");
@@ -186,6 +187,25 @@ const Billing = () => {
           Waiting for Paynow to confirm your payment. This page will update automatically.
         </div>
       )}
+      <div aria-label="Billing sections" className="grid grid-cols-3 gap-1 rounded-lg border border-border bg-muted/40 p-1">
+        {([
+          ["overview", "Overview"],
+          ["plans", "Plans"],
+          ["referrals", "Referrals"],
+        ] as const).map(([section, label]) => (
+          <button
+            key={section}
+            type="button"
+            aria-pressed={activeSection === section}
+            onClick={() => setActiveSection(section)}
+            className={`rounded-md px-2 py-2 text-sm font-medium transition-colors ${activeSection === section ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {activeSection === "overview" && (
+        <>
       <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <div className="rounded-lg border border-border bg-background p-6 dark:bg-card">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -227,7 +247,10 @@ const Billing = () => {
           </div>
         </div>
       </section>
+        </>
+      )}
 
+      {activeSection === "referrals" && (
       <section className="rounded-lg border border-border bg-background p-6 dark:bg-card">
         <div className="grid gap-6 lg:grid-cols-[1fr_0.8fr]">
           <div>
@@ -286,7 +309,9 @@ const Billing = () => {
           </div>
         </div>
       </section>
+      )}
 
+      {activeSection === "plans" && (
       <section className="rounded-lg border border-border bg-background p-6 dark:bg-card">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -344,6 +369,7 @@ const Billing = () => {
           })}
         </div>
       </section>
+      )}
 
       {checkoutPlan && (
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setCheckoutPlan(null); }}>
@@ -415,7 +441,7 @@ const Billing = () => {
         </div>
       )}
 
-      <section className="grid gap-6 lg:grid-cols-2">
+      {activeSection === "overview" && <section className="grid gap-6 lg:grid-cols-2">
         <div className="rounded-lg border border-border bg-background p-6 dark:bg-card">
           <h2 className="text-xl font-bold">Locked Features</h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -429,6 +455,7 @@ const Billing = () => {
           </div>
         </div>
       </section>
+      }
 
     </div>
   );

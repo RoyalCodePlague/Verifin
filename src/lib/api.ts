@@ -44,13 +44,13 @@ export function onAuthExpired(handler: () => void) {
   return () => window.removeEventListener(AUTH_EXPIRED_EVENT, handler);
 }
 
-async function fetchWithTimeout(url: string, options: RequestInit) {
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = API_REQUEST_TIMEOUT_MS) {
   const controller = new AbortController();
   let timedOut = false;
   const timeout = setTimeout(() => {
     timedOut = true;
     controller.abort();
-  }, API_REQUEST_TIMEOUT_MS);
+  }, timeoutMs);
   const abortFromCaller = () => controller.abort(options.signal?.reason);
   if (options.signal?.aborted) abortFromCaller();
   else options.signal?.addEventListener("abort", abortFromCaller, { once: true });
@@ -112,24 +112,25 @@ export type StaffSession = {
 
 export async function apiFetch<T = unknown>(
   path: string,
-  options: RequestInit & { skipAuth?: boolean } = {}
+  options: RequestInit & { skipAuth?: boolean; timeoutMs?: number } = {}
 ): Promise<T> {
   const headers = new Headers(options.headers);
   const body = options.body;
+  const { skipAuth, timeoutMs = API_REQUEST_TIMEOUT_MS, ...requestOptions } = options;
   if (body && !(body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 
-  const access = options.skipAuth ? null : getAccessToken();
+  const access = skipAuth ? null : getAccessToken();
 
   const doFetch = async (token: string | null) => {
     const h = new Headers(headers);
     if (token) h.set("Authorization", `Bearer ${token}`);
-    return fetchWithTimeout(apiUrl(path), { ...options, headers: h });
+    return fetchWithTimeout(apiUrl(path), { ...requestOptions, headers: h }, timeoutMs);
   };
 
   let res = await doFetch(access);
-  if (res.status === 401 && !options.skipAuth) {
+  if (res.status === 401 && !skipAuth) {
     const newAccess = await refreshAccessToken();
     if (newAccess) res = await doFetch(newAccess);
     if (!newAccess || res.status === 401) {
@@ -902,6 +903,7 @@ export async function scanReceiptApi(payload: {
   return apiFetch<ReceiptScanResult>("/api/v1/expenses/ocr-receipt/", {
     method: "POST",
     body,
+    timeoutMs: 60_000,
   });
 }
 

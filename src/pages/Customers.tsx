@@ -232,7 +232,7 @@ const Customers = () => {
   };
 
   const formDialog = (
-    <DialogContent>
+    <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
       <DialogHeader>
         <DialogTitle className="font-display">{editId ? "Edit Customer" : "Add Customer"}</DialogTitle>
         <DialogDescription>

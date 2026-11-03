@@ -18,6 +18,7 @@ describe("Google sign-in button", () => {
     const onCredential = vi.fn().mockResolvedValue(undefined);
     render(<GoogleSignIn onCredential={onCredential} disabled={false} />);
     await waitFor(() => expect(renderButton).toHaveBeenCalled());
+    expect(renderButton).toHaveBeenCalledWith(expect.any(HTMLElement), expect.objectContaining({ ux_mode: "popup" }));
     const options = initialize.mock.calls[0][0];
     expect(options).toMatchObject({ client_id: "web-client", nonce: "signed-nonce", auto_select: false });
     await act(async () => options.callback({ credential: "google-token" }));
