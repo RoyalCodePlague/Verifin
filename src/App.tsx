@@ -22,7 +22,6 @@ const Sales = lazy(() => import("./pages/Sales"));
 const Expenses = lazy(() => import("./pages/Expenses"));
 const Audits = lazy(() => import("./pages/Audits"));
 const Reports = lazy(() => import("./pages/Reports"));
-const BankReconciliation = lazy(() => import("./pages/BankReconciliation"));
 const Customers = lazy(() => import("./pages/Customers"));
 const Suppliers = lazy(() => import("./pages/Suppliers"));
 const Staff = lazy(() => import("./pages/Staff"));
@@ -99,7 +98,6 @@ const App = () => (
                 <Route path="/expenses" element={<ProtectedRoute permission="expenses"><AppRoute><Expenses /></AppRoute></ProtectedRoute>} />
                 <Route path="/audits" element={<ProtectedRoute permission="audits"><AppRoute><Audits /></AppRoute></ProtectedRoute>} />
                 <Route path="/reports" element={<ProtectedRoute permission="reports"><AppRoute><Reports /></AppRoute></ProtectedRoute>} />
-                <Route path="/banking" element={<ProtectedRoute permission="reports"><AppRoute><BankReconciliation /></AppRoute></ProtectedRoute>} />
                 <Route path="/customers" element={<ProtectedRoute permission="customers"><AppRoute><Customers /></AppRoute></ProtectedRoute>} />
                 <Route path="/invoices" element={<Navigate to="/suppliers" replace />} />
                 <Route path="/suppliers" element={<ProtectedRoute permission="suppliers"><AppRoute><Suppliers /></AppRoute></ProtectedRoute>} />

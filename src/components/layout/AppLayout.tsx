@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Package, ShoppingCart, Receipt, ClipboardCheck,
   BarChart3, Users, UserCog, Settings, Menu, X, LogOut,
   Moon, Sun, Clock, Truck, CreditCard, MessageCircle,
-  Lock, Landmark,
+  Lock,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth-context";
@@ -31,7 +31,6 @@ const navItems = [
   { to: "/expenses", icon: Receipt, label: "Expenses", permission: "expenses" },
   { to: "/audits", icon: ClipboardCheck, label: "Audits", permission: "audits", feature: "audits" },
   { to: "/reports", icon: BarChart3, label: "Reports", permission: "reports" },
-  { to: "/banking", icon: Landmark, label: "Banking", permission: "reports" },
   { to: "/customers", icon: Users, label: "Customers", permission: "customers" },
   { to: "/suppliers", icon: Truck, label: "Suppliers", permission: "suppliers" },
   { to: "/staff", icon: UserCog, label: "Staff", permission: "staff" },
