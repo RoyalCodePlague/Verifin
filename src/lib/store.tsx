@@ -195,6 +195,7 @@ interface StoreState {
   updateStaff: (id: string, s: Partial<StaffMember>) => void;
   deleteStaff: (id: string) => void;
   addBranch: (b: Omit<Branch, "id">) => string;
+  upsertBranch: (branch: Branch) => void;
   updateBranch: (id: string, b: Partial<Branch>) => void;
   deleteBranch: (id: string) => void;
   addActivity: (a: Omit<ActivityItem, "id">) => void;
@@ -541,7 +542,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const id = uid();
     setBranches(prev => [{ ...b, id }, ...prev.map(branch => b.isPrimary ? { ...branch, isPrimary: false } : branch)]);
     return id;
-  }, [products]);
+  }, []);
+
+  const upsertBranch = useCallback((branch: Branch) => {
+    setBranches(prev => {
+      const next = prev.filter(item => item.id !== branch.id);
+      return [
+        branch,
+        ...next.map(item => branch.isPrimary ? { ...item, isPrimary: false } : item),
+      ];
+    });
+  }, []);
 
   const updateBranch = useCallback((id: string, updates: Partial<Branch>) => {
     setBranches(prev => prev.map(branch => {
@@ -772,7 +783,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setProfile, addProduct, upsertProduct, updateProduct, deleteProduct,
       addSale, upsertSale, deleteSale, addExpense, upsertExpense, deleteExpense,
       addCustomer, updateCustomer, deleteCustomer, addStaff, upsertStaff, updateStaff, deleteStaff,
-      addBranch, updateBranch, deleteBranch, addActivity, addSupplyEntry, updateSupplyEntry, resolveDiscrepancy, addAudit, upsertAudit, updateAudit, addDiscrepancy, upsertDiscrepancy, generateWhatsAppSummary,
+      addBranch, upsertBranch, updateBranch, deleteBranch, addActivity, addSupplyEntry, updateSupplyEntry, resolveDiscrepancy, addAudit, upsertAudit, updateAudit, addDiscrepancy, upsertDiscrepancy, generateWhatsAppSummary,
       hydrateFromServer, resetForLogout,
     }}>
       {children}

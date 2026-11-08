@@ -1,8 +1,10 @@
 from django.contrib.auth import authenticate, get_user_model, password_validation
 from django.db import transaction
+from django.utils import timezone
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import ApiKey, Profile, Staff, StaffActivityLog
+from billing.services import enforce_feature
+from .models import ApiKey, Profile, Staff, StaffActivityLog, WebhookDelivery, WebhookEndpoint
 
 User = get_user_model()
 
@@ -205,6 +207,26 @@ class StaffSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Permissions must be a list.")
         return [str(item).strip() for item in value if str(item).strip()]
 
+    def validate_branch(self, branch):
+        user = self.context["request"].user
+        if branch and branch.user_id != user.id:
+            raise serializers.ValidationError("Branch does not belong to this account.")
+        if branch:
+            enforce_feature(user, "multi_branch")
+        return branch
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user and user.is_authenticated and "permissions" in attrs:
+            from .authentication import ROLE_DEFAULT_PERMISSIONS
+
+            role = attrs.get("role", getattr(self.instance, "role", ""))
+            default_permissions = ROLE_DEFAULT_PERMISSIONS.get(role, [])
+            if attrs["permissions"] != default_permissions:
+                enforce_feature(user, "role_based_access")
+        return attrs
+
     def create(self, validated_data):
         temp_password = validated_data.pop("temp_password", "")
         staff = super().create(validated_data)
@@ -278,6 +300,12 @@ class ApiKeySerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["key_prefix", "status", "last_used_at", "created_at", "raw_key"]
 
+    def validate_name(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Enter a name for this API key.")
+        return value
+
     def validate_permissions(self, value):
         if value is None:
             return []
@@ -292,3 +320,55 @@ class ApiKeySerializer(serializers.ModelSerializer):
         if not permissions:
             raise serializers.ValidationError("Choose at least one API permission.")
         return permissions
+
+    def validate_expires_at(self, value):
+        if value is not None and value <= timezone.now():
+            raise serializers.ValidationError("Expiration must be in the future.")
+        return value
+
+
+class WebhookEndpointSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WebhookEndpoint
+        fields = ["id", "name", "url", "events", "is_active", "created_at", "updated_at"]
+        read_only_fields = ["created_at", "updated_at"]
+
+    def validate_name(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Enter a name for this webhook.")
+        return value
+
+    def validate_url(self, value):
+        from .webhooks import WebhookSafetyError, validate_webhook_url
+
+        try:
+            validate_webhook_url(value)
+        except WebhookSafetyError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+        return value
+
+    def validate_events(self, value):
+        from .webhooks import SUPPORTED_WEBHOOK_EVENTS
+
+        if not isinstance(value, list) or not value:
+            raise serializers.ValidationError("Choose at least one webhook event.")
+        events = []
+        for event in value:
+            if not isinstance(event, str) or event not in SUPPORTED_WEBHOOK_EVENTS:
+                raise serializers.ValidationError("One or more webhook events are not supported.")
+            if event not in events:
+                events.append(event)
+        return events
+
+
+class WebhookDeliverySerializer(serializers.ModelSerializer):
+    endpoint_name = serializers.CharField(source="endpoint.name", read_only=True)
+
+    class Meta:
+        model = WebhookDelivery
+        fields = [
+            "id", "endpoint", "endpoint_name", "event", "status", "attempts",
+            "next_attempt_at", "delivered_at", "last_status_code", "last_error", "created_at",
+        ]
+        read_only_fields = fields

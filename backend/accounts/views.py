@@ -12,9 +12,9 @@ from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 from billing.services import enforce_feature, enforce_limit
 from .activity import log_staff_activity
-from .models import ApiKey, Profile, Staff, StaffActivityLog
+from .models import ApiKey, Profile, Staff, StaffActivityLog, WebhookDelivery, WebhookEndpoint
 from .permissions import IsOwnerOrManager
-from .serializers import ApiKeySerializer, ChangePasswordSerializer, CustomTokenObtainPairSerializer, ProfileSerializer, RegisterSerializer, StaffActivityLogSerializer, StaffLoginSerializer, StaffSerializer, UserSerializer
+from .serializers import ApiKeySerializer, ChangePasswordSerializer, CustomTokenObtainPairSerializer, ProfileSerializer, RegisterSerializer, StaffActivityLogSerializer, StaffLoginSerializer, StaffSerializer, UserSerializer, WebhookDeliverySerializer, WebhookEndpointSerializer
 
 User = get_user_model()
 
@@ -223,6 +223,62 @@ class ApiKeyViewSet(viewsets.ModelViewSet):
         api_key.save(update_fields=["status", "updated_at"])
         log_staff_activity(request.user, "api_key_revoked", f"Revoked API key {api_key.name}", actor=request.user, object_type="api_key", object_id=api_key.id)
         return Response(ApiKeySerializer(api_key).data)
+
+
+class WebhookEndpointViewSet(viewsets.ModelViewSet):
+    serializer_class = WebhookEndpointSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+
+    def get_queryset(self):
+        enforce_feature(self.request.user, "api_access")
+        return WebhookEndpoint.objects.filter(user=self.request.user, is_deleted=False)
+
+    def create(self, request, *args, **kwargs):
+        enforce_feature(request.user, "api_access")
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        secret = f"whsec_{secrets.token_urlsafe(32)}"
+        from .webhooks import encrypt_webhook_secret
+
+        endpoint = serializer.save(user=request.user, secret_ciphertext=encrypt_webhook_secret(secret))
+        log_staff_activity(
+            request.user, "webhook_created", f"Created webhook {endpoint.name}",
+            actor=request.user, object_type="webhook", object_id=endpoint.id,
+        )
+        data = self.get_serializer(endpoint).data
+        data["secret"] = secret
+        return Response(data, status=status.HTTP_201_CREATED)
+
+    def perform_update(self, serializer):
+        endpoint = serializer.save()
+        log_staff_activity(
+            self.request.user, "webhook_updated", f"Updated webhook {endpoint.name}",
+            actor=self.request.user, object_type="webhook", object_id=endpoint.id,
+        )
+
+    def perform_destroy(self, instance):
+        instance.is_active = False
+        instance.is_deleted = True
+        instance.save(update_fields=["is_active", "is_deleted", "updated_at"])
+        log_staff_activity(
+            self.request.user, "webhook_deleted", f"Deleted webhook {instance.name}",
+            actor=self.request.user, object_type="webhook", object_id=instance.id,
+        )
+
+
+class WebhookDeliveryViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = WebhookDeliverySerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filterset_fields = ["endpoint", "event", "status"]
+
+    def get_queryset(self):
+        enforce_feature(self.request.user, "api_access")
+        return WebhookDelivery.objects.filter(
+            endpoint__user=self.request.user,
+            endpoint__is_deleted=False,
+            is_deleted=False,
+        ).select_related("endpoint")
 
 
 class MeView(APIView):

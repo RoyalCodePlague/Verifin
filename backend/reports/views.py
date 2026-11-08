@@ -3,6 +3,7 @@ from django.utils import timezone
 from decimal import Decimal
 from django.db.models import Sum
 from django.http import HttpResponse
+from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -12,6 +13,8 @@ from sales.models import Sale, SaleItem
 from audits.models import Discrepancy
 from customers.models import Customer
 from billing.services import enforce_feature
+from .models import AutomationPreferences, CustomReport
+from .serializers import AutomationPreferencesSerializer, CustomReportSerializer
 from . import services
 
 
@@ -259,6 +262,43 @@ class AutomationAlertsView(APIView):
         return Response(services.automation_alerts(request.user))
 
 
+class AutomationPreferencesView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        enforce_feature(request.user, "automation_rules")
+        preferences, _ = AutomationPreferences.objects.get_or_create(user=request.user)
+        return Response(AutomationPreferencesSerializer(preferences).data)
+
+    def patch(self, request):
+        enforce_feature(request.user, "automation_rules")
+        preferences, _ = AutomationPreferences.objects.get_or_create(user=request.user)
+        serializer = AutomationPreferencesSerializer(preferences, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+class CustomReportViewSet(viewsets.ModelViewSet):
+    serializer_class = CustomReportSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        enforce_feature(request.user, "custom_reports")
+
+    def get_queryset(self):
+        return CustomReport.objects.filter(user=self.request.user, is_deleted=False)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    def perform_destroy(self, instance):
+        instance.is_deleted = True
+        instance.save(update_fields=["is_deleted", "updated_at"])
+
+
 class ExportView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -293,4 +333,3 @@ class ExportView(APIView):
         response = HttpResponse(output.getvalue(), content_type="text/csv; charset=utf-8")
         response["Content-Disposition"] = f'attachment; filename="{report_type}.csv"'
         return response
-

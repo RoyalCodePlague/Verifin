@@ -21,18 +21,40 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { useAuth } from "@/lib/auth-context";
 import {
+  createBranchApi,
+  createApiKeyApi,
   createNotificationPreferencesApi,
+  createWebhookApi,
   changePasswordRequest,
+  deleteBranchApi,
   fetchNotificationPreferencesApi,
   getAccessToken,
+  getAnalyticsConsentApi,
+  getAutomationPreferencesApi,
+  listApiKeysApi,
+  listWebhooksApi,
+  listWebhookDeliveriesApi,
   listSyncConflicts,
   logoutOtherDevicesRequest,
   patchMe,
   pushOfflineActions,
   updateNotificationPreferencesApi,
+  updateAutomationPreferencesApi,
+  updateAnalyticsConsentApi,
+  revokeApiKeyApi,
+  updateWebhookApi,
+  deleteWebhookApi,
+  updateBranchApi,
   apiFetch,
+  type ApiBranch,
+  type ApiAutomationPreferences,
+  type ApiIntegrationKey,
+  type ApiWebhookEndpoint,
+  type ApiWebhookEvent,
+  type ApiWebhookDelivery,
 } from "@/lib/api";
 import {
   clearAuthenticatedOfflineSession,
@@ -67,6 +89,7 @@ type SecurityPrefs = {
 
 type ExtendedNotificationPrefs = {
   pushEnabled: boolean;
+  emailOptIn: boolean;
   emailDailySummary: boolean;
   auditCompletionAlerts: boolean;
   billingAlerts: boolean;
@@ -82,6 +105,23 @@ function loadJson<T>(key: string, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+function loadAutomationPreferences(): ApiAutomationPreferences {
+  const stored = loadJson<Record<string, unknown>>("verifin_automation_rules", {});
+  const storedRules = stored.enabled_rules && typeof stored.enabled_rules === "object" && !Array.isArray(stored.enabled_rules)
+    ? stored.enabled_rules as Record<string, unknown>
+    : stored;
+  return {
+    enabled_rules: {
+      low_stock: typeof storedRules.low_stock === "boolean" ? storedRules.low_stock : true,
+      no_sales_today: typeof storedRules.no_sales_today === "boolean" ? storedRules.no_sales_today : true,
+      high_discrepancies: typeof storedRules.high_discrepancies === "boolean" ? storedRules.high_discrepancies : false,
+      high_expenses: typeof storedRules.high_expenses === "boolean" ? storedRules.high_expenses : false,
+    },
+    severity: stored.severity === "info" || stored.severity === "critical" ? stored.severity : "warning",
+    channel: stored.channel === "email" || stored.channel === "whatsapp" ? stored.channel : "in_app",
+  };
 }
 
 function saveJson(key: string, value: unknown) {
@@ -173,15 +213,64 @@ function passwordStrength(password: string) {
 }
 
 const SettingsPage = () => {
-  const { profile, setProfile } = useStore();
+  const { profile, setProfile, branches, upsertBranch, deleteBranch } = useStore();
   const { logout, refreshUser, user } = useAuth();
   const navigate = useNavigate();
   const { canUse } = useFeatureAccess();
   const automationEnabled = canUse("automation_rules");
+  const multiBranchEnabled = canUse("multi_branch");
+  const apiAccessEnabled = canUse("api_access");
   const promptUpgrade = useUpgradePrompt();
-  const [automationRules, setAutomationRules] = useState(() => loadJson("verifin_automation_rules", {low_stock:true,no_sales_today:true,high_discrepancies:false,high_expenses:false, severity:"warning", channel:"in_app" as string}));
+  const [branchForm, setBranchForm] = useState({ name: "", code: "", phone: "", address: "" });
+  const [editingBranchId, setEditingBranchId] = useState<string | null>(null);
+  const [branchSaving, setBranchSaving] = useState(false);
+  const [branchDeleteId, setBranchDeleteId] = useState<string | null>(null);
+  const [automationRules, setAutomationRules] = useState<ApiAutomationPreferences>(loadAutomationPreferences);
+  const [automationSaving, setAutomationSaving] = useState(false);
   const [automationEvents, setAutomationEvents] = useState<{rule:string;severity:string;message:string}[]>([]);
-  const updateAutomation = (next: typeof automationRules) => { setAutomationRules(next); saveJson("verifin_automation_rules", next); };
+  const [analyticsEnabled, setAnalyticsEnabled] = useState(false);
+  const [analyticsSaving, setAnalyticsSaving] = useState(false);
+  const [apiKeys, setApiKeys] = useState<ApiIntegrationKey[]>([]);
+  const [apiKeyName, setApiKeyName] = useState("");
+  const [apiKeyExpiry, setApiKeyExpiry] = useState("");
+  const [apiKeyPermissions, setApiKeyPermissions] = useState<string[]>(["inventory", "sales"]);
+  const [apiKeySaving, setApiKeySaving] = useState(false);
+  const [apiKeyRevokeId, setApiKeyRevokeId] = useState<number | null>(null);
+  const [newApiKey, setNewApiKey] = useState<string | null>(null);
+  const [webhooks, setWebhooks] = useState<ApiWebhookEndpoint[]>([]);
+  const [webhookDeliveries, setWebhookDeliveries] = useState<ApiWebhookDelivery[]>([]);
+  const [webhookName, setWebhookName] = useState("");
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookEvents, setWebhookEvents] = useState<ApiWebhookEvent[]>(["sale.created"]);
+  const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
+  const [webhookSaving, setWebhookSaving] = useState(false);
+  const [webhookDeleteId, setWebhookDeleteId] = useState<number | null>(null);
+  const updateAutomation = async (next: ApiAutomationPreferences) => {
+    if (!automationEnabled) {
+      promptUpgrade("automation_rules", "Automation Rules");
+      return;
+    }
+    setAutomationSaving(true);
+    try {
+      const saved = await updateAutomationPreferencesApi(next);
+      setAutomationRules(saved);
+      saveJson("verifin_automation_rules", saved);
+      toast.success("Automation preferences saved.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save automation preferences.");
+    } finally {
+      setAutomationSaving(false);
+    }
+  };
+  const copySensitiveValue = async (value: string, label: string) => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard access is unavailable.");
+      await navigator.clipboard.writeText(value);
+      toast.success(`${label} copied.`);
+    } catch {
+      toast.error(`Could not copy ${label.toLowerCase()}.`);
+    }
+  };
   const [name, setName] = useState(profile.name);
   const [currency, setCurrency] = useState(profile.currency);
   const [secondaryCurrency, setSecondaryCurrency] = useState("");
@@ -202,6 +291,7 @@ const SettingsPage = () => {
   const [notificationPrefs, setNotificationPrefs] = useState<ExtendedNotificationPrefs>(() =>
     loadJson<ExtendedNotificationPrefs>(EXTENDED_NOTIFICATION_PREFS_KEY, {
       pushEnabled: true,
+      emailOptIn: false,
       emailDailySummary: false,
       auditCompletionAlerts: true,
       billingAlerts: true,
@@ -227,6 +317,193 @@ const SettingsPage = () => {
   const [loggingOutOthers, setLoggingOutOthers] = useState(false);
   const detectedCountry = getDetectedCountryCode();
   const detectedDefaults = getRegionalCurrencyDefaults(detectedCountry);
+
+  const mapBranch = (branch: ApiBranch) => ({
+    id: String(branch.id),
+    name: branch.name,
+    code: branch.code || "",
+    phone: branch.phone || "",
+    address: branch.address || "",
+    isPrimary: branch.is_primary,
+  });
+
+  const resetBranchForm = () => {
+    setBranchForm({ name: "", code: "", phone: "", address: "" });
+    setEditingBranchId(null);
+  };
+
+  const saveBranch = async () => {
+    if (!multiBranchEnabled) {
+      promptUpgrade("multi_branch", "Multi-branch controls");
+      return;
+    }
+    if (!branchForm.name.trim()) {
+      toast.error("Enter a branch name.");
+      return;
+    }
+    if (!navigator.onLine) {
+      toast.error("Connect to the internet to manage branches.");
+      return;
+    }
+
+    setBranchSaving(true);
+    try {
+      const payload = {
+        name: branchForm.name.trim(),
+        code: branchForm.code.trim(),
+        phone: branchForm.phone.trim(),
+        address: branchForm.address.trim(),
+      };
+      if (editingBranchId) {
+        const saved = await updateBranchApi(editingBranchId, payload);
+        upsertBranch(mapBranch(saved));
+        toast.success("Branch updated.");
+      } else {
+        const saved = await createBranchApi({ ...payload, is_primary: branches.length === 0 });
+        upsertBranch(mapBranch(saved));
+        toast.success("Branch created.");
+      }
+      resetBranchForm();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save branch.");
+    } finally {
+      setBranchSaving(false);
+    }
+  };
+
+  const setPrimaryBranch = async (id: string) => {
+    if (!multiBranchEnabled) {
+      promptUpgrade("multi_branch", "Multi-branch controls");
+      return;
+    }
+    try {
+      const saved = await updateBranchApi(id, { is_primary: true });
+      upsertBranch(mapBranch(saved));
+      toast.success("Primary branch updated.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update primary branch.");
+    }
+  };
+
+  const confirmDeleteBranch = async () => {
+    if (!branchDeleteId) return;
+    if (!multiBranchEnabled) {
+      promptUpgrade("multi_branch", "Multi-branch controls");
+      setBranchDeleteId(null);
+      return;
+    }
+    const id = branchDeleteId;
+    try {
+      await deleteBranchApi(id);
+      deleteBranch(id);
+      if (editingBranchId === id) resetBranchForm();
+      toast.success("Branch deleted.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not delete branch.");
+    } finally {
+      setBranchDeleteId(null);
+    }
+  };
+
+  const createApiKey = async () => {
+    if (!apiAccessEnabled) {
+      promptUpgrade("api_access", "API access");
+      return;
+    }
+    if (!apiKeyName.trim() || apiKeyPermissions.length === 0) {
+      toast.error("Enter a key name and choose at least one permission.");
+      return;
+    }
+    setApiKeySaving(true);
+    try {
+      const created = await createApiKeyApi({
+        name: apiKeyName.trim(),
+        permissions: apiKeyPermissions,
+        ...(apiKeyExpiry ? { expires_at: new Date(apiKeyExpiry).toISOString() } : {}),
+      });
+      setApiKeys((current) => [created, ...current]);
+      setNewApiKey(created.raw_key || null);
+      setApiKeyName("");
+      setApiKeyExpiry("");
+      toast.success("API key created. Copy it now; it will not be shown again.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not create API key.");
+    } finally {
+      setApiKeySaving(false);
+    }
+  };
+
+  const confirmRevokeApiKey = async () => {
+    if (!apiKeyRevokeId) return;
+    setApiKeySaving(true);
+    try {
+      const revoked = await revokeApiKeyApi(apiKeyRevokeId);
+      setApiKeys((current) => current.map((key) => key.id === revoked.id ? revoked : key));
+      toast.success("API key revoked.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not revoke API key.");
+    } finally {
+      setApiKeySaving(false);
+      setApiKeyRevokeId(null);
+    }
+  };
+
+  const createWebhook = async () => {
+    if (!apiAccessEnabled) {
+      promptUpgrade("api_access", "Webhooks");
+      return;
+    }
+    if (!webhookName.trim() || !webhookUrl.trim() || webhookEvents.length === 0) {
+      toast.error("Enter a webhook name, HTTPS URL, and at least one event.");
+      return;
+    }
+    setWebhookSaving(true);
+    try {
+      const created = await createWebhookApi({
+        name: webhookName.trim(),
+        url: webhookUrl.trim(),
+        events: webhookEvents,
+      });
+      setWebhooks((current) => [created, ...current]);
+      setWebhookSecret(created.secret || null);
+      setWebhookName("");
+      setWebhookUrl("");
+      toast.success("Webhook created. Copy its signing secret now.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not create webhook.");
+    } finally {
+      setWebhookSaving(false);
+    }
+  };
+
+  const toggleWebhook = async (endpoint: ApiWebhookEndpoint) => {
+    setWebhookSaving(true);
+    try {
+      const updated = await updateWebhookApi(endpoint.id, { is_active: !endpoint.is_active });
+      setWebhooks((current) => current.map((item) => item.id === updated.id ? updated : item));
+      toast.success(updated.is_active ? "Webhook resumed." : "Webhook paused.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update webhook.");
+    } finally {
+      setWebhookSaving(false);
+    }
+  };
+
+  const confirmDeleteWebhook = async () => {
+    if (webhookDeleteId === null) return;
+    setWebhookSaving(true);
+    try {
+      await deleteWebhookApi(webhookDeleteId);
+      setWebhooks((current) => current.filter((item) => item.id !== webhookDeleteId));
+      setWebhookDeliveries((current) => current.filter((item) => item.endpoint !== webhookDeleteId));
+      toast.success("Webhook deleted.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not delete webhook.");
+    } finally {
+      setWebhookSaving(false);
+      setWebhookDeleteId(null);
+    }
+  };
 
   useEffect(() => {
     setCurrency(profile.currency);
@@ -273,13 +550,64 @@ const SettingsPage = () => {
   }, [notificationPrefs]);
 
   useEffect(() => {
+    if (!getAccessToken()) return;
+    let cancelled = false;
+    void Promise.all([getAnalyticsConsentApi(), fetchNotificationPreferencesApi()])
+      .then(([consent, preferences]) => {
+        if (cancelled) return;
+        setAnalyticsEnabled(consent.enabled);
+        if (preferences[0]) {
+          setNotificationPrefs((previous) => ({
+            ...previous,
+            pushEnabled: preferences[0].push_enabled,
+            emailOptIn: preferences[0].email_opt_in,
+            emailDailySummary: preferences[0].email_daily_summary,
+          }));
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) toast.error(error instanceof Error ? error.message : "Could not load privacy preferences.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!getAccessToken() || !automationEnabled) return;
     let cancelled = false;
+    void getAutomationPreferencesApi()
+      .then((preferences) => {
+        if (cancelled) return;
+        setAutomationRules(preferences);
+        saveJson("verifin_automation_rules", preferences);
+      })
+      .catch((error) => {
+        if (!cancelled) toast.error(error instanceof Error ? error.message : "Could not load automation preferences.");
+      });
     void apiFetch<{alerts:{rule:string;severity:string;message:string}[]}>('/api/v1/reports/automation-alerts/')
       .then(result => { if (!cancelled) setAutomationEvents(result.alerts || []); })
-      .catch(() => { if (!cancelled) setAutomationEvents([]); });
+      .catch((error) => { if (!cancelled) toast.error(error instanceof Error ? error.message : "Could not load automation alerts."); });
     return () => { cancelled = true; };
   }, [automationEnabled]);
+
+  useEffect(() => {
+    if (!getAccessToken() || !apiAccessEnabled) return;
+    let cancelled = false;
+    void Promise.all([listApiKeysApi(), listWebhooksApi(), listWebhookDeliveriesApi()])
+      .then(([keys, endpoints, deliveries]) => {
+        if (cancelled) return;
+        setApiKeys(keys);
+        setWebhooks(endpoints);
+        setWebhookDeliveries(deliveries);
+      })
+      .catch((error) => {
+        if (!cancelled) toast.error(error instanceof Error ? error.message : "Could not load API keys.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiAccessEnabled]);
 
   useEffect(() => {
     if (!online || !getAccessToken()) {
@@ -346,6 +674,8 @@ const SettingsPage = () => {
         low_stock_alerts: nextProfile.lowStockAlerts,
         discrepancy_alerts: nextProfile.discrepancyAlerts,
         push_enabled: notificationPrefs.pushEnabled,
+        email_opt_in: notificationPrefs.emailOptIn,
+        email_daily_summary: notificationPrefs.emailDailySummary,
       };
 
       if (preferences[0]) {
@@ -392,6 +722,19 @@ const SettingsPage = () => {
 
   const handleToggle = (key: "whatsappDaily" | "lowStockAlerts" | "discrepancyAlerts") => {
     setProfile({ ...profile, [key]: !profile[key] });
+  };
+
+  const updateAnalyticsConsent = async (enabled: boolean) => {
+    setAnalyticsSaving(true);
+    try {
+      const saved = await updateAnalyticsConsentApi(enabled);
+      setAnalyticsEnabled(saved.enabled);
+      toast.success(saved.enabled ? "Product analytics enabled." : "Product analytics disabled and existing events deleted.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update analytics consent.");
+    } finally {
+      setAnalyticsSaving(false);
+    }
   };
 
   const toggleDarkMode = () => {
@@ -645,6 +988,50 @@ const SettingsPage = () => {
 
       <Card className="shadow-soft">
         <CardHeader>
+          <CardTitle className="font-display flex items-center gap-2 text-base">
+            Branches {!multiBranchEnabled && <LockedBadge />}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Manage locations, assign products and staff, and record branch-specific sales. Branches with linked records must be reassigned before deletion.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div><Label>Branch name</Label><Input className="mt-1" maxLength={120} value={branchForm.name} onChange={(event) => setBranchForm({ ...branchForm, name: event.target.value })} /></div>
+            <div><Label>Branch code</Label><Input className="mt-1" maxLength={30} value={branchForm.code} onChange={(event) => setBranchForm({ ...branchForm, code: event.target.value })} /></div>
+            <div><Label>Phone</Label><Input className="mt-1" maxLength={30} value={branchForm.phone} onChange={(event) => setBranchForm({ ...branchForm, phone: event.target.value })} /></div>
+            <div><Label>Address</Label><Input className="mt-1" maxLength={255} value={branchForm.address} onChange={(event) => setBranchForm({ ...branchForm, address: event.target.value })} /></div>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={() => void saveBranch()} disabled={branchSaving}>
+              {branchSaving ? "Saving..." : editingBranchId ? "Save Branch" : "Add Branch"}
+            </Button>
+            {editingBranchId && <Button variant="outline" onClick={resetBranchForm}>Cancel</Button>}
+          </div>
+          {branches.length ? (
+            <div className="space-y-2">
+              {branches.map((branch) => (
+                <div key={branch.id} className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="font-medium">{branch.name} {branch.isPrimary && <span className="text-xs text-primary">(Primary)</span>}</p>
+                    <p className="text-xs text-muted-foreground">{[branch.code, branch.phone, branch.address].filter(Boolean).join(" · ") || "No additional details"}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {!branch.isPrimary && <Button variant="outline" size="sm" onClick={() => void setPrimaryBranch(branch.id)}>Set Primary</Button>}
+                    <Button variant="outline" size="sm" onClick={() => { setEditingBranchId(branch.id); setBranchForm({ name: branch.name, code: branch.code, phone: branch.phone, address: branch.address }); }}>Edit</Button>
+                    <Button variant="destructive" size="sm" onClick={() => setBranchDeleteId(branch.id)}>Delete</Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="rounded-md border p-3 text-sm text-muted-foreground">No branches yet. Your first branch will automatically become the primary location.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-soft">
+        <CardHeader>
           <CardTitle className="font-display text-base">Backup & Sync Status</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -712,9 +1099,36 @@ const SettingsPage = () => {
 
       <Card className="shadow-soft">
         <CardHeader>
+          <CardTitle className="font-display text-base">Privacy & Product Analytics</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium">Share basic product milestones</p>
+              <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
+                Optional, future first-party milestones such as your first product, sale, or expense. Events use a random pseudonymous ID, contain no business records, and are deleted after 12 months. Turning this off deletes your existing events.
+              </p>
+            </div>
+            <Switch checked={analyticsEnabled} disabled={analyticsSaving} onCheckedChange={(checked) => void updateAnalyticsConsent(checked)} />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-soft">
+        <CardHeader>
           <CardTitle className="font-display text-base">Notifications</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium">Email delivery consent</p>
+              <p className="text-xs text-muted-foreground">Allow opted-in business summaries and automation alerts to be emailed to your account email address via Mailgun. Click Save Settings to apply.</p>
+            </div>
+            <Switch
+              checked={notificationPrefs.emailOptIn}
+              onCheckedChange={(checked) => setNotificationPrefs((prev) => ({ ...prev, emailOptIn: checked }))}
+            />
+          </div>
           <div className="flex items-center justify-between">
             <div className="flex items-start gap-3">
               <Bell className="mt-0.5 h-4 w-4 text-primary" />
@@ -752,7 +1166,7 @@ const SettingsPage = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium">Email Daily Summary</p>
-              <p className="text-xs text-muted-foreground">Prepare a separate email summary preference for later server delivery.</p>
+              <p className="text-xs text-muted-foreground">Send a daily sales and inventory summary to your account email when email delivery consent is enabled.</p>
             </div>
             <Switch
               checked={notificationPrefs.emailDailySummary}
@@ -819,11 +1233,131 @@ const SettingsPage = () => {
       <Card className="shadow-soft">
         <CardHeader><CardTitle className="font-display flex items-center gap-2 text-base">Automation Rules {!canUse("automation_rules") && <LockedBadge />}</CardTitle></CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">Choose which in-app conditions the automation alert feed evaluates. These preferences are stored on this device.</p>
-          {([ ["low_stock","Low stock"], ["no_sales_today","No sales recorded today"], ["high_discrepancies","Several unresolved discrepancies"], ["high_expenses","High expenses"] ] as const).map(([key,label])=><div key={key} className="flex items-center justify-between gap-3"><span className="text-sm">{label}</span><Switch checked={Boolean(automationRules[key])} onCheckedChange={(checked)=>{if(!canUse("automation_rules")){promptUpgrade("automation_rules","Automation Rules");return;} updateAutomation({...automationRules,[key]:checked});}} /></div>)}
-          <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm">Alert severity<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={automationRules.severity} onChange={e=>{if(!canUse("automation_rules")){promptUpgrade("automation_rules","Automation Rules");return;}updateAutomation({...automationRules,severity:e.target.value});}}><option value="info">Informational</option><option value="warning">Warning</option><option value="critical">Critical</option></select></label><label className="text-sm">Notification channel<select className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={automationRules.channel} onChange={e=>{if(!canUse("automation_rules")){promptUpgrade("automation_rules","Automation Rules");return;}updateAutomation({...automationRules,channel:e.target.value});}}><option value="in_app">In app</option><option value="email">Email preference</option><option value="whatsapp">WhatsApp preference</option></select></label></div>
-          <p className="text-xs text-muted-foreground">Email and WhatsApp delivery require server notification setup. Rule evaluation is available in the in-app automation feed.</p>
+          <p className="text-sm text-muted-foreground">Choose which account-level conditions the automation alert feed evaluates. Preferences are saved to your account.</p>
+          {([ ["low_stock","Low stock"], ["no_sales_today","No sales recorded today"], ["high_discrepancies","Several unresolved discrepancies"], ["high_expenses","High expenses"] ] as const).map(([key,label])=><div key={key} className="flex items-center justify-between gap-3"><span className="text-sm">{label}</span><Switch disabled={automationSaving} checked={automationRules.enabled_rules[key]} onCheckedChange={(checked)=>{void updateAutomation({...automationRules,enabled_rules:{...automationRules.enabled_rules,[key]:checked}});}} /></div>)}
+          <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm">Alert severity<select disabled={automationSaving} className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={automationRules.severity} onChange={e=>{void updateAutomation({...automationRules,severity:e.target.value as ApiAutomationPreferences["severity"]});}}><option value="info">Informational</option><option value="warning">Warning</option><option value="critical">Critical</option></select></label><label className="text-sm">Notification channel<select disabled={automationSaving} className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={automationRules.channel} onChange={e=>{void updateAutomation({...automationRules,channel:e.target.value as ApiAutomationPreferences["channel"]});}}><option value="in_app">In app</option><option value="email">Email preference</option><option value="whatsapp">WhatsApp preference</option></select></label></div>
+          <p className="text-xs text-muted-foreground">Save Settings after changing email consent. Daily email digests are sent to your account email only when you choose Email and enable email delivery consent. WhatsApp remains a manual preference.</p>
           <div className="space-y-2"><p className="text-sm font-medium">Recent rule evaluations</p>{automationEvents.length ? automationEvents.map((event,index)=><div key={`${event.rule}-${index}`} className="rounded-md border p-3"><p className="text-sm font-medium">{event.message}</p><p className="text-xs capitalize text-muted-foreground">{event.rule.replace(/_/g," ")} · {event.severity}</p></div>) : <p className="rounded-md border p-3 text-sm text-muted-foreground">No active alerts right now.</p>}</div>
+        </CardContent>
+      </Card>
+
+      <Card className="shadow-soft">
+        <CardHeader><CardTitle className="font-display flex items-center gap-2 text-base">API keys {!apiAccessEnabled && <LockedBadge />}</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">Create scoped keys for integrations. The full key is shown only once; store it securely and revoke it if it is exposed.</p>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div><Label htmlFor="api-key-name">Key name</Label><Input id="api-key-name" maxLength={120} value={apiKeyName} onChange={(event) => setApiKeyName(event.target.value)} placeholder="e.g. Warehouse sync" className="mt-1" /></div>
+            <div><Label htmlFor="api-key-expiry">Optional expiration</Label><Input id="api-key-expiry" type="datetime-local" value={apiKeyExpiry} onChange={(event) => setApiKeyExpiry(event.target.value)} className="mt-1" /></div>
+          </div>
+          <div className="flex flex-wrap gap-4">
+            {(["inventory", "sales", "customers", "reports", "suppliers", "audits"] as const).map((permission) => (
+              <label key={permission} className="flex items-center gap-2 text-sm capitalize">
+                <input
+                  type="checkbox"
+                  checked={apiKeyPermissions.includes(permission)}
+                  onChange={(event) => setApiKeyPermissions((current) => event.target.checked
+                    ? [...new Set([...current, permission])]
+                    : current.filter((value) => value !== permission))}
+                />
+                {permission}
+              </label>
+            ))}
+          </div>
+          <Button disabled={apiKeySaving} onClick={() => void createApiKey()}>
+            {apiKeySaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Create API key
+          </Button>
+          {newApiKey ? (
+            <div className="space-y-2 rounded-md border border-warning/40 bg-warning/5 p-3">
+              <p className="text-sm font-medium">Copy this key now. It cannot be retrieved after leaving this page.</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <code className="max-w-full break-all text-xs">{newApiKey}</code>
+                <Button variant="outline" size="sm" onClick={() => void copySensitiveValue(newApiKey, "API key")}>Copy</Button>
+                <Button variant="ghost" size="sm" onClick={() => setNewApiKey(null)}>Dismiss</Button>
+              </div>
+            </div>
+          ) : null}
+          <div className="space-y-2">
+            {apiKeys.length ? apiKeys.map((key) => (
+              <div key={key.id} className="flex flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{key.name} <span className="font-mono text-xs text-muted-foreground">{key.key_prefix}…</span></p>
+                  <p className="text-xs text-muted-foreground">{key.permissions.join(", ")} · {key.status}{key.expires_at ? ` · expires ${new Date(key.expires_at).toLocaleDateString()}` : ""}</p>
+                </div>
+                {key.status === "active" ? <Button variant="outline" size="sm" disabled={apiKeySaving} onClick={() => setApiKeyRevokeId(key.id)}>Revoke</Button> : null}
+              </div>
+            )) : <p className="text-sm text-muted-foreground">No API keys have been created.</p>}
+          </div>
+          <div className="border-t pt-4">
+            <h3 className="text-sm font-semibold">Webhooks</h3>
+            <p className="mt-1 text-sm text-muted-foreground">Receive signed HTTPS event notifications. Deliveries are queued for the backend webhook worker.</p>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <div><Label htmlFor="webhook-name">Endpoint name</Label><Input id="webhook-name" maxLength={120} value={webhookName} onChange={(event) => setWebhookName(event.target.value)} placeholder="e.g. Accounting sync" className="mt-1" /></div>
+              <div><Label htmlFor="webhook-url">HTTPS URL</Label><Input id="webhook-url" type="url" value={webhookUrl} onChange={(event) => setWebhookUrl(event.target.value)} placeholder="https://example.com/webhooks/verifin" className="mt-1" /></div>
+            </div>
+            <div className="my-3 flex flex-wrap gap-x-4 gap-y-2">
+              {([
+                "sale.created",
+                "product.low_stock",
+                "product.out_of_stock",
+                "audit.completed",
+                "expense.created",
+              ] as const).map((event) => (
+                <label key={event} className="flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={webhookEvents.includes(event)}
+                    onChange={(change) => setWebhookEvents((current) => change.target.checked
+                      ? [...new Set([...current, event])]
+                      : current.filter((value) => value !== event))}
+                  />
+                  {event}
+                </label>
+              ))}
+            </div>
+            <Button disabled={webhookSaving} onClick={() => void createWebhook()}>
+              {webhookSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Create webhook
+            </Button>
+            {webhookSecret ? (
+              <div className="mt-3 space-y-2 rounded-md border border-warning/40 bg-warning/5 p-3">
+                <p className="text-sm font-medium">Copy this signing secret now. It cannot be retrieved again.</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <code className="max-w-full break-all text-xs">{webhookSecret}</code>
+                  <Button variant="outline" size="sm" onClick={() => void copySensitiveValue(webhookSecret, "Webhook secret")}>Copy</Button>
+                  <Button variant="ghost" size="sm" onClick={() => setWebhookSecret(null)}>Dismiss</Button>
+                </div>
+              </div>
+            ) : null}
+            <div className="mt-4 space-y-2">
+              {webhooks.length ? webhooks.map((endpoint) => (
+                <div key={endpoint.id} className="flex flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{endpoint.name} · {endpoint.is_active ? "Active" : "Paused"}</p>
+                    <p className="break-all text-xs text-muted-foreground">{endpoint.url}</p>
+                    <p className="text-xs text-muted-foreground">{endpoint.events.join(", ")}</p>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <Button variant="outline" size="sm" disabled={webhookSaving} onClick={() => void toggleWebhook(endpoint)}>{endpoint.is_active ? "Pause" : "Resume"}</Button>
+                    <Button variant="outline" size="sm" disabled={webhookSaving} onClick={() => setWebhookDeleteId(endpoint.id)}>Delete</Button>
+                  </div>
+                </div>
+              )) : <p className="text-sm text-muted-foreground">No webhook endpoints configured.</p>}
+            </div>
+            <div className="mt-4 space-y-2">
+              <p className="text-sm font-medium">Recent deliveries</p>
+              {webhookDeliveries.length ? webhookDeliveries.slice(0, 10).map((delivery) => (
+                <div key={delivery.id} className="rounded-md border p-3">
+                  <p className="text-xs font-medium">{delivery.event} · {delivery.endpoint_name} · {delivery.status}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {new Date(delivery.created_at).toLocaleString()} · {delivery.attempts} attempt(s)
+                    {delivery.last_status_code ? ` · HTTP ${delivery.last_status_code}` : ""}
+                    {delivery.last_error ? ` · ${delivery.last_error}` : ""}
+                  </p>
+                </div>
+              )) : <p className="text-sm text-muted-foreground">No webhook deliveries yet.</p>}
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -1098,6 +1632,33 @@ const SettingsPage = () => {
           <Button variant="destructive" onClick={handleReset}>Reset All Data</Button>
         </CardContent>
       </Card>
+      <ConfirmationModal
+        open={!!branchDeleteId}
+        onOpenChange={(open) => { if (!open) setBranchDeleteId(null); }}
+        title="Delete branch?"
+        description="A branch with linked business records cannot be deleted. Reassign or remove linked records first."
+        confirmLabel="Delete Branch"
+        variant="destructive"
+        onConfirm={() => void confirmDeleteBranch()}
+      />
+      <ConfirmationModal
+        open={apiKeyRevokeId !== null}
+        onOpenChange={(open) => { if (!open) setApiKeyRevokeId(null); }}
+        title="Revoke API key?"
+        description="Integrations using this key will stop working immediately. A revoked key cannot be restored."
+        confirmLabel="Revoke Key"
+        variant="destructive"
+        onConfirm={() => void confirmRevokeApiKey()}
+      />
+      <ConfirmationModal
+        open={webhookDeleteId !== null}
+        onOpenChange={(open) => { if (!open) setWebhookDeleteId(null); }}
+        title="Delete webhook?"
+        description="The endpoint will be disabled and pending deliveries will no longer be sent."
+        confirmLabel="Delete Webhook"
+        variant="destructive"
+        onConfirm={() => void confirmDeleteWebhook()}
+      />
     </div>
   );
 };

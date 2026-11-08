@@ -1,12 +1,12 @@
 from rest_framework import serializers
-from .models import Audit, Discrepancy, StockCount
+from .models import Audit, AuditSchedule, Discrepancy, StockCount
 
 
 class AuditSerializer(serializers.ModelSerializer):
     class Meta:
         model = Audit
         fields = "__all__"
-        read_only_fields = ["conductor", "completed_at"]
+        read_only_fields = ["conductor", "completed_at", "schedule"]
 
     def validate(self, attrs):
         if attrs.get("status") == "completed" and self.instance is None:
@@ -22,6 +22,13 @@ class AuditSerializer(serializers.ModelSerializer):
                 if product and product.user_id != user.id:
                     raise serializers.ValidationError({"product": "Product does not belong to this account."})
         return attrs
+
+
+class AuditScheduleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AuditSchedule
+        fields = ["id", "frequency", "is_active", "next_run_at", "last_run_at", "created_at", "updated_at"]
+        read_only_fields = ["next_run_at", "last_run_at", "created_at", "updated_at"]
 
 
 class DiscrepancySerializer(serializers.ModelSerializer):

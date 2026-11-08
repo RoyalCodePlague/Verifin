@@ -393,7 +393,7 @@ const ApiDocs = () => (
         <h2 className="font-display font-bold text-xl mt-10 mb-4 flex items-center gap-2"><Webhook className="h-5 w-5 text-primary" /> Webhooks</h2>
         <Card className="shadow-soft">
           <CardContent className="p-5">
-            <p className="text-sm text-muted-foreground mb-3">Subscribe to real-time events for your business:</p>
+            <p className="text-sm text-muted-foreground mb-3">Create and manage endpoints in Settings → API keys. Webhook URLs must use public HTTPS on port 443. Requests are signed with HMAC-SHA256 over the exact raw JSON body using the one-time signing secret.</p>
             <div className="space-y-2">
               {["sale.created", "product.low_stock", "product.out_of_stock", "audit.completed", "expense.created"].map(ev => (
                 <div key={ev} className="flex items-center gap-2">
@@ -402,12 +402,16 @@ const ApiDocs = () => (
                 </div>
               ))}
             </div>
+            <div className="mt-4 space-y-2 text-sm text-muted-foreground">
+              <p><code>X-Verifin-Event</code> identifies the event, <code>X-Verifin-Delivery</code> is the delivery ID, and <code>X-Verifin-Signature</code> has the format <code>sha256=&lt;hex digest&gt;</code>.</p>
+              <p>Failed deliveries retry with backoff for up to eight attempts. Run <code>python manage.py deliver_webhooks</code> from the backend using your deployment's cron facility.</p>
+            </div>
           </CardContent>
         </Card>
 
         <div className="mt-10 text-center p-8 rounded-2xl bg-muted/50">
           <h3 className="font-display font-semibold text-lg mb-2">Using an existing API integration?</h3>
-          <p className="text-sm text-muted-foreground">Existing integrations can continue using their scoped API keys. Self-service key management is temporarily unavailable.</p>
+          <p className="text-sm text-muted-foreground">Manage scoped API keys and webhook endpoints in Settings. Full API keys and webhook signing secrets are shown only once.</p>
         </div>
       </div>
     </section>

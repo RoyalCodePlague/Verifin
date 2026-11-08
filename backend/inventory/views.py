@@ -5,7 +5,7 @@ from django.db import models, transaction
 from django.db.models import Count, Sum
 from django.utils import timezone
 from django.utils.dateparse import parse_date
-from rest_framework import status, viewsets
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -88,10 +88,33 @@ class BranchViewSet(viewsets.ModelViewSet):
         return Branch.objects.filter(user=self.request.user, is_deleted=False)
 
     def perform_create(self, serializer):
+        enforce_feature(self.request.user, "multi_branch")
         branch = serializer.save(user=self.request.user)
         if not Branch.objects.filter(user=self.request.user, is_deleted=False).exclude(id=branch.id).exists():
             branch.is_primary = True
             branch.save()
+
+    def perform_update(self, serializer):
+        enforce_feature(self.request.user, "multi_branch")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        enforce_feature(self.request.user, "multi_branch")
+        linked_records = (
+            instance.products.filter(is_deleted=False).exists()
+            or instance.sales.filter(is_deleted=False).exists()
+            or instance.till_sessions.filter(is_deleted=False).exists()
+            or instance.staff_members.filter(is_deleted=False).exists()
+            or instance.purchase_orders.filter(is_deleted=False).exists()
+            or instance.outgoing_transfers.filter(is_deleted=False).exists()
+            or instance.incoming_transfers.filter(is_deleted=False).exists()
+        )
+        if linked_records:
+            raise serializers.ValidationError(
+                {"detail": "This branch is in use. Reassign or remove its products, sales, tills, staff, purchase orders, and transfers before deleting it."}
+            )
+        instance.is_deleted = True
+        instance.save(update_fields=["is_deleted", "updated_at"])
 
 
 class ProductViewSet(viewsets.ModelViewSet):
@@ -113,10 +136,15 @@ class ProductViewSet(viewsets.ModelViewSet):
         from core.analytics import record_activation_event
         record_activation_event(self.request.user, "first_product_added")
         log_staff_activity(self.request.user, "product_created", f"Created product {product.name}", actor=self.request.user, object_type="product", object_id=product.id)
+        from accounts.webhooks import enqueue_product_stock_event
+        enqueue_product_stock_event(self.request.user, product)
 
     def perform_update(self, serializer):
+        previous_status = serializer.instance.status
         product = serializer.save()
         log_staff_activity(self.request.user, "product_updated", f"Updated product {product.name}", actor=self.request.user, object_type="product", object_id=product.id)
+        from accounts.webhooks import enqueue_product_stock_event
+        enqueue_product_stock_event(self.request.user, product, previous_status)
 
     def perform_destroy(self, instance):
         name = instance.name
@@ -371,21 +399,52 @@ class ProductViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="transfer")
     @transaction.atomic
     def transfer(self, request, pk=None):
-        product = self.get_object()
-        if ProductBatch.objects.filter(product=product, is_deleted=False).exists():
-            return Response({"detail": "Transfer tracked stock using batch-aware transfers."}, status=status.HTTP_400_BAD_REQUEST)
+        enforce_feature(request.user, "multi_branch")
+        product = Product.objects.select_for_update().get(
+            pk=self.get_object().pk,
+            user=request.user,
+            is_deleted=False,
+        )
+        if not product.branch_id:
+            return Response({"detail": "Assign the product to a source branch before transferring stock."}, status=status.HTTP_400_BAD_REQUEST)
         to_branch_id = request.data.get("to_branch")
-        quantity = int(request.data.get("quantity", 0))
+        try:
+            quantity = int(request.data.get("quantity", 0))
+        except (TypeError, ValueError):
+            return Response({"detail": "Quantity must be a whole number greater than zero."}, status=status.HTTP_400_BAD_REQUEST)
         if quantity <= 0:
             return Response({"detail": "Quantity must be greater than zero."}, status=status.HTTP_400_BAD_REQUEST)
         if product.stock < quantity:
             return Response({"detail": "Insufficient stock for transfer."}, status=status.HTTP_400_BAD_REQUEST)
         try:
             to_branch = Branch.objects.get(id=to_branch_id, user=request.user, is_deleted=False)
-        except Branch.DoesNotExist:
+        except (Branch.DoesNotExist, ValueError, TypeError):
             return Response({"detail": "Destination branch not found."}, status=status.HTTP_404_NOT_FOUND)
+        if to_branch.id == product.branch_id:
+            return Response({"detail": "Choose a destination different from the source branch."}, status=status.HTTP_400_BAD_REQUEST)
+
+        batch = None
+        all_source_batches = ProductBatch.objects.filter(product=product, is_deleted=False)
+        if all_source_batches.exists():
+            batch_id = request.data.get("batch")
+            if batch_id:
+                try:
+                    batch = all_source_batches.select_for_update().filter(
+                        id=batch_id, quantity_remaining__gt=0
+                    ).first()
+                except (ValueError, TypeError):
+                    batch = None
+                if not batch:
+                    return Response({"detail": "Batch not found for this product."}, status=status.HTTP_404_NOT_FOUND)
+                if batch.quantity_remaining < quantity:
+                    return Response({"detail": "Insufficient quantity in the selected batch."}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                tracked_quantity = all_source_batches.aggregate(total=Sum("quantity_remaining"))["total"] or 0
+                if product.stock - tracked_quantity < quantity:
+                    return Response({"detail": "Select a tracked batch to transfer this stock."}, status=status.HTTP_400_BAD_REQUEST)
 
         product.stock -= quantity
+        previous_source_status = product.status
         product.save()
         target, _ = Product.objects.get_or_create(
             user=request.user,
@@ -393,8 +452,8 @@ class ProductViewSet(viewsets.ModelViewSet):
             sku=product.sku,
             defaults={
                 "name": product.name,
-            "barcode": product.barcode,
-            "preferred_supplier": product.preferred_supplier_id,
+                "barcode": product.barcode,
+                "preferred_supplier": product.preferred_supplier_id,
                 "category": product.category,
                 "stock": 0,
                 "reorder_level": product.reorder_level,
@@ -402,12 +461,40 @@ class ProductViewSet(viewsets.ModelViewSet):
                 "price": product.price,
             },
         )
+        previous_target_status = target.status
+        if batch:
+            batch.quantity_remaining -= quantity
+            batch.save(update_fields=["quantity_remaining", "updated_at"])
+            target_batch = ProductBatch.objects.filter(
+                product=target,
+                batch_number=batch.batch_number,
+                is_deleted=False,
+            ).first()
+            if target_batch:
+                target_batch.quantity_received += quantity
+                target_batch.quantity_remaining += quantity
+                target_batch.save(update_fields=["quantity_received", "quantity_remaining", "updated_at"])
+            else:
+                ProductBatch.objects.create(
+                    product=target,
+                    batch_number=batch.batch_number,
+                    expiry_date=batch.expiry_date,
+                    quantity_received=quantity,
+                    quantity_remaining=quantity,
+                    unit_cost_base=batch.unit_cost_base,
+                    supplier=batch.supplier,
+                )
         target.stock += quantity
         target.save()
+        from accounts.webhooks import enqueue_product_stock_event
+        enqueue_product_stock_event(request.user, product, previous_source_status)
+        enqueue_product_stock_event(request.user, target, previous_target_status)
         transfer = StockTransfer.objects.create(
-            from_branch=product.branch or to_branch,
+            from_branch=product.branch,
             to_branch=to_branch,
             product=product,
+            target_product=target,
+            batch=batch,
             quantity=quantity,
             created_by=request.user,
             note=request.data.get("note", ""),

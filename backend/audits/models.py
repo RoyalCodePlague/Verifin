@@ -1,7 +1,18 @@
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 from core.models import TimeStampedSoftDeleteModel
 from inventory.models import Product
+
+
+class AuditSchedule(TimeStampedSoftDeleteModel):
+    FREQUENCY_CHOICES = [("daily", "daily"), ("weekly", "weekly")]
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="audit_schedule")
+    frequency = models.CharField(max_length=20, choices=FREQUENCY_CHOICES, default="weekly")
+    is_active = models.BooleanField(default=True)
+    next_run_at = models.DateTimeField(default=timezone.now)
+    last_run_at = models.DateTimeField(blank=True, null=True)
 
 
 class Audit(TimeStampedSoftDeleteModel):
@@ -11,6 +22,9 @@ class Audit(TimeStampedSoftDeleteModel):
     items_counted = models.PositiveIntegerField(default=0)
     discrepancies_found = models.PositiveIntegerField(default=0)
     conductor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="audits")
+    schedule = models.ForeignKey(
+        AuditSchedule, on_delete=models.SET_NULL, blank=True, null=True, related_name="audits"
+    )
     completed_at = models.DateTimeField(blank=True, null=True)
 
 

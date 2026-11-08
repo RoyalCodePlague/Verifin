@@ -24,9 +24,17 @@ class ExpenseViewSet(viewsets.ModelViewSet):
         return Expense.objects.filter(created_by=self.request.user, is_deleted=False)
 
     def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user)
+        expense = serializer.save(created_by=self.request.user)
         from core.analytics import record_activation_event
         record_activation_event(self.request.user, "first_expense_recorded")
+        from accounts.webhooks import enqueue_webhook_event
+        enqueue_webhook_event(self.request.user, "expense.created", {
+            "expense_id": expense.id,
+            "description": expense.description,
+            "amount": str(expense.amount),
+            "currency": expense.currency,
+            "date": expense.date.isoformat(),
+        })
 
     @action(detail=False, methods=["get"], url_path="todays-expenses")
     def todays_expenses(self, request):

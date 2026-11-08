@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Download, FileText, BarChart3, Package, AlertTriangle, Users, Receipt, TrendingUp, Calendar, WalletCards, HandCoins, Truck, HeartPulse } from "lucide-react";
@@ -25,13 +25,47 @@ import {
 } from "@/lib/reporting";
 import { LockedBadge, useFeatureAccess, useUpgradePrompt } from "@/lib/features";
 import { symbolForCurrency } from "@/lib/currency";
+import {
+  createCustomReportApi,
+  deleteCustomReportApi,
+  getAccessToken,
+  listCustomReportsApi,
+  updateCustomReportApi,
+  type ApiCustomReport,
+} from "@/lib/api";
 
 const COLORS = ["hsl(152 55% 28%)", "hsl(38 92% 50%)", "hsl(0 72% 51%)", "hsl(200 70% 50%)", "hsl(280 60% 50%)"];
+
+type SavedCustomReport = {
+  id?: number;
+  name: string;
+  metric: "sales" | "profit" | "transactions";
+  group: "day" | "month" | "year";
+  start: string;
+  end: string;
+  branchFilter: string;
+};
+
+function mapSavedCustomReport(report: ApiCustomReport): SavedCustomReport {
+  return {
+    id: report.id,
+    name: report.name,
+    metric: report.metric,
+    group: report.group_by,
+    start: report.start_date || "",
+    end: report.end_date || "",
+    branchFilter: report.branch_filter === "branch" && report.branch
+      ? String(report.branch)
+      : report.branch_filter,
+  };
+}
 
 const Reports = () => {
   const [financePeriod, setFinancePeriod] = useState<FinancePeriod>("months");
   const { sales, expenses, products, discrepancies, customers, profile, supplyEntries, branches, staff } = useStore();
-  const { canUse } = useFeatureAccess();
+  const access = useFeatureAccess();
+  const { canUse } = access;
+  const customReportsEnabled = canUse("custom_reports");
   const promptUpgrade = useUpgradePrompt();
   const sym = profile.currencySymbol || "R";
   const isToday = (value: string) => {
@@ -67,14 +101,27 @@ const Reports = () => {
   const reorderSuggestions = buildReorderSuggestions(products, sales);
   const profitLeaks = buildProfitLeaks(products, sales, expenses, customers, discrepancies, sym);
   const businessHealth = buildBusinessHealthScore({ products, sales, expenses, customers, discrepancies, cashflow: cashflowForecast });
-  const [customMetric, setCustomMetric] = useState("sales");
-  const [customGroup, setCustomGroup] = useState("month");
+  const [customMetric, setCustomMetric] = useState<SavedCustomReport["metric"]>("sales");
+  const [customGroup, setCustomGroup] = useState<SavedCustomReport["group"]>("month");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
   const [branchFilter, setBranchFilter] = useState("all");
-  const [savedReports, setSavedReports] = useState<{name:string; metric:string; group:string; start:string; end:string}[]>(() => {
-    try { return JSON.parse(localStorage.getItem("verifin_custom_reports") || "[]"); } catch { return []; }
+  const [savedReports, setSavedReports] = useState<SavedCustomReport[]>(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("verifin_custom_reports") || "[]") as Array<Partial<SavedCustomReport>>;
+      return Array.isArray(stored) ? stored.filter((report) => typeof report.name === "string")
+        .map((report) => ({
+          id: report.id,
+          name: report.name as string,
+          metric: report.metric === "profit" || report.metric === "transactions" ? report.metric : "sales",
+          group: report.group === "day" || report.group === "year" ? report.group : "month",
+          start: report.start || "",
+          end: report.end || "",
+          branchFilter: report.branchFilter || "all",
+        })) : [];
+    } catch { return []; }
   });
+  const legacySavedReports = useRef(savedReports.filter((report) => !report.id));
   const customRows = useMemo(() => {
     const rows = sales.filter((sale) => (!customStart || sale.date >= customStart) && (!customEnd || sale.date <= customEnd) && (branchFilter === "all" || (branchFilter === "unassigned" ? !sale.branchId : sale.branchId === branchFilter)));
     const grouped = new Map<string, number>();
@@ -91,11 +138,83 @@ const Reports = () => {
   const projectedWeek = averageDailySales * 7;
   const projectedMonth = averageDailySales * 30;
   const branchSummary = branches.map(branch=>({branch, sales:sales.filter(sale=>sale.branchId===branch.id).reduce((sum,sale)=>sum+sale.total,0), products:products.filter(product=>product.branchId===branch.id).length, staff:staff.filter(member=>member.branchId===branch.id).length}));
-  const saveCustomReport = () => {
+  useEffect(() => {
+    if (!customReportsEnabled || !getAccessToken()) return;
+    let cancelled = false;
+    void listCustomReportsApi()
+      .then((reports) => {
+        if (cancelled) return;
+        const saved = reports.map(mapSavedCustomReport);
+        const names = new Set(saved.map((report) => report.name));
+        const legacy = legacySavedReports.current.filter((report) => !names.has(report.name));
+        const merged = [...saved, ...legacy];
+        setSavedReports(merged);
+        localStorage.setItem("verifin_custom_reports", JSON.stringify(merged));
+      })
+      .catch((error) => {
+        if (!cancelled) toast.error(error instanceof Error ? error.message : "Could not load saved report templates.");
+      });
+    return () => { cancelled = true; };
+  }, [customReportsEnabled]);
+
+  const saveCustomReport = async () => {
     if (!canUse("custom_reports")) { promptUpgrade("custom_reports", "Custom Reports"); return; }
-    const item = { name: `${customMetric} by ${customGroup}`, metric: customMetric, group: customGroup, start: customStart, end: customEnd };
-    const next = [item, ...savedReports.filter((report) => report.name !== item.name)].slice(0, 20);
-    setSavedReports(next); localStorage.setItem("verifin_custom_reports", JSON.stringify(next)); toast.success("Report template saved on this device.");
+    const item: SavedCustomReport = {
+      name: `${customMetric} by ${customGroup}`,
+      metric: customMetric,
+      group: customGroup,
+      start: customStart,
+      end: customEnd,
+      branchFilter,
+    };
+    const existing = savedReports.find((report) => report.name === item.name);
+    const branchFilterKind = branchFilter === "all" || branchFilter === "unassigned" ? branchFilter : "branch";
+    try {
+      const payload = {
+        name: item.name,
+        metric: item.metric,
+        group_by: item.group,
+        start_date: item.start || null,
+        end_date: item.end || null,
+        branch_filter: branchFilterKind as ApiCustomReport["branch_filter"],
+        branch: branchFilterKind === "branch" ? Number(branchFilter) : null,
+      };
+      const saved = existing?.id
+        ? await updateCustomReportApi(existing.id, payload)
+        : await createCustomReportApi(payload);
+      const next = [mapSavedCustomReport(saved), ...savedReports.filter((report) => report.name !== item.name)].slice(0, 20);
+      setSavedReports(next);
+      localStorage.setItem("verifin_custom_reports", JSON.stringify(next));
+      toast.success("Report template saved to your account.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save report template.");
+    }
+  };
+
+  const loadCustomReport = (report: SavedCustomReport) => {
+    setCustomMetric(report.metric);
+    setCustomGroup(report.group);
+    setCustomStart(report.start);
+    setCustomEnd(report.end);
+    setBranchFilter(report.branchFilter);
+  };
+
+  const removeCustomReport = async (report: SavedCustomReport) => {
+    if (!report.id) {
+      const next = savedReports.filter((item) => item.name !== report.name);
+      setSavedReports(next);
+      localStorage.setItem("verifin_custom_reports", JSON.stringify(next));
+      return;
+    }
+    try {
+      await deleteCustomReportApi(report.id);
+      const next = savedReports.filter((item) => item.id !== report.id);
+      setSavedReports(next);
+      localStorage.setItem("verifin_custom_reports", JSON.stringify(next));
+      toast.success("Report template deleted.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not delete report template.");
+    }
   };
   const exportCustomReport = () => {
     if (!canUse("custom_reports")) { promptUpgrade("custom_reports", "Custom Reports"); return; }
@@ -424,17 +543,30 @@ const Reports = () => {
       <Card className="shadow-soft">
         <CardHeader><CardTitle className="font-display flex items-center gap-2">Custom Reports {!canUse("custom_reports") && <LockedBadge />}</CardTitle></CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">Build a sales report with a metric, date range, and grouping. Saved templates stay on this device.</p>
+          <p className="text-sm text-muted-foreground">Build a sales report with a metric, date range, branch, and grouping. Saved templates sync to your account.</p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            <select aria-label="Metric" className="h-10 rounded-md border bg-background px-3 text-sm" value={customMetric} onChange={e=>setCustomMetric(e.target.value)}><option value="sales">Sales</option><option value="profit">Gross profit</option><option value="transactions">Transactions</option></select>
-            <select aria-label="Group by" className="h-10 rounded-md border bg-background px-3 text-sm" value={customGroup} onChange={e=>setCustomGroup(e.target.value)}><option value="day">Day</option><option value="month">Month</option><option value="year">Year</option></select>
+            <select aria-label="Metric" className="h-10 rounded-md border bg-background px-3 text-sm" value={customMetric} onChange={e=>setCustomMetric(e.target.value as SavedCustomReport["metric"])}><option value="sales">Sales</option><option value="profit">Gross profit</option><option value="transactions">Transactions</option></select>
+            <select aria-label="Group by" className="h-10 rounded-md border bg-background px-3 text-sm" value={customGroup} onChange={e=>setCustomGroup(e.target.value as SavedCustomReport["group"])}><option value="day">Day</option><option value="month">Month</option><option value="year">Year</option></select>
             <select aria-label="Branch filter" className="h-10 rounded-md border bg-background px-3 text-sm" value={branchFilter} onChange={e=>setBranchFilter(e.target.value)}><option value="all">All branches</option><option value="unassigned">No branch</option>{branches.map(branch=><option key={branch.id} value={branch.id}>{branch.name}</option>)}</select>
             <input aria-label="Start date" type="date" className="h-10 rounded-md border bg-background px-3 text-sm" value={customStart} onChange={e=>setCustomStart(e.target.value)} />
             <input aria-label="End date" type="date" className="h-10 rounded-md border bg-background px-3 text-sm" value={customEnd} onChange={e=>setCustomEnd(e.target.value)} />
-            <div className="flex gap-2"><Button variant="outline" onClick={saveCustomReport}>Save template</Button><Button onClick={exportCustomReport}>Export CSV</Button></div>
+            <div className="flex gap-2"><Button variant="outline" onClick={() => void saveCustomReport()}>Save template</Button><Button onClick={exportCustomReport}>Export CSV</Button></div>
           </div>
           {customRows.length ? <div className="grid gap-2 sm:grid-cols-3">{customRows.slice(-6).map(row=><div key={row.period} className="rounded-md border p-3"><p className="text-xs text-muted-foreground">{row.period}</p><p className="font-semibold">{customMetric === "transactions" ? row.value : formatMoney(row.value,sym)}</p></div>)}</div> : <p className="rounded-md border p-4 text-sm text-muted-foreground">No sales match this date range.</p>}
-          {savedReports.length > 0 && <p className="text-xs text-muted-foreground">Saved templates: {savedReports.map(report=>report.name).join(" · ")}</p>}
+          {savedReports.length > 0 ? (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Saved templates</p>
+              {savedReports.map((report) => (
+                <div key={report.id ?? report.name} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-2">
+                  <span className="text-sm">{report.name}</span>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => loadCustomReport(report)}>Load</Button>
+                    <Button variant="ghost" size="sm" onClick={() => void removeCustomReport(report)}>Delete</Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 

@@ -33,7 +33,8 @@ PAYNOW_ENV = os.getenv("PAYNOW_ENV", "sandbox").strip().lower()
 PAYNOW_INTEGRATION_ID = os.getenv("PAYNOW_INTEGRATION_ID", "").strip()
 PAYNOW_INTEGRATION_KEY = os.getenv("PAYNOW_INTEGRATION_KEY", "").strip()
 PAYNOW_TEST_EMAIL = os.getenv("PAYNOW_TEST_EMAIL", "").strip()
-PAYNOW_API_BASE = os.getenv("PAYNOW_API_BASE", "https://www.paynow.co.zw/interface").rstrip("/")
+_default_paynow_host = "www.paynow.co.zw" if PAYNOW_ENV == "production" else "staging.paynow.co.zw"
+PAYNOW_API_BASE = os.getenv("PAYNOW_API_BASE", f"https://{_default_paynow_host}/interface").rstrip("/")
 
 INSTALLED_APPS = [
     "django.contrib.admin",

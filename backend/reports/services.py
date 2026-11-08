@@ -8,6 +8,8 @@ from django.utils import timezone
 from expenses.models import Expense
 from inventory.models import Product, SupplyEntry
 from sales.models import Sale
+from audits.models import Discrepancy
+from .models import AutomationPreferences
 
 
 def advanced_analytics(user):
@@ -67,12 +69,37 @@ def rule_forecast(user, days=7):
 
 def automation_alerts(user):
     today = timezone.localdate()
+    preferences, _ = AutomationPreferences.objects.get_or_create(user=user)
+    rules = preferences.enabled_rules
     alerts = []
-    low_stock = Product.objects.filter(user=user, stock__lte=models.F("reorder_level"), is_deleted=False).count()
-    if low_stock:
-        alerts.append({"rule": "low_stock", "severity": "warning", "message": f"{low_stock} products are at or below reorder level."})
-    if not Sale.objects.filter(created_by=user, date=today, is_deleted=False).exists():
-        alerts.append({"rule": "no_sales_today", "severity": "info", "message": "No sales have been recorded today."})
+    if rules.get("low_stock", False):
+        low_stock = Product.objects.filter(user=user, stock__lte=models.F("reorder_level"), is_deleted=False).count()
+        if low_stock:
+            alerts.append({"rule": "low_stock", "severity": preferences.severity, "message": f"{low_stock} products are at or below reorder level."})
+    if rules.get("no_sales_today", False) and not Sale.objects.filter(created_by=user, date=today, is_deleted=False).exists():
+        alerts.append({"rule": "no_sales_today", "severity": preferences.severity, "message": "No sales have been recorded today."})
+    if rules.get("high_discrepancies", False):
+        unresolved = Discrepancy.objects.filter(
+            audit__conductor=user,
+            audit__is_deleted=False,
+            status__in=["unresolved", "investigating"],
+            is_deleted=False,
+        ).count()
+        if unresolved >= 3:
+            alerts.append({"rule": "high_discrepancies", "severity": preferences.severity, "message": f"{unresolved} stock discrepancies remain unresolved."})
+    if rules.get("high_expenses", False):
+        today_total = Expense.objects.filter(
+            created_by=user, date=today, is_deleted=False
+        ).aggregate(total=Sum("amount_base"))["total"] or Decimal("0")
+        baseline_total = Expense.objects.filter(
+            created_by=user,
+            date__gte=today - timedelta(days=30),
+            date__lt=today,
+            is_deleted=False,
+        ).aggregate(total=Sum("amount_base"))["total"] or Decimal("0")
+        baseline_average = baseline_total / 30
+        if today_total > 0 and baseline_average > 0 and today_total >= baseline_average * Decimal("1.5"):
+            alerts.append({"rule": "high_expenses", "severity": preferences.severity, "message": "Today's expenses are at least 50% above the recent daily average."})
     return {"alerts": alerts, "evaluated_at": timezone.now()}
 
 

@@ -123,6 +123,12 @@ class StockTransfer(TimeStampedSoftDeleteModel):
     from_branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name="outgoing_transfers")
     to_branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name="incoming_transfers")
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="transfers")
+    target_product = models.ForeignKey(
+        Product, on_delete=models.SET_NULL, blank=True, null=True, related_name="incoming_transfers"
+    )
+    batch = models.ForeignKey(
+        ProductBatch, on_delete=models.SET_NULL, blank=True, null=True, related_name="transfers"
+    )
     quantity = models.PositiveIntegerField()
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="stock_transfers")
     note = models.CharField(max_length=255, blank=True)

@@ -406,7 +406,7 @@ export async function updateProductApi(
     reorder_level: number;
     cost_price: number;
     price: number;
-    branch: string;
+    branch: string | null;
     preferred_supplier: string;
   }>
 ) {
@@ -418,7 +418,7 @@ export async function updateProductApi(
   if (payload.reorder_level != null) body.reorder_level = payload.reorder_level;
   if (payload.cost_price != null) body.cost_price = Number(payload.cost_price).toFixed(2);
   if (payload.price != null) body.price = Number(payload.price).toFixed(2);
-  if (payload.branch != null) body.branch = payload.branch ? Number(payload.branch) : null;
+  if (Object.prototype.hasOwnProperty.call(payload, "branch")) body.branch = payload.branch ? Number(payload.branch) : null;
   if (payload.preferred_supplier != null) body.preferred_supplier = payload.preferred_supplier ? Number(payload.preferred_supplier) : null;
   if (payload.categoryName != null) {
     const cid = await ensureInventoryCategoryId(payload.categoryName);
@@ -428,6 +428,38 @@ export async function updateProductApi(
     method: "PATCH",
     body: JSON.stringify(body),
   });
+}
+
+export type ApiStockTransfer = {
+  id: number;
+  from_branch: number;
+  from_branch_name: string;
+  to_branch: number;
+  to_branch_name: string;
+  product: number;
+  target_product: number | null;
+  batch: number | null;
+  quantity: number;
+  note: string;
+  created_at: string;
+};
+
+export async function transferProductApi(
+  productId: string,
+  payload: { to_branch: number; quantity: number; batch?: number; note?: string }
+) {
+  return apiFetch<{
+    transfer: ApiStockTransfer;
+    source: ApiProduct;
+    target: ApiProduct;
+  }>(`/api/v1/inventory/products/${productId}/transfer/`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listStockTransfersApi() {
+  return fetchAllPages<ApiStockTransfer>("/api/v1/inventory/transfers/");
 }
 
 export async function deleteProductApi(id: string) {
@@ -489,17 +521,19 @@ export type ApiStaff = {
   username?: string;
   permissions?: string[];
   login_enabled?: boolean;
+  branch?: number | null;
+  branch_name?: string | null;
   temp_password?: string;
 };
 
-export async function createStaffApi(payload: Omit<ApiStaff, "id">) {
+export async function createStaffApi(payload: Omit<ApiStaff, "id" | "branch_name">) {
   return apiFetch<ApiStaff>("/api/v1/accounts/staff/", {
     method: "POST",
     body: JSON.stringify(payload),
   });
 }
 
-export async function updateStaffApi(id: string, payload: Partial<Omit<ApiStaff, "id">>) {
+export async function updateStaffApi(id: string, payload: Partial<Omit<ApiStaff, "id" | "branch_name">>) {
   return apiFetch<ApiStaff>(`/api/v1/accounts/staff/${id}/`, {
     method: "PATCH",
     body: JSON.stringify(payload),
@@ -524,6 +558,74 @@ export type ApiStaffActivityLog = {
 
 export async function listStaffActivityLogsApi() {
   return fetchAllPages<ApiStaffActivityLog>("/api/v1/accounts/activity-logs/");
+}
+
+export type ApiAutomationPreferences = {
+  enabled_rules: {
+    low_stock: boolean;
+    no_sales_today: boolean;
+    high_discrepancies: boolean;
+    high_expenses: boolean;
+  };
+  severity: "info" | "warning" | "critical";
+  channel: "in_app" | "email" | "whatsapp";
+};
+
+export async function getAnalyticsConsentApi() {
+  return apiFetch<{ enabled: boolean }>("/api/v1/core/analytics-consent/");
+}
+
+export async function updateAnalyticsConsentApi(enabled: boolean) {
+  return apiFetch<{ enabled: boolean }>("/api/v1/core/analytics-consent/", {
+    method: "PATCH",
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export async function getAutomationPreferencesApi() {
+  return apiFetch<ApiAutomationPreferences>("/api/v1/reports/automation-preferences/");
+}
+
+export async function updateAutomationPreferencesApi(payload: ApiAutomationPreferences) {
+  return apiFetch<ApiAutomationPreferences>("/api/v1/reports/automation-preferences/", {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export type ApiCustomReport = {
+  id: number;
+  name: string;
+  metric: "sales" | "profit" | "transactions";
+  group_by: "day" | "month" | "year";
+  start_date: string | null;
+  end_date: string | null;
+  branch_filter: "all" | "unassigned" | "branch";
+  branch: number | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function listCustomReportsApi() {
+  return fetchAllPages<ApiCustomReport>("/api/v1/reports/custom-reports/");
+}
+
+export async function createCustomReportApi(payload: Omit<ApiCustomReport, "id" | "created_at" | "updated_at">) {
+  return apiFetch<ApiCustomReport>("/api/v1/reports/custom-reports/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateCustomReportApi(id: number, payload: Omit<ApiCustomReport, "id" | "created_at" | "updated_at">) {
+  return apiFetch<ApiCustomReport>(`/api/v1/reports/custom-reports/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteCustomReportApi(id: number) {
+  return apiFetch<void>(`/api/v1/reports/custom-reports/${id}/`, { method: "DELETE" });
 }
 
 export type ApiIntegrationKey = {
@@ -551,6 +653,65 @@ export async function createApiKeyApi(payload: { name: string; permissions: stri
 
 export async function revokeApiKeyApi(id: number) {
   return apiFetch<ApiIntegrationKey>(`/api/v1/accounts/api-keys/${id}/revoke/`, { method: "POST" });
+}
+
+export type ApiWebhookEvent =
+  | "sale.created"
+  | "product.low_stock"
+  | "product.out_of_stock"
+  | "audit.completed"
+  | "expense.created";
+
+export type ApiWebhookEndpoint = {
+  id: number;
+  name: string;
+  url: string;
+  events: ApiWebhookEvent[];
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  secret?: string;
+};
+
+export type ApiWebhookDelivery = {
+  id: number;
+  endpoint: number;
+  endpoint_name: string;
+  event: ApiWebhookEvent;
+  status: "pending" | "sending" | "delivered" | "failed";
+  attempts: number;
+  next_attempt_at: string;
+  delivered_at: string | null;
+  last_status_code: number | null;
+  last_error: string;
+  created_at: string;
+};
+
+export async function listWebhooksApi() {
+  return fetchAllPages<ApiWebhookEndpoint>("/api/v1/accounts/webhooks/");
+}
+
+export async function createWebhookApi(payload: { name: string; url: string; events: ApiWebhookEvent[] }) {
+  return apiFetch<ApiWebhookEndpoint>("/api/v1/accounts/webhooks/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateWebhookApi(id: number, payload: Partial<Pick<ApiWebhookEndpoint, "is_active">>) {
+  return apiFetch<ApiWebhookEndpoint>(`/api/v1/accounts/webhooks/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteWebhookApi(id: number) {
+  return apiFetch<void>(`/api/v1/accounts/webhooks/${id}/`, { method: "DELETE" });
+}
+
+export async function listWebhookDeliveriesApi() {
+  const response = await apiFetch<{ results?: ApiWebhookDelivery[] } | ApiWebhookDelivery[]>("/api/v1/accounts/webhook-deliveries/");
+  return Array.isArray(response) ? response : response.results || [];
 }
 
 export async function createBranchApi(payload: Omit<ApiBranch, "id">) {
@@ -1296,6 +1457,8 @@ export type NotificationPreference = {
   low_stock_alerts: boolean;
   discrepancy_alerts: boolean;
   push_enabled: boolean;
+  email_opt_in: boolean;
+  email_daily_summary: boolean;
 };
 
 export async function fetchNotificationPreferencesApi() {
@@ -1328,6 +1491,34 @@ export type ApiAudit = {
   conductor: number | null;
   completed_at: string | null;
 };
+
+export type ApiAuditSchedule = {
+  id: number;
+  frequency: "daily" | "weekly";
+  is_active: boolean;
+  next_run_at: string;
+  last_run_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function listAuditSchedulesApi() {
+  return fetchAllPages<ApiAuditSchedule>("/api/v1/audits/schedules/");
+}
+
+export async function createAuditScheduleApi(payload: { frequency: ApiAuditSchedule["frequency"] }) {
+  return apiFetch<ApiAuditSchedule>("/api/v1/audits/schedules/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateAuditScheduleApi(id: number, payload: Partial<Pick<ApiAuditSchedule, "frequency" | "is_active">>) {
+  return apiFetch<ApiAuditSchedule>(`/api/v1/audits/schedules/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
 
 export async function createAuditApi(payload: {
   status?: ApiAudit["status"];

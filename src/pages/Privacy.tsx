@@ -31,7 +31,7 @@ const sections = [
       },
       {
         subtitle: "Usage and technical data",
-        items: ["Security and operational data such as IP address, browser information, logs, and security events needed to protect and operate the service.", "Limited first-party activation milestones: account registration, email verification, onboarding completion, first product creation, and first sale recording. These milestones do not include customer records, product names, sales values, or financial details.", "Offline queue and sync metadata needed to keep your records consistent across sessions."],
+        items: ["Security and operational data such as IP address, browser information, logs, and security events needed to protect and operate the service.", "If you opt in, subsequent first-party milestones such as first product creation, first sale recording, and first expense recording. These events use a random pseudonymous identifier, exclude business records and financial details, remain in Verifin's database, and are deleted after 12 months. Turning off consent deletes events associated with that identifier.", "Offline queue and sync metadata needed to keep your records consistent across sessions."],
       },
       {
         subtitle: "Billing data",
@@ -80,7 +80,7 @@ const sections = [
     icon: FileText,
     title: "6. Data Retention",
     content:
-      "We keep information for as long as needed to provide Verifin, meet legal obligations, resolve disputes, prevent abuse, and enforce agreements. If you close your account, we will delete or anonymize account data within a reasonable period unless retention is required by law, security, backups, accounting, or legitimate business needs. You should export important records before deleting your account.",
+      "We keep information for as long as needed to provide Verifin, meet legal obligations, resolve disputes, prevent abuse, and enforce agreements. Opt-in pseudonymous product events are retained for no more than 12 months and are deleted sooner when you withdraw consent or close your account. Other account data may be retained for a reasonable period unless deletion is required sooner or retention is required by law, security, backups, accounting, or legitimate business needs. You should export important records before deleting your account.",
   },
   {
     icon: UserCheck,
@@ -101,7 +101,7 @@ const sections = [
     icon: Cookie,
     title: "8. Cookies and Similar Technologies",
     content:
-      "We use essential storage and cookies for authentication, security, preferences, offline workflows, and session continuity. Product activation milestones are stored in Verifin's own database rather than sent to a third-party advertising tracker. You can control browser cookies through your browser settings, but disabling essential cookies or local storage may affect login, offline mode, and app functionality.",
+      "We use essential storage and cookies for authentication, security, preferences, offline workflows, and session continuity. Opt-in product activation milestones are stored in Verifin's own database rather than sent to a third-party advertising tracker. You can control browser cookies through your browser settings, but disabling essential cookies or local storage may affect login, offline mode, and app functionality.",
   },
   {
     icon: Globe,

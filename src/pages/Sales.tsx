@@ -41,11 +41,14 @@ function createSaleIntegrationId() {
 const Sales = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { sales, deleteSale, profile, products, customers, addSale } = useStore();
+  const { sales, deleteSale, profile, products, customers, branches, addSale } = useStore();
   const { refreshUser } = useAuth();
   const { canUse } = useFeatureAccess();
   const promptUpgrade = useUpgradePrompt();
+  const canUseMultiBranch = canUse("multi_branch");
   const [search, setSearch] = useState("");
+  const [salesBranchFilter, setSalesBranchFilter] = useState("all");
+  const [selectedBranchId, setSelectedBranchId] = useState("");
   const [saving, setSaving] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
@@ -73,6 +76,15 @@ const Sales = () => {
   const sym = profile.currencySymbol || symbolForCurrency(baseCurrency);
   const enabledCurrencies = profile.enabledCurrencies?.length ? profile.enabledCurrencies : [baseCurrency];
   const secondaryCurrency = enabledCurrencies.find((code) => code !== baseCurrency) || "";
+
+  useEffect(() => {
+    if (!canUseMultiBranch) {
+      setSelectedBranchId("");
+      return;
+    }
+    if (selectedBranchId && branches.some((branch) => branch.id === selectedBranchId)) return;
+    setSelectedBranchId(branches.find((branch) => branch.isPrimary)?.id || "");
+  }, [branches, canUseMultiBranch, selectedBranchId]);
 
   useEffect(() => {
     if (!SHOW_TILL_CONTROLS) return;
@@ -116,12 +128,20 @@ const Sales = () => {
     setSearchParams(nextParams, { replace: true });
   }, [navigate, products, searchParams, setSearchParams]);
 
-  const filtered = sales.filter(s => String(s.items || "").toLowerCase().includes(search.toLowerCase()));
-  const todayTotal = sales.filter(s => isSameBusinessDay(s.date)).reduce((sum, s) => sum + s.total, 0);
-  const todayCount = sales.filter(s => isSameBusinessDay(s.date)).length;
+  const branchSales = sales.filter((sale) =>
+    salesBranchFilter === "all" ||
+    (salesBranchFilter === "unassigned" ? !sale.branchId : sale.branchId === salesBranchFilter)
+  );
+  const availableProducts = products.filter((product) =>
+    product.stock > 0 &&
+    (!canUseMultiBranch || (selectedBranchId ? !product.branchId || product.branchId === selectedBranchId : !product.branchId))
+  );
+  const filtered = branchSales.filter(s => String(s.items || "").toLowerCase().includes(search.toLowerCase()));
+  const todayTotal = branchSales.filter(s => isSameBusinessDay(s.date)).reduce((sum, s) => sum + s.total, 0);
+  const todayCount = branchSales.filter(s => isSameBusinessDay(s.date)).length;
   const previousDay = new Date();
   previousDay.setDate(previousDay.getDate() - 1);
-  const previousDaySales = sales.filter(s => isSameBusinessDay(s.date, previousDay));
+  const previousDaySales = branchSales.filter(s => isSameBusinessDay(s.date, previousDay));
   const previousDayTotal = previousDaySales.reduce((sum, s) => sum + s.total, 0);
   const salesChangeLabel = previousDayTotal > 0
     ? `${Math.round(((todayTotal - previousDayTotal) / previousDayTotal) * 100)}% vs yesterday`
@@ -157,6 +177,10 @@ const Sales = () => {
   const addProductToSale = (productId: string, quantity = 1) => {
     const product = products.find(p => p.id === productId);
     if (!product) return false;
+    if (canUseMultiBranch && selectedBranchId && product.branchId && product.branchId !== selectedBranchId) {
+      toast.error(`${product.name} is assigned to another branch.`);
+      return false;
+    }
     const unitPrice = parseFloat(String(product.price || 0)) || 0;
     if (quantity > product.stock) {
       toast.error(`Only ${product.stock} ${product.name} in stock`);
@@ -252,6 +276,7 @@ const Sales = () => {
       })),
       saleItems: lineItems,
       customerId: selectedCustomerId || undefined,
+      branchId: selectedBranchId || undefined,
     });
   };
 
@@ -291,8 +316,7 @@ const Sales = () => {
       integration_id: integrationId,
       payment_method: method,
       payment_currency: paymentCurrency,
-      // Multi-branch is disabled for now. Keep sending null until branch routing is restored.
-      branch: till?.branch || null,
+      branch: till?.branch ?? (selectedBranchId ? Number(selectedBranchId) : null),
       till_session: till?.id || null,
       customer: selectedCustomerId ? Number(selectedCustomerId) : null,
       sale_items: lineItems.map((l) => ({
@@ -306,7 +330,7 @@ const Sales = () => {
       integration_id: integrationId,
       payment_method: method,
       payment_currency: paymentCurrency,
-      branch: till?.branch || null,
+      branch: till?.branch ?? (selectedBranchId ? Number(selectedBranchId) : null),
       till_session: till?.id || null,
       customer: selectedCustomerId ? Number(selectedCustomerId) : null,
       sale_items: lineItems.map((l) => {
@@ -397,7 +421,7 @@ const Sales = () => {
   const handleOpenTill = async () => {
     try {
       const opened = await openTillApi({
-        branch: till?.branch || null,
+        branch: till?.branch ?? (selectedBranchId ? Number(selectedBranchId) : null),
         cashier_name: tillForm.cashier,
         opening_cash: tillForm.openingCash || "0",
       });
@@ -432,8 +456,7 @@ const Sales = () => {
       });
       const lines = [
         receipt.business_name || "Verifin Receipt",
-        // Multi-branch is disabled for now. Keep this line commented for later reactivation.
-        // receipt.branch ? `Branch: ${receipt.branch}` : "",
+        receipt.branch ? `Branch: ${receipt.branch}` : "",
         `Receipt: ${receipt.receipt_number}`,
         receipt.invoice_number ? `Invoice: ${receipt.invoice_number}` : "",
         `${receipt.date} ${receipt.time}`,
@@ -504,11 +527,18 @@ const Sales = () => {
         </Card>
       )}
 
-      <div className="flex gap-3 items-center">
+      <div className="flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Search sales..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
         </div>
+        {canUseMultiBranch && branches.length > 0 ? (
+          <select aria-label="Sales branch filter" value={salesBranchFilter} onChange={(event) => setSalesBranchFilter(event.target.value)} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+            <option value="all">All branches</option>
+            <option value="unassigned">No branch</option>
+            {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+          </select>
+        ) : null}
         <Button onClick={() => setAddOpen(true)} className="bg-gradient-hero text-primary-foreground"><Plus className="h-4 w-4 mr-2" /> Record Sale</Button>
       </div>
 
@@ -532,6 +562,7 @@ const Sales = () => {
                       <p className="font-medium text-sm">{s.items}</p>
                       <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                         <span>{s.time} · {s.date} · {s.method}</span>
+                        {s.branchId ? <span>{branches.find((branch) => branch.id === s.branchId)?.name || "Branch"}</span> : null}
                         {s.paymentCurrency ? <span className="rounded border border-border px-2 py-0.5">{s.paymentCurrency}</span> : null}
                       </div>
                       {s.paymentAllocations?.length && s.paymentAllocations.length > 1 ? (
@@ -564,11 +595,20 @@ const Sales = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            {products.some((product) => product.stock > 0) ? (
+            {canUseMultiBranch && branches.length > 0 ? (
+              <div>
+                <Label>Branch</Label>
+                <select value={selectedBranchId} onChange={(event) => { setSelectedBranchId(event.target.value); setLineItems([]); setSelectedProduct(""); }} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                  <option value="">No branch</option>
+                  {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}{branch.isPrimary ? " (Primary)" : ""}</option>)}
+                </select>
+              </div>
+            ) : null}
+            {availableProducts.length > 0 ? (
               <div>
                 <Label>Quick add a product</Label>
                 <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                  {products.filter((product) => product.stock > 0).slice(0, 6).map((product) => (
+                  {availableProducts.slice(0, 6).map((product) => (
                     <Button
                       key={product.id}
                       type="button"
@@ -624,7 +664,7 @@ const Sales = () => {
                 <Label>Product</Label>
                 <select value={selectedProduct} onChange={e => setSelectedProduct(e.target.value)} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
                   <option value="">Select product...</option>
-                  {products.filter(p => p.stock > 0).map(p => (
+                  {availableProducts.map(p => (
                     <option key={p.id} value={p.id}>{p.name} ({p.stock} in stock)</option>
                   ))}
                 </select>
@@ -770,10 +810,6 @@ const Sales = () => {
             <div className="space-y-3">
               {!till ? (
                 <>
-                  {/*
-                  Multiple branches are disabled for now. Keep this field for later reactivation.
-                  <div><Label>Branch</Label><select value={tillForm.branch} onChange={e => setTillForm({ ...tillForm, branch: e.target.value })} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm"><option value="">No branch</option>{branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></div>
-                  */}
                   <div><Label>Cashier Name</Label><Input value={tillForm.cashier} onChange={e => setTillForm({ ...tillForm, cashier: e.target.value })} className="mt-1" /></div>
                   <div><Label>Opening Cash ({sym})</Label><Input type="number" value={tillForm.openingCash} onChange={e => setTillForm({ ...tillForm, openingCash: e.target.value })} className="mt-1" /></div>
                   <Button onClick={handleOpenTill} className="w-full">Open Till</Button>

@@ -2,7 +2,7 @@ import { useFeatureAccess, useUpgradePrompt } from "@/lib/features";
 import { useAuth } from "@/lib/auth-context";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { ClipboardCheck, AlertTriangle, CheckCircle, XCircle, Check, Square, PlayCircle, Loader2, Zap, Search, Eye } from "lucide-react";
+import { ClipboardCheck, AlertTriangle, CheckCircle, XCircle, Check, Square, PlayCircle, Loader2, Zap, Search, Eye, CalendarClock } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +12,17 @@ import { addToOfflineQueue, canQueueOfflineAction, isOnline } from "@/lib/offlin
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { completeAuditApi, createAuditApi, createDiscrepancyApi, resolveDiscrepancyApi, updateAuditApi } from "@/lib/api";
+import {
+  completeAuditApi,
+  createAuditApi,
+  createAuditScheduleApi,
+  createDiscrepancyApi,
+  listAuditSchedulesApi,
+  resolveDiscrepancyApi,
+  updateAuditApi,
+  updateAuditScheduleApi,
+  type ApiAuditSchedule,
+} from "@/lib/api";
 import { useNavigate } from "react-router-dom";
 
 function formatAuditDate(value: string) {
@@ -59,6 +69,7 @@ const Audits = () => {
   const access = useFeatureAccess();
   const promptUpgrade = useUpgradePrompt();
   const auditsEnabled = access.canUse("audits");
+  const schedulesEnabled = access.canUse("background_audits");
   const {
     audits,
     discrepancies,
@@ -83,6 +94,9 @@ const Audits = () => {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "in_progress" | "completed">("all");
   const [viewFindings, setViewFindings] = useState<string | null>(null);
+  const [auditSchedule, setAuditSchedule] = useState<ApiAuditSchedule | null>(null);
+  const [scheduleFrequency, setScheduleFrequency] = useState<ApiAuditSchedule["frequency"]>("weekly");
+  const [scheduleSaving, setScheduleSaving] = useState(false);
   const bgIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sym = profile.currencySymbol || "R";
 
@@ -168,6 +182,57 @@ const Audits = () => {
       if (bgIntervalRef.current) clearInterval(bgIntervalRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!schedulesEnabled) return;
+    let cancelled = false;
+    void listAuditSchedulesApi()
+      .then((schedules) => {
+        if (cancelled) return;
+        const saved = schedules[0] || null;
+        setAuditSchedule(saved);
+        if (saved) setScheduleFrequency(saved.frequency);
+      })
+      .catch((error) => {
+        if (!cancelled) toast.error(error instanceof Error ? error.message : "Could not load the audit schedule.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [schedulesEnabled]);
+
+  const saveAuditSchedule = async () => {
+    if (!schedulesEnabled) {
+      promptUpgrade("background_audits", "Scheduled audits");
+      return;
+    }
+    setScheduleSaving(true);
+    try {
+      const saved = auditSchedule
+        ? await updateAuditScheduleApi(auditSchedule.id, { frequency: scheduleFrequency })
+        : await createAuditScheduleApi({ frequency: scheduleFrequency });
+      setAuditSchedule(saved);
+      toast.success("Audit schedule saved.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save the audit schedule.");
+    } finally {
+      setScheduleSaving(false);
+    }
+  };
+
+  const toggleAuditSchedule = async () => {
+    if (!auditSchedule) return;
+    setScheduleSaving(true);
+    try {
+      const saved = await updateAuditScheduleApi(auditSchedule.id, { is_active: !auditSchedule.is_active });
+      setAuditSchedule(saved);
+      toast.success(saved.is_active ? "Audit schedule resumed." : "Audit schedule paused.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update the audit schedule.");
+    } finally {
+      setScheduleSaving(false);
+    }
+  };
 
   const startAudit = async () => {
     if (!auditsEnabled) { promptUpgrade("audits"); return; }
@@ -327,6 +392,40 @@ const Audits = () => {
         <p className="text-muted-foreground text-sm">Track stock accuracy and resolve discrepancies</p>
         <Button disabled={access.isPending || !auditsEnabled || products.length === 0} onClick={() => void startAudit()} className="bg-gradient-hero text-primary-foreground"><ClipboardCheck className="mr-2 h-4 w-4" /> Start New Audit</Button>
       </div>
+
+      <Card className="shadow-soft">
+        <CardHeader><CardTitle className="font-display flex items-center gap-2 text-base"><CalendarClock className="h-4 w-4" /> Scheduled audits</CardTitle></CardHeader>
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <label className="flex-1 text-sm">Repeat
+            <select
+              aria-label="Scheduled audit frequency"
+              disabled={!schedulesEnabled || scheduleSaving}
+              value={scheduleFrequency}
+              onChange={(event) => setScheduleFrequency(event.target.value as ApiAuditSchedule["frequency"])}
+              className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3"
+            >
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+            </select>
+          </label>
+          <Button disabled={!schedulesEnabled || scheduleSaving} onClick={() => void saveAuditSchedule()}>
+            {scheduleSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            {auditSchedule ? "Save schedule" : "Create schedule"}
+          </Button>
+          {auditSchedule ? (
+            <Button variant="outline" disabled={!schedulesEnabled || scheduleSaving} onClick={() => void toggleAuditSchedule()}>
+              {auditSchedule.is_active ? "Pause" : "Resume"}
+            </Button>
+          ) : null}
+          <p className="text-xs text-muted-foreground sm:max-w-xs">
+            {!schedulesEnabled
+              ? "Scheduled audits require the Business plan."
+              : auditSchedule
+                ? `${auditSchedule.is_active ? "Next audit" : "Paused"}: ${auditSchedule.is_active ? new Date(auditSchedule.next_run_at).toLocaleString() : "resume to continue"}`
+                : "The first audit will be created after the selected interval."}
+          </p>
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-3 gap-4">
         <Card className="shadow-soft"><CardContent className="p-4 text-center"><CheckCircle className="mx-auto mb-1 h-6 w-6 text-success" /><p className="text-xl font-display font-bold">{accuracy}%</p><p className="text-xs text-muted-foreground">Stock Accuracy</p></CardContent></Card>

@@ -38,4 +38,11 @@ def complete_audit(request, audit_id, counts=None):
     audit.items_counted = len(saved_counts) or audit.items_counted
     audit.discrepancies_found = audit.discrepancies.filter(is_deleted=False).count()
     audit.save()
+    from accounts.webhooks import enqueue_webhook_event
+    enqueue_webhook_event(request.user, "audit.completed", {
+        "audit_id": audit.id,
+        "date": audit.date.isoformat(),
+        "items_counted": audit.items_counted,
+        "discrepancies_found": audit.discrepancies_found,
+    })
     return audit

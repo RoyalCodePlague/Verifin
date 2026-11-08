@@ -40,6 +40,7 @@ const roleDefaults = {
 const emptyForm = {
   name: "",
   role: "Cashier" as StaffRole,
+  branchId: "",
   username: "",
   tempPassword: "",
   loginEnabled: true,
@@ -57,6 +58,8 @@ function fromApiStaff(staff: ApiStaff): StaffMember {
     role: staff.role,
     status: staff.status,
     lastActive: staff.last_active ? new Date(staff.last_active).toLocaleDateString() : "Just added",
+    branchId: staff.branch ? String(staff.branch) : undefined,
+    branchName: staff.branch_name || "",
     username: staff.username || "",
     permissions: staff.permissions || [],
     loginEnabled: staff.login_enabled ?? false,
@@ -64,7 +67,7 @@ function fromApiStaff(staff: ApiStaff): StaffMember {
 }
 
 const Staff = () => {
-  const { staff, addStaff, upsertStaff, updateStaff, deleteStaff } = useStore();
+  const { staff, branches, addStaff, upsertStaff, updateStaff, deleteStaff } = useStore();
   const { user } = useAuth();
   const { canUse } = useFeatureAccess();
   const promptUpgrade = useUpgradePrompt();
@@ -141,6 +144,7 @@ const Staff = () => {
     const payload = {
       name: form.name.trim(),
       role: form.role,
+      branch: form.branchId ? Number(form.branchId) : null,
       status: "Active" as const,
       username: form.username.trim().toLowerCase(),
       temp_password: form.tempPassword,
@@ -160,6 +164,8 @@ const Staff = () => {
           role: payload.role,
           status: payload.status,
           lastActive: "Just added",
+          branchId: form.branchId || undefined,
+          branchName: branches.find((branch) => branch.id === form.branchId)?.name || "",
           username: payload.username,
           tempPassword: payload.temp_password,
           permissions: payload.permissions,
@@ -176,6 +182,26 @@ const Staff = () => {
       toast.error(error instanceof Error ? error.message : "Could not add staff member");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const assignBranch = async (member: StaffMember, branchId: string) => {
+    if (!canUse("multi_branch")) {
+      promptUpgrade("multi_branch", "Staff branch assignment");
+      return;
+    }
+    const branch = branches.find((item) => item.id === branchId);
+    updateStaff(member.id, { branchId: branchId || undefined, branchName: branch?.name || "" });
+    try {
+      if (!/^\d+$/.test(member.id)) {
+        throw new Error("Sync this staff member before changing their branch.");
+      }
+      const saved = await updateStaffApi(member.id, { branch: branchId ? Number(branchId) : null });
+      upsertStaff({ ...fromApiStaff(saved), tempPassword: member.tempPassword });
+      toast.success("Staff branch updated.");
+    } catch (error) {
+      updateStaff(member.id, { branchId: member.branchId, branchName: member.branchName });
+      toast.error(error instanceof Error ? error.message : "Could not update staff branch.");
     }
   };
 
@@ -337,6 +363,15 @@ const Staff = () => {
                   <option value="Manager">Manager</option>
                 </select>
               </div>
+              {canUse("multi_branch") && branches.length > 0 ? (
+                <div>
+                  <Label>Branch</Label>
+                  <select value={form.branchId} onChange={e => setForm({ ...form, branchId: e.target.value })} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
+                    <option value="">No branch assigned</option>
+                    {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                  </select>
+                </div>
+              ) : null}
               <div><Label>Username</Label><Input placeholder="cashier01" value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} className="mt-1" /></div>
               <div><Label>Temporary Password</Label><Input type="password" placeholder="At least 4 characters" value={form.tempPassword} onChange={e => setForm({ ...form, tempPassword: e.target.value })} className="mt-1" minLength={4} /></div>
             </div>
@@ -402,6 +437,15 @@ const Staff = () => {
                   <span className="text-muted-foreground">Last active</span>
                   <span className="font-medium">{selectedStaff.lastActive || "Not yet"}</span>
                 </div>
+                {canUse("multi_branch") && branches.length > 0 ? (
+                  <label className="grid gap-1">
+                    <span className="text-muted-foreground">Branch</span>
+                    <select value={selectedStaff.branchId || ""} onChange={(event) => void assignBranch(selectedStaff, event.target.value)} className="h-9 rounded-md border border-input bg-background px-3">
+                      <option value="">No branch assigned</option>
+                      {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                    </select>
+                  </label>
+                ) : null}
                 <div>
                   <div className="mb-1 text-muted-foreground">Password</div>
                   <div className="flex items-center gap-2">

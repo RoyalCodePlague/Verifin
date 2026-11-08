@@ -2,6 +2,7 @@ from decimal import Decimal
 from django.db import transaction
 from django.db.models import DecimalField, ExpressionWrapper, F, Sum
 from rest_framework import serializers
+from billing.services import enforce_feature
 from core.currency import get_rate_to_base
 from .models import Branch, Category, Product, ProductBatch, PurchaseOrder, PurchaseOrderItem, StockMovement, StockTransfer, Supplier, SupplierPayment
 
@@ -69,6 +70,8 @@ class ProductSerializer(serializers.ModelSerializer):
         if user and user.is_authenticated:
             if branch and branch.user_id != user.id:
                 raise serializers.ValidationError({"branch": "Branch does not belong to this account."})
+            if branch:
+                enforce_feature(user, "multi_branch")
             if category and category.user_id != user.id:
                 raise serializers.ValidationError({"category": "Category does not belong to this account."})
             supplier = attrs.get("preferred_supplier")
@@ -159,6 +162,9 @@ class PurchaseOrderItemSerializer(serializers.ModelSerializer):
         product = attrs.get("product")
         if user and user.is_authenticated and product and product.user_id != user.id:
             raise serializers.ValidationError({"product": "Product does not belong to this account."})
+        order = attrs.get("purchase_order") or getattr(self.instance, "purchase_order", None)
+        if order and order.branch_id and product and product.branch_id and product.branch_id != order.branch_id:
+            raise serializers.ValidationError({"product": "Product belongs to a different branch than this purchase order."})
         return attrs
 
 
@@ -178,12 +184,21 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         user = getattr(request, "user", None)
         supplier = attrs.get("supplier")
-        branch = attrs.get("branch")
+        branch = attrs.get("branch", self.instance.branch if self.instance else None)
         if user and user.is_authenticated:
             if supplier and supplier.user_id != user.id:
                 raise serializers.ValidationError({"supplier": "Supplier does not belong to this account."})
             if branch and branch.user_id != user.id:
                 raise serializers.ValidationError({"branch": "Branch does not belong to this account."})
+            if branch:
+                enforce_feature(user, "multi_branch")
+            items = attrs.get("items")
+            if items is None and self.instance:
+                items = self.instance.items.select_related("product").all()
+            for item in items or []:
+                product = item.get("product") if isinstance(item, dict) else item.product
+                if branch and product and product.branch_id and product.branch_id != branch.id:
+                    raise serializers.ValidationError({"items": f"{product.name} belongs to a different branch than this purchase order."})
             currency = (attrs.get("currency") or getattr(self.instance, "currency", user.currency) or user.currency).strip().upper()
             attrs["currency"] = currency
             attrs["fx_rate_to_base"] = get_rate_to_base(user, currency, attrs.get("fx_rate_to_base", getattr(self.instance, "fx_rate_to_base", None)))

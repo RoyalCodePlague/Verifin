@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { useStore } from "@/lib/store";
-import { createProductApi, deleteProductApi, fetchInventoryForecast, identifyBarcodeProductApi, listProductBatchesApi, mapProductResponse, receiveProductBatchApi, updateProductApi, type ApiForecastItem, type ApiProductBatch } from "@/lib/api";
+import { createProductApi, deleteProductApi, fetchInventoryForecast, identifyBarcodeProductApi, listProductBatchesApi, mapProductResponse, receiveProductBatchApi, transferProductApi, updateProductApi, type ApiForecastItem, type ApiProductBatch } from "@/lib/api";
 import { addToOfflineQueue, canQueueOfflineAction, hasQueuedProductCreate, removeQueuedProductCreate } from "@/lib/offlineQueue";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
@@ -60,15 +60,17 @@ function forecastRiskMeta(risk: ApiForecastItem["risk"], horizonDays: number, da
 }
 
 const Inventory = () => {
-  const { products, sales, addProduct, upsertProduct, updateProduct, deleteProduct, profile, addActivity } = useStore();
+  const { products, sales, branches, addProduct, upsertProduct, updateProduct, deleteProduct, profile, addActivity } = useStore();
   const { refreshUser } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { canUse } = useFeatureAccess();
   const promptUpgrade = useUpgradePrompt();
   const canUseForecasting = canUse("forecasting");
+  const canUseMultiBranch = canUse("multi_branch");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
+  const [branchFilter, setBranchFilter] = useState("all");
   const [addOpen, setAddOpen] = useState(false);
   const [editProduct, setEditProduct] = useState<string | null>(null);
   const [firstProductPrompt, setFirstProductPrompt] = useState(false);
@@ -82,6 +84,9 @@ const Inventory = () => {
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const [batchSaving, setBatchSaving] = useState(false);
   const [batchForm, setBatchForm] = useState({ product: "", batchNumber: "", expiryDate: "", quantity: "", unitCost: "" });
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferSaving, setTransferSaving] = useState(false);
+  const [transferForm, setTransferForm] = useState({ product: "", toBranch: "", batch: "", quantity: "", note: "" });
   const [canUseCameraScan, setCanUseCameraScan] = useState(false);
   const productNameInputRef = useRef<HTMLInputElement>(null);
   const sym = profile.currencySymbol || "R";
@@ -184,8 +189,9 @@ const Inventory = () => {
     .filter((p) => {
       const matchesCategory = category === "All" || p.category === category;
       const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase()) || (p.barcode || "").includes(search);
+      const matchesBranch = branchFilter === "all" || (branchFilter === "unassigned" ? !p.branchId : p.branchId === branchFilter);
       const matchesFlaggedView = !flaggedView || p.status === "low" || p.status === "out" || (p.stock > 0 && p.costPrice * p.stock > 5000);
-      return matchesCategory && matchesSearch && matchesFlaggedView;
+      return matchesCategory && matchesSearch && matchesBranch && matchesFlaggedView;
     })
     .sort((a, b) => {
       if (!flaggedView) return 0;
@@ -205,6 +211,48 @@ const Inventory = () => {
       return bCostValue - aCostValue;
     });
   const selectedEditProduct = editProduct ? products.find((item) => item.id === editProduct) : undefined;
+  const transferSource = products.find((product) => product.id === transferForm.product);
+  const transferHasTrackedBatches = batches.some((batch) => String(batch.product) === transferForm.product);
+  const transferBatches = batches.filter((batch) => String(batch.product) === transferForm.product && batch.quantity_remaining > 0);
+  const transferUntrackedQuantity = transferSource
+    ? Math.max(transferSource.stock - transferBatches.reduce((total, batch) => total + batch.quantity_remaining, 0), 0)
+    : 0;
+
+  const handleTransfer = async () => {
+    if (!canUseMultiBranch) {
+      promptUpgrade("multi_branch", "Stock transfers");
+      return;
+    }
+    const source = products.find((product) => product.id === transferForm.product);
+    const quantity = Number(transferForm.quantity);
+    if (!source?.branchId || !transferForm.toBranch || !Number.isInteger(quantity) || quantity <= 0) {
+      toast.error("Choose a source product, destination branch, and whole-number quantity greater than zero.");
+      return;
+    }
+    if (transferHasTrackedBatches && (transferForm.batch === "untracked" || !transferForm.batch) && quantity > transferUntrackedQuantity) {
+      toast.error("Choose a tracked batch or enter a quantity available in untracked stock.");
+      return;
+    }
+    setTransferSaving(true);
+    try {
+      const result = await transferProductApi(source.id, {
+        to_branch: Number(transferForm.toBranch),
+        quantity,
+        ...(transferForm.batch && transferForm.batch !== "untracked" ? { batch: Number(transferForm.batch) } : {}),
+        note: transferForm.note.trim(),
+      });
+      upsertProduct(mapProductResponse(result.source));
+      upsertProduct(mapProductResponse(result.target));
+      setTransferForm({ product: "", toBranch: "", batch: "", quantity: "", note: "" });
+      setTransferOpen(false);
+      toast.success(`${quantity} ${source.name} transferred.`);
+      listProductBatchesApi().then(setBatches).catch((error) => toast.error(error instanceof Error ? error.message : "Could not refresh stock batches."));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not transfer stock.");
+    } finally {
+      setTransferSaving(false);
+    }
+  };
 
   const openAdd = () => {
     setForm({ name: "", category: mergedCategories[0] || "", branchId: "", supplierId: "", stock: "", reorder: "5", costPrice: "", price: "", barcode: "" });
@@ -318,8 +366,8 @@ const Inventory = () => {
         updateProduct(editProduct, {
           name: form.name,
           category: form.category,
-          branchId: undefined,
-          branchName: "",
+          branchId: form.branchId || undefined,
+          branchName: branches.find((branch) => branch.id === form.branchId)?.name || "",
           stock,
           reorder,
           costPrice,
@@ -336,6 +384,7 @@ const Inventory = () => {
               name: form.name,
               categoryName: form.category,
               preferred_supplier: form.supplierId || undefined,
+              branch: form.branchId || undefined,
               stock,
               reorder_level: reorder,
               cost_price: costPrice,
@@ -352,8 +401,8 @@ const Inventory = () => {
           name: form.name,
           sku,
           category: form.category,
-          branchId: undefined,
-          branchName: "",
+          branchId: form.branchId || undefined,
+          branchName: branches.find((branch) => branch.id === form.branchId)?.name || "",
           stock,
           reorder,
           costPrice,
@@ -368,6 +417,7 @@ const Inventory = () => {
             sku,
             categoryName: form.category,
             preferred_supplier: form.supplierId || undefined,
+            branch: form.branchId || undefined,
             stock,
             reorder_level: reorder,
             cost_price: costPrice,
@@ -401,6 +451,7 @@ const Inventory = () => {
         const saved = await updateProductApi(editProduct, {
           name: form.name,
           categoryName: form.category,
+          branch: form.branchId,
           preferred_supplier: form.supplierId || undefined,
           stock,
           reorder_level: reorder,
@@ -417,6 +468,7 @@ const Inventory = () => {
           name: form.name,
           sku,
           categoryName: form.category,
+          branch: form.branchId || undefined,
           preferred_supplier: form.supplierId || undefined,
           stock,
           reorder_level: reorder,
@@ -538,16 +590,15 @@ const Inventory = () => {
             {mergedCategories.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
-        {/*
-        Multiple branches are disabled for now. Keep this field for later reactivation.
-        <div>
+        {canUseMultiBranch ? (
+          <div>
           <Label>Branch</Label>
           <select value={form.branchId} onChange={e => setForm({ ...form, branchId: e.target.value })} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
             <option value="">No branch assigned</option>
             {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
-        </div>
-        */}
+          </div>
+        ) : null}
         {/*
         Supplier assignment is hidden for now. Keep this field for later reactivation.
         <div>
@@ -622,6 +673,16 @@ const Inventory = () => {
           <button key={c} onClick={() => setCategory(c)} className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${category === c ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"}`}>{c}</button>
         ))}
       </div>
+      {canUseMultiBranch && branches.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <select aria-label="Inventory branch filter" value={branchFilter} onChange={(event) => setBranchFilter(event.target.value)} className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+            <option value="all">All branches</option>
+            <option value="unassigned">No branch</option>
+            {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+          </select>
+          {branches.length > 1 && <Button variant="outline" onClick={() => setTransferOpen(true)}>Transfer stock</Button>}
+        </div>
+      ) : null}
 
       {flaggedView ? (
         <Card className="border-primary/20 bg-muted/40 shadow-soft dark:bg-muted/10">
@@ -781,6 +842,7 @@ const Inventory = () => {
                     <td className="p-3">
                       <p className="font-medium">{p.name}</p>
                       {p.barcode && <p className="text-[10px] text-muted-foreground">{p.barcode}</p>}
+                      {p.branchName && <p className="text-[10px] text-muted-foreground">{p.branchName}</p>}
                     </td>
                     <td className="p-3 text-muted-foreground hidden sm:table-cell">{p.sku}</td>
                     <td className="p-3 text-muted-foreground hidden md:table-cell">{p.category}</td>
@@ -845,6 +907,49 @@ const Inventory = () => {
             <div><Label>Quantity received</Label><Input type="number" min="1" step="1" className="mt-1" value={batchForm.quantity} onChange={(event) => setBatchForm({ ...batchForm, quantity: event.target.value })} /></div>
             <div><Label>Unit cost in base currency (optional)</Label><Input type="number" min="0" step="0.01" className="mt-1" value={batchForm.unitCost} onChange={(event) => setBatchForm({ ...batchForm, unitCost: event.target.value })} /></div>
             <Button className="w-full" disabled={batchSaving} onClick={() => void receiveBatch()}>{batchSaving ? "Receiving…" : "Receive batch"}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={transferOpen} onOpenChange={setTransferOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Transfer stock between branches</DialogTitle>
+            <DialogDescription>Move available stock and its selected batch details to another branch.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Source product</Label>
+              <select value={transferForm.product} onChange={(event) => setTransferForm({ ...transferForm, product: event.target.value, batch: "", toBranch: "", quantity: "" })} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                <option value="">Choose a branch-assigned product</option>
+                {products.filter((product) => product.branchId && product.stock > 0).map((product) => (
+                  <option key={product.id} value={product.id}>{product.name} · {product.branchName} · {product.stock} in stock</option>
+                ))}
+              </select>
+            </div>
+            {transferSource ? (
+              <>
+                <div>
+                  <Label>Destination branch</Label>
+                  <select value={transferForm.toBranch} onChange={(event) => setTransferForm({ ...transferForm, toBranch: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                    <option value="">Choose destination</option>
+                    {branches.filter((branch) => branch.id !== transferSource.branchId).map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                  </select>
+                </div>
+                {transferHasTrackedBatches ? (
+                  <div>
+                    <Label>Stock source</Label>
+                    <select value={transferForm.batch} onChange={(event) => setTransferForm({ ...transferForm, batch: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                      <option value="">Choose stock source</option>
+                      {transferUntrackedQuantity > 0 ? <option value="untracked">Untracked stock · {transferUntrackedQuantity} available</option> : null}
+                      {transferBatches.map((batch) => <option key={batch.id} value={batch.id}>{batch.batch_number} · {batch.quantity_remaining} available{batch.expiry_date ? ` · expires ${batch.expiry_date}` : ""}</option>)}
+                    </select>
+                  </div>
+                ) : null}
+                <div><Label>Quantity</Label><Input type="number" min="1" max={transferSource.stock} value={transferForm.quantity} onChange={(event) => setTransferForm({ ...transferForm, quantity: event.target.value })} /></div>
+                <div><Label>Note (optional)</Label><Input maxLength={255} value={transferForm.note} onChange={(event) => setTransferForm({ ...transferForm, note: event.target.value })} /></div>
+              </>
+            ) : null}
+            <Button className="w-full" disabled={transferSaving || !transferSource} onClick={() => void handleTransfer()}>{transferSaving ? "Transferring..." : "Transfer stock"}</Button>
           </div>
         </DialogContent>
       </Dialog>

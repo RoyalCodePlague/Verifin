@@ -9,6 +9,8 @@ class NotificationPreference(TimeStampedSoftDeleteModel):
     low_stock_alerts = models.BooleanField(default=True)
     discrepancy_alerts = models.BooleanField(default=True)
     push_enabled = models.BooleanField(default=True)
+    email_opt_in = models.BooleanField(default=False)
+    email_daily_summary = models.BooleanField(default=False)
 
 
 class NotificationLog(TimeStampedSoftDeleteModel):

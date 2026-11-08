@@ -3,6 +3,7 @@ from django.db.models import F, Q, Sum
 from decimal import Decimal, InvalidOperation
 from django.utils import timezone
 from rest_framework import serializers
+from billing.services import enforce_feature
 from customers.models import Customer, LoyaltyTransaction
 from inventory.models import Product, ProductBatch, StockMovement
 from core.currency import normalize_allocations, get_rate_to_base
@@ -81,6 +82,8 @@ class SaleSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"till_session": "Till session does not belong to this account."})
             if till_session and not branch:
                 branch = till_session.branch
+            if branch:
+                enforce_feature(user, "multi_branch")
             if till_session and branch and till_session.branch_id and till_session.branch_id != branch.id:
                 raise serializers.ValidationError({"till_session": "Till session belongs to another branch."})
             customer = attrs.get("customer")
@@ -114,6 +117,8 @@ class SaleSerializer(serializers.ModelSerializer):
                 item["unit_price"] = unit_price
                 if product and product.is_deleted:
                     raise serializers.ValidationError({"sale_items": "Product has been deleted."})
+                if product and product.branch_id and not branch:
+                    raise serializers.ValidationError({"branch": f"Choose a branch for {product.name}."})
                 if branch and product and product.branch_id and product.branch_id != branch.id:
                     raise serializers.ValidationError({"sale_items": f"{product.name} belongs to another branch."})
                 normalized_items.append({**item, "product": product, "quantity": quantity, "unit_price": unit_price})
@@ -272,6 +277,14 @@ class SaleSerializer(serializers.ModelSerializer):
             customer.save()
             LoyaltyTransaction.objects.create(customer=customer, points_change=points, reason="Sale purchase")
         
+        from accounts.webhooks import enqueue_webhook_event
+        enqueue_webhook_event(sale.created_by, "sale.created", {
+            "sale_id": sale.id,
+            "total": str(sale.total),
+            "payment_method": sale.payment_method,
+            "payment_currency": sale.payment_currency,
+            "created_at": sale.created_at.isoformat(),
+        })
         return sale
 
 
@@ -294,8 +307,10 @@ class TillSessionSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         user = getattr(request, "user", None)
         branch = attrs.get("branch")
-        if user and user.is_authenticated and branch and branch.user_id != user.id:
-            raise serializers.ValidationError({"branch": "Branch does not belong to this account."})
+        if user and user.is_authenticated and branch:
+            if branch.user_id != user.id:
+                raise serializers.ValidationError({"branch": "Branch does not belong to this account."})
+            enforce_feature(user, "multi_branch")
         return attrs
 
     def close(self, instance, closing_cash, notes=""):

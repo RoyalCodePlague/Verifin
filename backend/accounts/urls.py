@@ -2,13 +2,15 @@ from .google_auth import GoogleSignInView
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
-from .views import ApiKeyViewSet, ChangePasswordView, CustomTokenObtainPairView, LogoutOtherDevicesView, LogoutView, MeView, ProfileViewSet, RegisterView, ResendVerificationEmailView, StaffActivityLogViewSet, StaffLoginView, StaffViewSet, VerifyEmailView
+from .views import ApiKeyViewSet, ChangePasswordView, CustomTokenObtainPairView, LogoutOtherDevicesView, LogoutView, MeView, ProfileViewSet, RegisterView, ResendVerificationEmailView, StaffActivityLogViewSet, StaffLoginView, StaffViewSet, VerifyEmailView, WebhookDeliveryViewSet, WebhookEndpointViewSet
 
 router = DefaultRouter()
 router.register("profiles", ProfileViewSet, basename="profile")
 router.register("staff", StaffViewSet, basename="staff")
 router.register("activity-logs", StaffActivityLogViewSet, basename="activity-logs")
 router.register("api-keys", ApiKeyViewSet, basename="api-keys")
+router.register("webhooks", WebhookEndpointViewSet, basename="webhooks")
+router.register("webhook-deliveries", WebhookDeliveryViewSet, basename="webhook-deliveries")
 
 urlpatterns = [
     path("", include(router.urls)),

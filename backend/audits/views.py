@@ -4,8 +4,10 @@ from rest_framework import viewsets, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from billing.services import enforce_feature
-from .models import Audit, Discrepancy, StockCount
-from .serializers import AuditSerializer, DiscrepancySerializer, StockCountSerializer
+from datetime import timedelta
+
+from .models import Audit, AuditSchedule, Discrepancy, StockCount
+from .serializers import AuditScheduleSerializer, AuditSerializer, DiscrepancySerializer, StockCountSerializer
 
 
 class AuditFeatureMixin:
@@ -45,6 +47,38 @@ class AuditViewSet(AuditFeatureMixin, viewsets.ModelViewSet):
         else:
             serializer.save()
 
+
+class AuditScheduleViewSet(AuditFeatureMixin, viewsets.ModelViewSet):
+    serializer_class = AuditScheduleSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        enforce_feature(request.user, "background_audits")
+
+    def get_queryset(self):
+        return AuditSchedule.objects.filter(user=self.request.user, is_deleted=False)
+
+    def perform_create(self, serializer):
+        schedule = serializer.save(user=self.request.user)
+        schedule.next_run_at = timezone.now() + self._interval(schedule.frequency)
+        schedule.save(update_fields=["next_run_at", "updated_at"])
+
+    def perform_update(self, serializer):
+        schedule = serializer.save()
+        if "frequency" in serializer.validated_data:
+            schedule.next_run_at = timezone.now() + self._interval(schedule.frequency)
+            schedule.save(update_fields=["next_run_at", "updated_at"])
+
+    def perform_destroy(self, instance):
+        instance.is_active = False
+        instance.is_deleted = True
+        instance.save(update_fields=["is_active", "is_deleted", "updated_at"])
+
+    @staticmethod
+    def _interval(frequency):
+        return timedelta(days=1 if frequency == "daily" else 7)
 
 
 class StockCountViewSet(AuditFeatureMixin, viewsets.ModelViewSet):

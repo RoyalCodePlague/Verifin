@@ -1,9 +1,12 @@
-from django.urls import path
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
 from .views import (
     DailySalesView,
     AdvancedAnalyticsView,
     AutomationAlertsView,
+    AutomationPreferencesView,
     CustomerReportView,
+    CustomReportViewSet,
     DiscrepancyReportView,
     ExpenseAnalysisView,
     ExportView,
@@ -18,7 +21,11 @@ from .views import (
 
 from .business_views import insights, whatsapp_summary
 
+router = DefaultRouter()
+router.register("custom-reports", CustomReportViewSet, basename="custom-reports")
+
 urlpatterns = [
+    path("", include(router.urls)),
     path("insights/", insights),
     path("whatsapp-summary/", whatsapp_summary),
     path("daily-sales/", DailySalesView.as_view()),
@@ -34,5 +41,6 @@ urlpatterns = [
     path("advanced-analytics/", AdvancedAnalyticsView.as_view()),
     path("forecast/", ForecastView.as_view()),
     path("automation-alerts/", AutomationAlertsView.as_view()),
+    path("automation-preferences/", AutomationPreferencesView.as_view()),
     path("export/", ExportView.as_view()),
 ]

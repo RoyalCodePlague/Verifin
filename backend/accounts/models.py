@@ -1,6 +1,7 @@
 from django.contrib.auth.models import AbstractUser
 from django.contrib.auth.hashers import check_password, make_password
 from django.db import models
+from django.utils import timezone
 import secrets
 import string
 from core.models import TimeStampedSoftDeleteModel
@@ -147,6 +148,41 @@ class ApiKey(TimeStampedSoftDeleteModel):
     def set_key(self, raw_key):
         self.key_prefix = raw_key[:18]
         self.key_hash = make_password(raw_key)
+
+
+class WebhookEndpoint(TimeStampedSoftDeleteModel):
+    user = models.ForeignKey(User, related_name="webhook_endpoints", on_delete=models.CASCADE)
+    name = models.CharField(max_length=120)
+    url = models.URLField(max_length=500)
+    events = models.JSONField(default=list)
+    secret_ciphertext = models.TextField()
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
+class WebhookDelivery(TimeStampedSoftDeleteModel):
+    STATUS_CHOICES = [
+        ("pending", "pending"),
+        ("sending", "sending"),
+        ("delivered", "delivered"),
+        ("failed", "failed"),
+    ]
+
+    endpoint = models.ForeignKey(WebhookEndpoint, related_name="deliveries", on_delete=models.CASCADE)
+    event = models.CharField(max_length=80)
+    payload = models.JSONField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    attempts = models.PositiveSmallIntegerField(default=0)
+    next_attempt_at = models.DateTimeField(default=timezone.now, db_index=True)
+    delivered_at = models.DateTimeField(blank=True, null=True)
+    last_status_code = models.PositiveSmallIntegerField(blank=True, null=True)
+    last_error = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["status", "next_attempt_at"])]
 
 
 class AuthThrottleBucket(models.Model):

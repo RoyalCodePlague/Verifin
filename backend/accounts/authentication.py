@@ -16,6 +16,8 @@ PATH_PERMISSIONS = (
     ("/api/v1/sync/conflicts", "settings"),
     ("/api/v1/sync/pull", "settings"),
     ("/api/v1/accounts/api-keys", "settings"),
+    ("/api/v1/accounts/webhooks", "settings"),
+    ("/api/v1/accounts/webhook-deliveries", "settings"),
     ("/api/v1/accounts/profiles", "settings"),
     ("/api/v1/accounts/change-password", "settings"),
     ("/api/v1/accounts/logout-other-devices", "settings"),
