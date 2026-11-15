@@ -22,10 +22,6 @@ const routeMeta: Record<string, { title: string; description: string; noindex?: 
     title: "About Verifin - Business Software Built for African SMEs",
     description: "Learn what Verifin is, why it is being built, the business problems it aims to solve, and who it is designed to serve.",
   },
-  "/security": {
-    title: "Security Center | Verifin",
-    description: "See how Verifin handles account access and business records, what is verified in the app, and which operational safeguards still need confirmation.",
-  },
   "/help": {
     title: "Verifin Help Center - Inventory and Admin Support",
     description: "Find help for Verifin inventory, sales, expenses, reports, offline mode, accounts, and support requests.",

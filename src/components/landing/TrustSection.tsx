@@ -1,4 +1,4 @@
-import { ArrowRight, ClipboardCheck, Database, Headphones, Scale } from "lucide-react";
+import { ClipboardCheck, Database, Headphones, Scale } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const items = [
@@ -30,7 +30,6 @@ const TrustSection = () => (
         ))}
       </div>
       <div className="mt-7 flex flex-wrap gap-x-6 gap-y-3 text-sm font-semibold">
-        <Link to="/security" className="inline-flex items-center gap-1 text-primary underline-offset-4 hover:underline">Read the Security Center <ArrowRight className="h-4 w-4" aria-hidden="true" /></Link>
         <Link to="/privacy" className="text-primary underline-offset-4 hover:underline">Read the Privacy Policy</Link>
         <Link to="/contact" className="text-primary underline-offset-4 hover:underline">Contact support</Link>
       </div>

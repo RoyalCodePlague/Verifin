@@ -67,9 +67,9 @@ const sections = [
     icon: Lock,
     title: "5. Security",
     content:
-      "Verifin's backend verifies email before email/password sign-in, hashes passwords, rate-limits authentication attempts, expires and rotates API tokens, and checks account and staff permissions on protected requests. Browser tokens are currently stored in local storage. The deployed database, file-storage encryption, production network edge, and hosting access configuration have not been independently verified.",
+      "Verifin requires email verification before email-and-password sign-in, protects stored passwords, limits repeated authentication attempts, expires and rotates API tokens, and checks account and staff permissions on protected requests. Browser tokens are currently stored in local storage. The deployed database, file-storage encryption, production network edge, and hosting access configuration have not been independently verified.",
     items: [
-      "When Django debug mode is disabled, its configuration enables secure session and CSRF cookies, HSTS, and browser security headers. This is application configuration; the live deployment has not been checked.",
+      "Production application settings are configured to enable secure session and request-protection cookies, strict transport security, and browser security headers. This describes application configuration; the live deployment has not been checked.",
       "Server-side checks scope protected business records and staff actions to the relevant account, role, and branch permissions.",
       "The codebase does not establish a database or file encryption-at-rest configuration, backup schedule, restore-test record, or recovery target. These operational controls need confirmation from the hosting environment.",
     ],

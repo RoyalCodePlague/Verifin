@@ -51,8 +51,8 @@ const categories = [
     { title: "Notification preferences", content: "In Settings, toggle WhatsApp daily summaries, low stock alerts, and discrepancy alerts on or off. When enabled, notifications appear in the bell icon on the navbar." },
     { title: "Dark mode toggle", content: "Click the sun/moon icon in the navbar or toggle dark mode in Settings. The entire app switches between light and dark themes with consistent colors." },
   ]},
-  { icon: Shield, label: "Security & Privacy", articles: [
-    { title: "How Verifin protects access", content: "The Security Center describes account sign-in, token and staff permission controls verified in the application, as well as infrastructure and account-deletion practices that still need confirmation." },
+  { icon: Shield, label: "Account & Privacy", articles: [
+    { title: "How Verifin protects access", content: "New email-and-password accounts must verify their email before signing in. Verifin also limits repeated sign-in attempts and checks staff permissions when protected business records are requested. Hosting, backup and account-deletion practices depend on operational controls; contact support with questions." },
     { title: "Exporting or requesting account data", content: "Some business reports can be exported from the Reports area. There is no self-service account deletion flow or published deletion timeline. Contact support to ask about access, correction, export or deletion of account information." },
     { title: "Privacy requests", content: "For a privacy or account-data request, email verifin2026@gmail.com with the account email and the request. Do not include your password or a one-time code." },
   ]},
@@ -68,7 +68,7 @@ const baseFaqs = [
   { q: "Can I use Verifin without internet?", a: "Yes. Verifin works offline-first. You can record sales, update stock, and log expenses without internet. Data is stored locally and will sync automatically when you reconnect." },
   { q: "How do I scan barcodes?", a: "Go to the Inventory tab and click the 'Scan' button. Grant camera access and point your device at a barcode. The system will recognize known products or let you save new ones with full product details." },
   { q: "Can I export my data?", a: "Some business reports support export from the Reports area. If you need a copy of other account information, contact support and describe what you need." },
-  { q: "How does Verifin protect my account?", a: "The Security Center explains the sign-in and server-side access controls verified in the application, and identifies hosting, backup and account-deletion practices that still need confirmation." },
+  { q: "How does Verifin protect my account?", a: "New email-and-password accounts must verify their email before sign-in. Verifin limits repeated sign-in attempts and checks staff permissions for protected business records. Contact support with questions about hosting, backups or account-data requests." },
 ];
 
 function monthlyPrice(price?: RegionalPlanPrice) {

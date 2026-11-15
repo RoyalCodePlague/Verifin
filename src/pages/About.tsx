@@ -73,7 +73,7 @@ const About = () => {
             <h2 className="font-display text-2xl font-bold sm:text-3xl">Our mission</h2>
             <p className="mt-3 max-w-3xl leading-relaxed text-primary-foreground/85">Simplify business management for African businesses with tools that help owners understand their operations and spend more time serving customers.</p>
             <div className="mt-6 flex flex-wrap gap-5 text-sm font-semibold">
-              <Link to="/security" className="underline underline-offset-4">How we handle security</Link>
+              <Link to="/privacy" className="underline underline-offset-4">Read our Privacy Policy</Link>
               <Link to="/contact" className="underline underline-offset-4">Get in touch</Link>
             </div>
           </div>

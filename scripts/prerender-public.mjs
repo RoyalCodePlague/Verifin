@@ -23,14 +23,6 @@ const routes = [
     cta: "Contact the team if you have questions about these terms.",
   },
   {
-    path: "/security",
-    title: "Security Center | Verifin",
-    description: "See the account and access controls verified in Verifin, plus the hosting and recovery practices that still need confirmation.",
-    heading: "Security Center",
-    body: "Learn how Verifin handles sign-in, account permissions, and business records, and which hosting, backup, and account-deletion practices still need confirmation.",
-    cta: "Report a security concern to verifin2026@gmail.com.",
-  },
-  {
     path: "/",
     title: "Stock, Sales and Expenses for Zimbabwe Shops | Verifin",
     description: "Know what you sold, what is in stock, and where your money went. Verifin helps Zimbabwe shops track sales, stock and expenses, even with unreliable internet.",
@@ -145,7 +137,7 @@ function staticMarkup(route) {
           <p>Try a sample sale, stock update and business summary in the interactive demo. No account needed.</p>
           <h2>Trust and transparency</h2>
           <p>Read how account permissions work in the application, what remains to be verified about hosting and recovery, and how regional plan prices are set.</p>
-          <nav aria-label="Explore Verifin"><a href="/features">Features</a> | <a href="/pricing">Pricing</a> | <a href="/demo">Product demo</a> | <a href="/about">About</a> | <a href="/contact">Contact</a> | <a href="/help">Help Center</a> | <a href="/security">Security</a> | <a href="/privacy">Privacy</a> | <a href="/terms">Terms</a></nav>
+          <nav aria-label="Explore Verifin"><a href="/features">Features</a> | <a href="/pricing">Pricing</a> | <a href="/demo">Product demo</a> | <a href="/about">About</a> | <a href="/contact">Contact</a> | <a href="/help">Help Center</a> | <a href="/privacy">Privacy</a> | <a href="/terms">Terms</a></nav>
         </section>
       </main>
     `;

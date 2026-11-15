@@ -27,7 +27,6 @@ const Navbar = () => {
           <button onClick={() => navigate("/features")} className="hover:text-foreground transition-colors">Features</button>
           <button onClick={() => navigate("/pricing")} className="hover:text-foreground transition-colors">Pricing</button>
           <button onClick={() => navigate("/about")} className="hover:text-foreground transition-colors">About</button>
-          <button onClick={() => navigate("/security")} className="hover:text-foreground transition-colors">Security</button>
           <button onClick={() => navigate("/demo")} className="hover:text-foreground transition-colors">Live preview</button>
         </nav>
 
@@ -56,7 +55,6 @@ const Navbar = () => {
           <button onClick={() => { navigate("/features"); setOpen(false); }} className="block text-sm py-2 w-full text-left">Features</button>
           <button onClick={() => { navigate("/pricing"); setOpen(false); }} className="block text-sm py-2 w-full text-left">Pricing</button>
           <button onClick={() => { navigate("/about"); setOpen(false); }} className="block text-sm py-2 w-full text-left">About</button>
-          <button onClick={() => { navigate("/security"); setOpen(false); }} className="block text-sm py-2 w-full text-left">Security</button>
           <button onClick={() => { navigate("/demo"); setOpen(false); }} className="block text-sm py-2 w-full text-left">Live preview</button>
           <button onClick={() => { navigate("/contact"); setOpen(false); }} className="block text-sm py-2 w-full text-left">Contact</button>
           <button onClick={() => { navigate("/help"); setOpen(false); }} className="block text-sm py-2 w-full text-left">Help Center</button>
