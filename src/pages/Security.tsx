@@ -6,7 +6,7 @@ const verifiedControls = [
   {
     icon: KeyRound,
     title: "Sign-in and account protection",
-    body: "Email-and-password registrations must verify their email before they can sign in. Passwords are stored using Django's password-hashing system, and repeated authentication attempts are rate-limited.",
+    body: "Email-and-password accounts require email verification before sign-in. Passwords are stored in a protected, non-readable format, and repeated sign-in attempts are limited to help protect accounts.",
   },
   {
     icon: LockKeyhole,
@@ -64,7 +64,7 @@ const Security = () => (
         <div className="mt-8 rounded-lg border border-amber-300/70 bg-amber-50/70 p-5 dark:border-amber-700/50 dark:bg-amber-950/20">
           <div className="flex items-start gap-3">
             <CheckCircle2 className="mt-0.5 h-5 w-5 flex-none text-amber-700 dark:text-amber-400" />
-            <div><h2 className="font-semibold">Production transport settings</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">When Django runs with debug mode disabled, its configuration enables secure session and CSRF cookies, HSTS, and browser security headers. This confirms the application configuration only; it does not confirm the settings or TLS behavior of the live hosting environment.</p></div>
+            <div><h2 className="font-semibold">Production transport settings</h2><p className="mt-2 text-sm leading-6 text-muted-foreground">Production settings are configured for secure session and request-protection cookies, strict transport security, and browser security headers. This describes the application configuration only; the live hosting setup and encrypted connection also depend on the hosting environment.</p></div>
           </div>
         </div>
 
