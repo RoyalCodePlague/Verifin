@@ -105,7 +105,7 @@ export type StaffSession = {
   id: number;
   name: string;
   username: string;
-  role: "Cashier" | "Stock Manager" | "Manager" | "Owner";
+  role: "Owner" | "Administrator" | "Branch Manager" | "Manager" | "Accountant" | "Inventory Manager" | "Stock Manager" | "Salesperson" | "Cashier" | "Custom";
   permissions: string[];
   business_code: string;
 };
@@ -437,12 +437,46 @@ export type ApiStockTransfer = {
   to_branch: number;
   to_branch_name: string;
   product: number;
+  product_name: string;
   target_product: number | null;
   batch: number | null;
   quantity: number;
+  quantity_dispatched: number;
+  quantity_received: number;
+  quantity_discrepant: number;
+  quantity_in_transit: number;
+  status: "requested" | "approved" | "dispatched" | "partially_received" | "completed" | "rejected" | "cancelled";
+  idempotency_key: string;
+  discrepancy_note: string;
   note: string;
+  events: Array<{ id: number; action: string; quantity: number; note: string; created_by: number; created_at: string }>;
   created_at: string;
 };
+
+export async function createStockTransferApi(payload: {
+  product: number;
+  to_branch: number;
+  quantity: number;
+  batch?: number;
+  note?: string;
+  idempotency_key: string;
+}) {
+  return apiFetch<ApiStockTransfer>("/api/v1/inventory/transfers/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateStockTransferApi(
+  id: number,
+  action: "approve" | "reject" | "cancel" | "dispatch" | "receive",
+  payload: { quantity?: number; discrepant_quantity?: number; discrepancy_note?: string; note?: string } = {},
+) {
+  return apiFetch<ApiStockTransfer>(`/api/v1/inventory/transfers/${id}/${action}/`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
 
 export async function transferProductApi(
   productId: string,
@@ -451,7 +485,7 @@ export async function transferProductApi(
   return apiFetch<{
     transfer: ApiStockTransfer;
     source: ApiProduct;
-    target: ApiProduct;
+    target: ApiProduct | null;
   }>(`/api/v1/inventory/products/${productId}/transfer/`, {
     method: "POST",
     body: JSON.stringify(payload),
@@ -504,7 +538,11 @@ export type ApiBranch = {
   name: string;
   code: string;
   phone: string;
+  email: string;
   address: string;
+  opening_date: string;
+  manager: number | null;
+  manager_name: string | null;
   is_primary: boolean;
 };
 
@@ -515,7 +553,7 @@ export async function listBranchesApi(): Promise<ApiBranch[]> {
 export type ApiStaff = {
   id: number;
   name: string;
-  role: "Owner" | "Cashier" | "Stock Manager" | "Manager";
+  role: "Owner" | "Administrator" | "Branch Manager" | "Cashier" | "Salesperson" | "Stock Manager" | "Inventory Manager" | "Accountant" | "Custom" | "Manager";
   status: "Active" | "Inactive";
   last_active?: string | null;
   username?: string;
@@ -548,6 +586,9 @@ export type ApiStaffActivityLog = {
   id: number;
   actor: number | null;
   actor_email: string | null;
+  staff_actor: number | null;
+  staff_actor_name: string | null;
+  actor_name: string;
   action: string;
   object_type: string;
   object_id: string;
@@ -558,6 +599,62 @@ export type ApiStaffActivityLog = {
 
 export async function listStaffActivityLogsApi() {
   return fetchAllPages<ApiStaffActivityLog>("/api/v1/accounts/activity-logs/");
+}
+
+export type ApiApprovalSettings = {
+  discount_percent_threshold: string | null;
+  refund_amount_base_threshold: string | null;
+  stock_adjustment_units_threshold: number | null;
+  supplier_payment_amount_base_threshold: string | null;
+  purchase_order_amount_base_threshold: string | null;
+  updated_at: string;
+};
+
+export async function getApprovalSettingsApi() {
+  return apiFetch<ApiApprovalSettings>("/api/v1/accounts/approval-settings/");
+}
+
+export async function updateApprovalSettingsApi(payload: Omit<ApiApprovalSettings, "updated_at">) {
+  return apiFetch<ApiApprovalSettings>("/api/v1/accounts/approval-settings/", {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export type ApiApprovalRequest = {
+  id: number;
+  action: string;
+  action_label: string;
+  summary: string;
+  payload: {
+    request?: { method?: string; path?: string; query?: unknown[] };
+    data?: Record<string, unknown>;
+  };
+  status: "pending" | "approved" | "rejected" | "consumed" | "expired";
+  requested_by_staff: number;
+  requester_name: string;
+  branch: number | null;
+  branch_name: string | null;
+  decided_by: number | null;
+  decided_by_staff: number | null;
+  decided_by_staff_name: string | null;
+  decision_note: string;
+  created_at: string;
+  expires_at: string;
+  decided_at: string | null;
+  consumed_at: string | null;
+};
+
+export async function listApprovalRequestsApi(statusFilter?: ApiApprovalRequest["status"]) {
+  const query = statusFilter ? `?status=${encodeURIComponent(statusFilter)}` : "";
+  return fetchAllPages<ApiApprovalRequest>(`/api/v1/accounts/approval-requests/${query}`);
+}
+
+export async function decideApprovalRequestApi(id: number, decision: "approve" | "reject", decisionNote = "") {
+  return apiFetch<ApiApprovalRequest>(`/api/v1/accounts/approval-requests/${id}/${decision}/`, {
+    method: "POST",
+    body: JSON.stringify({ decision_note: decisionNote }),
+  });
 }
 
 export type ApiAutomationPreferences = {
@@ -593,11 +690,73 @@ export async function updateAutomationPreferencesApi(payload: ApiAutomationPrefe
   });
 }
 
+export type ApiAutomationTrigger =
+  | "stock_below_minimum"
+  | "customer_overdue"
+  | "expense_exceeds_limit"
+  | "purchase_order_approved"
+  | "till_session_closed";
+export type ApiAutomationAction =
+  | "create_notification"
+  | "create_follow_up"
+  | "require_manager_approval"
+  | "create_reconciliation_summary";
+export type ApiAutomationRule = {
+  id: number;
+  name: string;
+  trigger: ApiAutomationTrigger;
+  conditions: Record<string, string>;
+  action: ApiAutomationAction;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+};
+export type ApiAutomationExecution = {
+  id: number;
+  rule: number;
+  rule_name: string;
+  trigger: ApiAutomationTrigger;
+  action: ApiAutomationAction;
+  event_key: string;
+  object_type: string;
+  object_id: string;
+  status: "running" | "succeeded" | "failed";
+  attempts: number;
+  message: string;
+  last_error: string;
+  started_at: string;
+  completed_at: string | null;
+  created_at: string;
+};
+
+export async function listAutomationRulesApi() {
+  return fetchAllPages<ApiAutomationRule>("/api/v1/reports/automation-rules/");
+}
+export async function createAutomationRuleApi(payload: Pick<ApiAutomationRule, "name" | "trigger" | "conditions" | "action" | "enabled">) {
+  return apiFetch<ApiAutomationRule>("/api/v1/reports/automation-rules/", { method: "POST", body: JSON.stringify(payload) });
+}
+export async function updateAutomationRuleApi(id: number, payload: Pick<ApiAutomationRule, "name" | "trigger" | "conditions" | "action" | "enabled">) {
+  return apiFetch<ApiAutomationRule>(`/api/v1/reports/automation-rules/${id}/`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+export async function deleteAutomationRuleApi(id: number) {
+  return apiFetch<void>(`/api/v1/reports/automation-rules/${id}/`, { method: "DELETE" });
+}
+export async function listAutomationExecutionsApi() {
+  return fetchAllPages<ApiAutomationExecution>("/api/v1/reports/automation-executions/");
+}
+export async function retryAutomationExecutionApi(id: number) {
+  return apiFetch<ApiAutomationExecution>(`/api/v1/reports/automation-executions/${id}/retry/`, { method: "POST" });
+}
+
+export type ApiCustomReportMetric = "sales" | "profit" | "transactions";
+
 export type ApiCustomReport = {
   id: number;
   name: string;
-  metric: "sales" | "profit" | "transactions";
+  metric: ApiCustomReportMetric;
+  metrics: ApiCustomReportMetric[];
   group_by: "day" | "month" | "year";
+  sort_order: "asc" | "desc";
   start_date: string | null;
   end_date: string | null;
   branch_filter: "all" | "unassigned" | "branch";
@@ -628,6 +787,209 @@ export async function deleteCustomReportApi(id: number) {
   return apiFetch<void>(`/api/v1/reports/custom-reports/${id}/`, { method: "DELETE" });
 }
 
+export async function runCustomReportApi(id: number) {
+  return apiFetch<{ report: ApiCustomReport; rows: { period: string; value: string | number; values?: Partial<Record<ApiCustomReportMetric, string | number>> }[] }>(
+    `/api/v1/reports/custom-reports/${id}/run/`,
+  );
+}
+
+export async function downloadCustomReportApi(id: number, format: "csv" | "xlsx" | "pdf") {
+  const path = `/api/v1/reports/custom-reports/${id}/export/?export_format=${format}`;
+  const fetchWithToken = (token: string | null) => fetchWithTimeout(apiUrl(path), {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  }, 60000);
+  let response = await fetchWithToken(getAccessToken());
+  if (response.status === 401) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) response = await fetchWithToken(refreshed);
+    if (!refreshed || response.status === 401) {
+      clearTokens();
+      notifyAuthExpired();
+    }
+  }
+  if (!response.ok) {
+    let detail = response.statusText || `Export failed (${response.status})`;
+    try {
+      const payload = await response.json() as { detail?: string };
+      detail = payload.detail || detail;
+    } catch { /* non-JSON error body */ }
+    throw new Error(detail);
+  }
+  return response.blob();
+}
+
+export type ApiFinancialAccount = {
+  id: number;
+  name: string;
+  account_type: "cash" | "bank" | "ecocash" | "innbucks" | "mobile_money" | "custom";
+  provider_name: string;
+  currency: string;
+  opening_balance: string;
+  opening_fx_rate_to_base: string;
+  opening_date: string;
+  current_balance: string;
+  current_balance_base: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ApiAccountTransaction = {
+  id: number;
+  account: number;
+  account_name: string;
+  currency: string;
+  direction: "in" | "out";
+  entry_type: "manual" | "transfer_in" | "transfer_out" | "sale_receipt" | "sale_refund" | "expense_payment" | "income_receipt" | "supplier_payment" | "customer_collection" | "adjustment" | "reversal";
+  amount: string;
+  fx_rate_to_base: string;
+  amount_base: string;
+  transaction_date: string;
+  description: string;
+  reference: string;
+  idempotency_key: string;
+  is_reconciled: boolean;
+  reconciled_at: string | null;
+  reconciliation_events: Array<{ reconciled: boolean; note: string; created_at: string; created_by: number }>;
+  created_at: string;
+};
+
+export type ApiAccountTransfer = {
+  id: number;
+  from_account: number;
+  from_account_name: string;
+  from_currency: string;
+  to_account: number;
+  to_account_name: string;
+  to_currency: string;
+  amount_from: string;
+  amount_to: string;
+  exchange_rate: string;
+  fx_rate_to_base: string;
+  amount_base: string;
+  transaction_date: string;
+  description: string;
+  reference: string;
+  idempotency_key: string;
+  created_at: string;
+};
+
+export async function listFinancialAccountsApi() {
+  return fetchAllPages<ApiFinancialAccount>("/api/v1/reports/accounts/");
+}
+
+export async function createFinancialAccountApi(payload: {
+  name: string;
+  account_type: ApiFinancialAccount["account_type"];
+  provider_name: string;
+  currency: string;
+  opening_balance: string;
+  opening_fx_rate_to_base?: string;
+  opening_date: string;
+}) {
+  return apiFetch<ApiFinancialAccount>("/api/v1/reports/accounts/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateFinancialAccountApi(id: number, payload: { is_active: boolean }) {
+  return apiFetch<ApiFinancialAccount>(`/api/v1/reports/accounts/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export type ApiAccountBalanceReconciliation = {
+  id: number;
+  account: number;
+  as_of: string;
+  expected_balance: string;
+  actual_balance: string;
+  difference: string;
+  note: string;
+  adjustment_requested: boolean;
+  adjustment_transaction: number | null;
+  created_by: number;
+  created_at: string;
+};
+
+export async function getFinancialAccountBalanceApi(id: number, asOf: string) {
+  const params = new URLSearchParams({ as_of: asOf });
+  return apiFetch<{
+    account: number;
+    as_of: string;
+    balance: string;
+    balance_base: string;
+    reconciliation_history: ApiAccountBalanceReconciliation[];
+  }>(
+    `/api/v1/reports/accounts/${id}/balance/?${params.toString()}`,
+  );
+}
+
+export async function reconcileAccountBalanceApi(id: number, payload: {
+  as_of: string;
+  actual_balance: string;
+  note?: string;
+  post_adjustment: boolean;
+  fx_rate_to_base?: string;
+  idempotency_key: string;
+}) {
+  return apiFetch<ApiAccountBalanceReconciliation>(`/api/v1/reports/accounts/${id}/reconcile-balance/`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function listAccountTransactionsApi(accountId?: number) {
+  const query = accountId ? `?account=${accountId}` : "";
+  return fetchAllPages<ApiAccountTransaction>(`/api/v1/reports/account-transactions/${query}`);
+}
+
+export async function createAccountTransactionApi(payload: {
+  account: number;
+  direction: "in" | "out";
+  amount: string;
+  fx_rate_to_base?: string;
+  transaction_date: string;
+  description: string;
+  reference: string;
+  idempotency_key: string;
+}) {
+  return apiFetch<ApiAccountTransaction>("/api/v1/reports/account-transactions/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function reconcileAccountTransactionApi(id: number, reconciled: boolean, note = "") {
+  return apiFetch<ApiAccountTransaction>(`/api/v1/reports/account-transactions/${id}/reconcile/`, {
+    method: "POST",
+    body: JSON.stringify({ reconciled, note }),
+  });
+}
+
+export async function listAccountTransfersApi() {
+  return fetchAllPages<ApiAccountTransfer>("/api/v1/reports/account-transfers/");
+}
+
+export async function createAccountTransferApi(payload: {
+  from_account: number;
+  to_account: number;
+  amount_from: string;
+  exchange_rate?: string;
+  fx_rate_to_base?: string;
+  transaction_date: string;
+  description: string;
+  reference: string;
+  idempotency_key: string;
+}) {
+  return apiFetch<ApiAccountTransfer>("/api/v1/reports/account-transfers/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export type ApiIntegrationKey = {
   id: number;
   name: string;
@@ -635,6 +997,7 @@ export type ApiIntegrationKey = {
   permissions: string[];
   status: "active" | "revoked";
   last_used_at: string | null;
+  rate_limit_per_hour: number;
   expires_at: string | null;
   created_at: string;
   raw_key?: string;
@@ -653,6 +1016,21 @@ export async function createApiKeyApi(payload: { name: string; permissions: stri
 
 export async function revokeApiKeyApi(id: number) {
   return apiFetch<ApiIntegrationKey>(`/api/v1/accounts/api-keys/${id}/revoke/`, { method: "POST" });
+}
+
+export type ApiKeyRequestLog = {
+  id: number;
+  api_key: number;
+  api_key_name: string;
+  method: string;
+  path: string;
+  status_code: number | null;
+  response_time_ms: number | null;
+  created_at: string;
+};
+
+export async function listApiKeyUsageApi() {
+  return fetchAllPages<ApiKeyRequestLog>("/api/v1/accounts/api-key-usage/");
 }
 
 export type ApiWebhookEvent =
@@ -714,7 +1092,7 @@ export async function listWebhookDeliveriesApi() {
   return Array.isArray(response) ? response : response.results || [];
 }
 
-export async function createBranchApi(payload: Omit<ApiBranch, "id">) {
+export async function createBranchApi(payload: Omit<ApiBranch, "id" | "manager_name">) {
   return apiFetch<ApiBranch>("/api/v1/inventory/branches/", {
     method: "POST",
     body: JSON.stringify(payload),
@@ -747,7 +1125,9 @@ export type ApiSupplier = {
   contact_name: string;
   phone: string;
   email: string;
+  invoice_email?: string;
   address: string;
+  tax_number?: string;
   notes: string;
   lead_time_days?: number;
   payment_terms_days?: number;
@@ -797,15 +1177,77 @@ export type ApiPurchaseOrder = {
   branch?: number | null;
   branch_name?: string | null;
   order_number: string;
-  status: "draft" | "ordered" | "partially_received" | "received" | "cancelled";
+  status: "draft" | "submitted" | "approved" | "partially_received" | "fully_received" | "completed" | "cancelled" | "ordered" | "received";
   currency?: string;
   fx_rate_to_base?: string;
   expected_date?: string | null;
+  supplier_invoice_number?: string;
+  invoice_date?: string | null;
+  due_date?: string | null;
   notes: string;
+  discount_amount?: string;
+  additional_charges?: string;
   total_cost: string;
   total_cost_base?: string;
   items: ApiPurchaseOrderItem[];
   created_at?: string;
+};
+
+export type ApiGoodsReceivedNoteItem = {
+  id: number;
+  purchase_order_item: number;
+  product: number;
+  product_name: string;
+  sku: string;
+  quantity_delivered: number;
+  quantity_damaged: number;
+  quantity_missing: number;
+  quantity_accepted: number;
+  unit_cost: string;
+  batch_number: string;
+  expiry_date: string | null;
+  stock_movement: number | null;
+};
+
+export type ApiGoodsReceivedNote = {
+  id: number;
+  purchase_order: number;
+  purchase_order_number: string;
+  grn_number: string;
+  status: "draft" | "confirmed";
+  delivery_date: string;
+  notes: string;
+  items: ApiGoodsReceivedNoteItem[];
+  attachments: Array<{ id: number; file: string; file_name: string; created_at: string }>;
+  confirmed_at: string | null;
+};
+
+export type ApiInventoryIntelligenceItem = {
+  product_id: number;
+  product_name: string;
+  sku: string;
+  category: string;
+  branch: string;
+  preferred_supplier: string;
+  stock: number;
+  reorder_level: number;
+  status: "ok" | "low" | "out";
+  movement_class: "fast" | "slow" | "non_moving";
+  sold_quantity: number;
+  returned_quantity: number;
+  net_sold_quantity: number;
+  average_daily_sales: string;
+  net_revenue: string;
+  gross_profit: string;
+  inventory_value_base: string;
+  average_purchase_cost_base: string | null;
+  stock_turnover: string | null;
+  dead_stock: boolean;
+  ageing: Record<string, { quantity: number; value_base: string }>;
+  untracked_quantity: number;
+  cost_basis: string;
+  average_stock: string | null;
+  opening_stock: number | null;
 };
 
 export async function listPurchaseOrdersApi(): Promise<ApiPurchaseOrder[]> {
@@ -818,8 +1260,12 @@ export async function createPurchaseOrderApi(payload: {
   currency?: string;
   fx_rate_to_base?: number;
   expected_date?: string | null;
+  supplier_invoice_number?: string;
+  invoice_date?: string | null;
+  due_date?: string | null;
   notes?: string;
-  status?: ApiPurchaseOrder["status"];
+  discount_amount?: string;
+  additional_charges?: string;
   items: Omit<ApiPurchaseOrderItem, "id" | "product_name" | "sku" | "line_total">[];
 }) {
   return apiFetch<ApiPurchaseOrder>("/api/v1/inventory/purchase-orders/", {
@@ -850,6 +1296,149 @@ export async function receivePurchaseOrderApi(
   });
 }
 
+export async function transitionPurchaseOrderApi(
+  id: number,
+  action: "submit" | "approve" | "cancel" | "complete",
+  note?: string,
+) {
+  return apiFetch<ApiPurchaseOrder>(`/api/v1/inventory/purchase-orders/${id}/${action}/`, {
+    method: "POST",
+    body: JSON.stringify(note ? { note } : {}),
+  });
+}
+
+export async function createGoodsReceivedNoteApi(
+  purchaseOrderId: number,
+  payload: {
+    delivery_date: string;
+    idempotency_key?: string;
+    notes?: string;
+    items: Array<{
+      purchase_order_item: number;
+      quantity_delivered: number;
+      quantity_damaged: number;
+      quantity_missing: number;
+      unit_cost: string;
+      batch_number?: string;
+      expiry_date?: string | null;
+    }>;
+  },
+) {
+  return apiFetch<ApiGoodsReceivedNote>(
+    `/api/v1/inventory/purchase-orders/${purchaseOrderId}/goods-received-notes/`,
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+}
+
+export async function listGoodsReceivedNotesApi() {
+  return fetchAllPages<ApiGoodsReceivedNote>("/api/v1/inventory/goods-received-notes/");
+}
+
+export async function confirmGoodsReceivedNoteApi(id: number) {
+  return apiFetch<ApiGoodsReceivedNote>(`/api/v1/inventory/goods-received-notes/${id}/confirm/`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+export async function attachGoodsReceivedDocumentApi(id: number, file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return apiFetch<ApiGoodsReceivedNote["attachments"][number]>(
+    `/api/v1/inventory/goods-received-notes/${id}/attachments/`,
+    { method: "POST", body: formData },
+  );
+}
+
+export async function createSupplierReturnApi(payload: {
+  purchase_order: number;
+  reason: "damaged" | "incorrect" | "expired" | "excess" | "other";
+  idempotency_key: string;
+  items: Array<{ goods_received_note_item: number; quantity: number; quantity_damaged: number }>;
+}) {
+  return apiFetch<{ id: number; total_amount_base: string }>("/api/v1/inventory/supplier-returns/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchSupplierHistoryApi(id: number) {
+  return apiFetch<{
+    supplier: ApiSupplier;
+    products: ApiProduct[];
+    purchase_orders: ApiPurchaseOrder[];
+    payments: ApiSupplierPayment[];
+    returns: Array<{ id: number; reason: string; return_date: string; total_amount_base: string }>;
+    purchase_cost_history: Array<{
+      id: number;
+      supplier_name: string;
+      product_name: string;
+      order_number: string;
+      grn_number: string;
+      quantity: number;
+      unit_cost: string;
+      currency: string;
+      fx_rate_to_base: string;
+      unit_cost_base: string;
+      created_at: string;
+    }>;
+  }>(`/api/v1/inventory/suppliers/${id}/history/`);
+}
+
+export type ApiSupplierStatement = {
+  supplier: ApiSupplier;
+  currency: string;
+  as_of: string;
+  totals: {
+    received_total_base: string;
+    returned_total_base: string;
+    paid_total_base: string;
+    outstanding_base: string;
+  };
+  invoices: Array<{
+    purchase_order: number;
+    order_number: string;
+    invoice_number: string;
+    invoice_date: string;
+    due_date: string | null;
+    received_total_base: string;
+    returned_total_base: string;
+    paid_total_base: string;
+    outstanding_base: string;
+    status: "open" | "overdue" | "settled";
+  }>;
+  activity: Array<{
+    date: string;
+    type: "invoice" | "return" | "payment";
+    reference: string;
+    description: string;
+    amount_base: string;
+    order_id: number;
+    balance_base: string;
+  }>;
+};
+
+export async function fetchSupplierStatementApi(id: number) {
+  return apiFetch<ApiSupplierStatement>(`/api/v1/inventory/suppliers/${id}/statement/`);
+}
+
+export async function fetchInventoryIntelligenceApi(days = 90) {
+  return apiFetch<{
+    window_days: number;
+    currency: string;
+    classification_thresholds: Record<string, string>;
+    summary: {
+      inventory_value_base: string;
+      fast_moving_count: number;
+      slow_moving_count: number;
+      non_moving_count: number;
+      dead_stock_count: number;
+      low_stock_count: number;
+    };
+    items: ApiInventoryIntelligenceItem[];
+  }>(`/api/v1/inventory/intelligence/?days=${days}`);
+}
+
 export async function fetchPurchaseSuggestions(days = 7) {
   return apiFetch<{ horizon_days: number; items: Array<{ product: ApiProduct; supplier: ApiSupplier | null; average_daily_sales: number; suggested_quantity: number; estimated_cost: string }> }>(`/api/v1/inventory/purchase-orders/suggestions/?days=${days}`);
 }
@@ -871,6 +1460,7 @@ export type ApiSupplierPayment = {
   supplier: number;
   supplier_name: string;
   purchase_order: number;
+  financial_account: number | null;
   order_number: string;
   amount: string;
   currency: string;
@@ -880,6 +1470,7 @@ export type ApiSupplierPayment = {
   method: "cash" | "bank" | "mobile_money" | "card" | "other";
   reference: string;
   notes: string;
+  idempotency_key: string;
   created_at: string;
 };
 
@@ -892,23 +1483,40 @@ export type ApiSupplierBalance = {
   outstanding_base: string;
 };
 
+export type ApiSupplierOverdueInvoice = {
+  supplier: number;
+  supplier_name: string;
+  purchase_order: number;
+  order_number: string;
+  invoice_number: string;
+  invoice_date: string | null;
+  due_date: string;
+  currency: string;
+  original_total_base: string;
+  paid_total_base: string;
+  returned_total_base: string;
+  outstanding_base: string;
+};
+
 export async function listSupplierPaymentsApi() {
   return fetchAllPages<ApiSupplierPayment>("/api/v1/inventory/supplier-payments/");
 }
 
 export async function listSupplierPaymentBalancesApi() {
-  return apiFetch<{ items: ApiSupplierBalance[] }>("/api/v1/inventory/supplier-payments/balances/");
+  return apiFetch<{ items: ApiSupplierBalance[]; overdue_invoices: ApiSupplierOverdueInvoice[] }>("/api/v1/inventory/supplier-payments/balances/");
 }
 
 export async function createSupplierPaymentApi(payload: {
   supplier: number;
   purchase_order: number;
   amount: number;
+  financial_account?: number | null;
   currency: string;
   payment_date: string;
   method: ApiSupplierPayment["method"];
   reference?: string;
   notes?: string;
+  idempotency_key: string;
 }) {
   return apiFetch<ApiSupplierPayment>("/api/v1/inventory/supplier-payments/", {
     method: "POST",
@@ -933,6 +1541,8 @@ type ApiSaleItem = {
   product_name?: string;
   quantity: number;
   unit_price: string;
+  discount_amount?: string;
+  returned_quantity?: number;
   subtotal?: string;
 };
 
@@ -944,7 +1554,10 @@ type ApiSale = {
   gross_profit?: string;
   payment_method: string;
   payment_currency?: string;
-  payment_allocations?: Array<{ currency: string; amount: string; fx_rate_to_base?: string; amount_base?: string }>;
+  payment_allocations?: Array<{ currency: string; amount: string; fx_rate_to_base?: string; amount_base?: string; account?: number }>;
+  amount_paid_base?: string;
+  balance_due?: string;
+  due_date?: string | null;
   branch?: number | null;
   customer?: number | null;
   date: string;
@@ -956,13 +1569,87 @@ export async function createSaleApi(payload: {
   integration_id: string;
   payment_method: string;
   payment_currency?: string;
-  payment_allocations?: Array<{ currency: string; amount: number; fx_rate_to_base?: number }>;
+  due_date?: string;
+  payment_allocations?: Array<{ currency: string; amount: number; fx_rate_to_base?: number; account?: number }>;
   branch?: number | null;
   till_session?: number | null;
   customer: number | null;
-  sale_items: { product: number; quantity: number; unit_price: string; subtotal: string }[];
+  sale_items: { product: number; quantity: number; unit_price: string; discount_amount?: string; subtotal: string }[];
 }) {
   return apiFetch<ApiSale>("/api/v1/sales/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function addCustomerDebtApi(
+  customerId: string,
+  payload: { amount: string; reason?: string; due_date?: string; idempotency_key: string },
+) {
+  return apiFetch<{ debt_amount: string; debt_started_at: string | null; debt_updated_at: string | null; debt_due_date: string | null; debt_notes: string }>(
+    `/api/v1/customers/${customerId}/add-debt/`,
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+}
+
+export async function recordCustomerPaymentApi(
+  customerId: string,
+  payload: { amount: string; reason?: string; idempotency_key: string; payment_allocations?: Array<{ currency: string; amount: string; fx_rate_to_base?: string; account?: number }> },
+) {
+  return apiFetch<{ debt_amount: string; debt_started_at: string | null; debt_updated_at: string | null; debt_due_date: string | null; debt_notes: string }>(
+    `/api/v1/customers/${customerId}/record-payment/`,
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+}
+
+export type ApiCustomerStatement = {
+  customer: {
+    id: number;
+    name: string;
+    phone: string;
+    debt_amount: string;
+    credit_limit: string | null;
+  };
+  currency_symbol: string;
+  generated_at: string;
+  invoices: Array<{
+    id: number;
+    invoice_number: string;
+    date: string;
+    due_date: string | null;
+    total: string;
+    amount_paid_base: string;
+    balance_due: string;
+    payment_method: string;
+  }>;
+  transactions: Array<{
+    id: number;
+    amount: string;
+    type: string;
+    reason: string;
+    created_at: string;
+    payment_allocations: Array<{ currency: string; amount: string; account?: number }>;
+  }>;
+};
+
+export async function fetchCustomerStatementApi(customerId: string) {
+  return apiFetch<ApiCustomerStatement>(`/api/v1/customers/${customerId}/statement/`);
+}
+
+export async function createSaleReturnApi(
+  saleId: string,
+  payload: { sale_item: number; quantity: number; refund_method: "Cash" | "EFT" | "Card" | "Credit"; payment_allocations?: Array<{ currency: string; amount: string; fx_rate_to_base?: string; account?: number }> }
+) {
+  return apiFetch<{
+    id: number;
+    sale_item: number;
+    quantity: number;
+    refund_amount: string;
+    cost_amount: string;
+    refund_method: string;
+    return_date: string;
+    payment_allocations: Array<{ currency: string; amount: string; fx_rate_to_base: string; amount_base: string; account?: number }>;
+  }>(`/api/v1/sales/${saleId}/returns/`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -972,14 +1659,35 @@ export async function deleteSaleApi(id: string) {
   await apiFetch(`/api/v1/sales/${id}/`, { method: "DELETE" });
 }
 
+export type ApiTillCashMovement = {
+  id: number;
+  movement_type: "cash_expense" | "withdrawal" | "deposit";
+  amount: string;
+  expense: number | null;
+  expense_description: string | null;
+  note: string;
+  idempotency_key: string;
+  created_at: string;
+  created_by: number;
+};
+
 export type ApiTillSession = {
   id: number;
   branch: number | null;
+  opened_by_staff: number | null;
+  reviewed_by: number | null;
+  reviewed_by_staff: number | null;
+  reviewer_name: string | null;
+  reviewed_at: string | null;
+  review_note: string;
   cashier_name: string;
   opening_cash: string;
   closing_cash: string;
   expected_cash: string;
   cash_variance: string;
+  cash_expenses?: string;
+  cash_withdrawals?: string;
+  cash_deposits?: string;
   card_total: string;
   eft_total: string;
   status: "open" | "closed";
@@ -988,6 +1696,9 @@ export type ApiTillSession = {
   notes: string;
   sales_total?: string;
   cash_sales?: string;
+  card_sales_total?: string;
+  eft_sales_total?: string;
+  cash_movements?: ApiTillCashMovement[];
 };
 
 export async function listTillSessionsApi() {
@@ -1012,6 +1723,26 @@ export async function closeTillApi(id: number, payload: { closing_cash: string; 
   });
 }
 
+export async function reviewTillApi(id: number, payload: { note?: string } = {}) {
+  return apiFetch<ApiTillSession>(`/api/v1/sales/tills/${id}/review/`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function createTillCashMovementApi(id: number, payload: {
+  movement_type: ApiTillCashMovement["movement_type"];
+  amount?: string;
+  expense?: number;
+  note?: string;
+  idempotency_key: string;
+}) {
+  return apiFetch<ApiTillCashMovement>(`/api/v1/sales/tills/${id}/cash-movements/`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function fetchReceiptApi(id: string) {
   return apiFetch<{
     receipt_number: string;
@@ -1022,7 +1753,7 @@ export async function fetchReceiptApi(id: string) {
     time: string;
     payment_method: string;
     payment_currency?: string;
-    payment_allocations?: Array<{ currency: string; amount: string; fx_rate_to_base?: string; amount_base?: string }>;
+    payment_allocations?: Array<{ currency: string; amount: string; fx_rate_to_base?: string; amount_base?: string; account?: number }>;
     items: Array<{ id: number; product: number; product_name?: string; quantity: number; unit_price: string; subtotal: string }>;
     subtotal: string;
     total: string;
@@ -1043,7 +1774,118 @@ export async function fetchWhatsAppReceiptApi(id: string, payload: { phone?: str
   });
 }
 
-type ApiExpenseCategory = { id: number; name: string };
+export type ApiExpenseCategory = { id: number; name: string; parent: number | null; parent_name: string | null };
+export type ApiExpenseBudget = {
+  id: number;
+  category: number | null;
+  category_name: string | null;
+  category_label?: string | null;
+  branch: number | null;
+  branch_name: string | null;
+  expense_type: "all" | "operating" | "other";
+  period_start: string;
+  period_end: string;
+  amount_base: string;
+  spent_base: string;
+  remaining_base: string;
+  percent_used: string;
+  note: string;
+};
+export type ApiRecurringExpense = {
+  id: number;
+  description: string;
+  amount: string;
+  expense_type: "operating" | "other";
+  currency: string;
+  fx_rate_to_base: string;
+  amount_base: string;
+  category: number | null;
+  category_name: string | null;
+  category_label?: string | null;
+  branch: number | null;
+  branch_name: string | null;
+  frequency: "weekly" | "monthly" | "quarterly" | "yearly";
+  first_due_date: string;
+  next_due_date: string;
+  end_date: string | null;
+  is_active: boolean;
+};
+
+export async function listExpenseBudgetsApi() {
+  return fetchAllPages<ApiExpenseBudget>("/api/v1/expenses/budgets/");
+}
+
+export async function createExpenseBudgetApi(payload: {
+  category?: number;
+  branch?: number;
+  expense_type: ApiExpenseBudget["expense_type"];
+  period_start: string;
+  period_end: string;
+  amount_base: string;
+  note?: string;
+}) {
+  return apiFetch<ApiExpenseBudget>("/api/v1/expenses/budgets/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteExpenseBudgetApi(id: number) {
+  await apiFetch(`/api/v1/expenses/budgets/${id}/`, { method: "DELETE" });
+}
+
+export async function listRecurringExpensesApi() {
+  return fetchAllPages<ApiRecurringExpense>("/api/v1/expenses/recurring/");
+}
+
+export async function createRecurringExpenseApi(payload: {
+  description: string;
+  amount: string;
+  expense_type: ApiRecurringExpense["expense_type"];
+  currency: string;
+  fx_rate_to_base?: string;
+  payment_allocations?: Array<{ currency: string; amount: string; fx_rate_to_base?: string; account?: number }>;
+  category?: number;
+  branch?: number;
+  frequency: ApiRecurringExpense["frequency"];
+  first_due_date: string;
+  end_date?: string;
+}) {
+  return apiFetch<ApiRecurringExpense>("/api/v1/expenses/recurring/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateRecurringExpenseApi(id: number, payload: { is_active: boolean }) {
+  return apiFetch<ApiRecurringExpense>(`/api/v1/expenses/recurring/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function generateRecurringExpensesApi() {
+  return apiFetch<{
+    created_count: number;
+    created: Array<{
+      expense_id: number;
+      schedule_id: number;
+      date: string;
+      description: string;
+      amount: string;
+      amount_base: string;
+      currency: string;
+      expense_type: "operating" | "other";
+      category: number | null;
+      category_name: string | null;
+      category_label: string | null;
+      branch: number | null;
+      payment_allocations: Array<{ currency: string; amount: string; amount_base: string; account?: number }>;
+    }>;
+    through_date: string;
+  }>("/api/v1/expenses/recurring/generate-due/", { method: "POST", body: "{}" });
+}
+
 export type ApiExpense = {
   id: number;
   description: string;
@@ -1051,12 +1893,25 @@ export type ApiExpense = {
   currency?: string;
   fx_rate_to_base?: string;
   amount_base?: string;
-  payment_allocations?: Array<{ currency: string; amount: string; fx_rate_to_base?: string; amount_base?: string }>;
+  expense_type?: "operating" | "other";
+  payment_allocations?: Array<{ currency: string; amount: string; fx_rate_to_base?: string; amount_base?: string; account?: number }>;
   date: string;
   category?: number | null;
   category_name?: string | null;
+  category_label?: string;
+  branch?: number | null;
+  branch_name?: string | null;
   receipt_image?: string | null;
+  employee_name?: string;
+  approval_status?: "pending" | "approved" | "rejected";
+  reviewed_by?: number | null;
+  reviewed_at?: string | null;
+  approval_note?: string;
 };
+
+export async function listExpensesApi() {
+  return fetchAllPages<ApiExpense>("/api/v1/expenses/");
+}
 
 export type ReceiptScanResult = {
   status: string;
@@ -1075,14 +1930,14 @@ export async function listExpenseCategories(): Promise<ApiExpenseCategory[]> {
   return fetchAllPages<ApiExpenseCategory>("/api/v1/expenses/categories/");
 }
 
-export async function ensureExpenseCategoryId(name: string): Promise<number | null> {
+export async function ensureExpenseCategoryId(name: string, parentId?: number): Promise<number | null> {
   const trimmed = name.trim() || "Other";
   const cats = await listExpenseCategories();
-  const found = cats.find((c) => c.name.toLowerCase() === trimmed.toLowerCase());
+  const found = cats.find((c) => c.name.toLowerCase() === trimmed.toLowerCase() && (c.parent || null) === (parentId || null));
   if (found) return found.id;
   const created = await apiFetch<ApiExpenseCategory>("/api/v1/expenses/categories/", {
     method: "POST",
-    body: JSON.stringify({ name: trimmed }),
+    body: JSON.stringify({ name: trimmed, parent: parentId || null }),
   });
   return created.id;
 }
@@ -1092,11 +1947,17 @@ export async function createExpenseApi(payload: {
   amount: number;
   currency?: string;
   fx_rate_to_base?: number;
-  payment_allocations?: Array<{ currency: string; amount: number; fx_rate_to_base?: number }>;
+  payment_allocations?: Array<{ currency: string; amount: number; fx_rate_to_base?: number; account?: number }>;
   categoryName: string;
+  subcategoryName?: string;
+  expenseType?: "operating" | "other";
   date: string;
+  branch?: number;
 }) {
-  const categoryId = await ensureExpenseCategoryId(payload.categoryName);
+  const parentId = await ensureExpenseCategoryId(payload.categoryName);
+  const categoryId = payload.subcategoryName?.trim()
+    ? await ensureExpenseCategoryId(payload.subcategoryName, parentId || undefined)
+    : parentId;
   return apiFetch<ApiExpense>("/api/v1/expenses/", {
     method: "POST",
     body: JSON.stringify({
@@ -1108,9 +1969,12 @@ export async function createExpenseApi(payload: {
         currency: row.currency,
         amount: row.amount.toFixed(2),
         fx_rate_to_base: row.fx_rate_to_base,
+        account: row.account,
       })),
       category: categoryId,
+      expense_type: payload.expenseType || "operating",
       date: payload.date,
+      branch: payload.branch,
     }),
   });
 }
@@ -1122,18 +1986,34 @@ export async function createExpenseWithReceiptApi(
     currency?: string;
     fx_rate_to_base?: number;
     categoryName: string;
+    subcategoryName?: string;
+    payment_allocations?: Array<{ currency: string; amount: number; fx_rate_to_base?: number; account?: number }>;
+    expenseType?: "operating" | "other";
     date: string;
+    branch?: number;
   },
   receipt: File
 ) {
-  const categoryId = await ensureExpenseCategoryId(payload.categoryName);
+  const parentId = await ensureExpenseCategoryId(payload.categoryName);
+  const categoryId = payload.subcategoryName?.trim()
+    ? await ensureExpenseCategoryId(payload.subcategoryName, parentId || undefined)
+    : parentId;
   const body = new FormData();
   body.append("description", payload.description);
   body.append("amount", payload.amount.toFixed(2));
   body.append("currency", payload.currency || "");
   if (payload.fx_rate_to_base != null) body.append("fx_rate_to_base", String(payload.fx_rate_to_base));
   if (categoryId != null) body.append("category", String(categoryId));
+  if (payload.payment_allocations?.length) {
+    body.append("payment_allocations", JSON.stringify(payload.payment_allocations.map((row) => ({
+      ...row,
+      amount: row.amount.toFixed(2),
+      ...(row.fx_rate_to_base == null ? {} : { fx_rate_to_base: String(row.fx_rate_to_base) }),
+    }))));
+  }
+  body.append("expense_type", payload.expenseType || "operating");
   body.append("date", payload.date);
+  if (payload.branch != null) body.append("branch", String(payload.branch));
   body.append("receipt_image", receipt);
 
   return apiFetch<ApiExpense>("/api/v1/expenses/", {
@@ -1165,6 +2045,146 @@ export async function scanReceiptApi(payload: {
 
 export async function deleteExpenseApi(id: string) {
   await apiFetch(`/api/v1/expenses/${id}/`, { method: "DELETE" });
+}
+
+export async function approveExpenseApi(id: string, note = "") {
+  return apiFetch<ApiExpense>(`/api/v1/expenses/${id}/approve/`, {
+    method: "POST",
+    body: JSON.stringify({ note }),
+  });
+}
+
+export async function rejectExpenseApi(id: string, note = "") {
+  return apiFetch<ApiExpense>(`/api/v1/expenses/${id}/reject/`, {
+    method: "POST",
+    body: JSON.stringify({ note }),
+  });
+}
+
+export type ApiExpenseAnalysis = {
+  total_expenses: string;
+  expense_count: number;
+  start_date: string;
+  end_date: string;
+  comparison: { previous_total: string; change: string; change_percent: string | null };
+  by_category: Array<{ category: string; amount: string; count: number }>;
+  by_employee: Array<{ employee: string; amount: string; count: number }>;
+  by_branch: Array<{ branch: string; amount: string; count: number }>;
+};
+
+export async function getExpenseAnalysisApi(params: { start_date?: string; end_date?: string; branch?: number } = {}) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value != null && value !== "") query.set(key, String(value));
+  }
+  const suffix = query.size ? `?${query.toString()}` : "";
+  return apiFetch<ApiExpenseAnalysis>(`/api/v1/reports/expense-analysis/${suffix}`);
+}
+
+export type ApiProfitLossSummary = {
+  gross_sales: string;
+  discounts: string;
+  sales_returns: string;
+  net_sales: string;
+  cost_of_goods_sold: string;
+  gross_profit: string;
+  operating_expenses: string;
+  other_income: string;
+  other_expenses: string;
+  net_profit: string;
+  cash_received: string;
+  supplier_payments: string;
+};
+
+export type ApiProfitLossReport = {
+  period: string;
+  start_date: string;
+  end_date: string;
+  previous_start_date: string;
+  previous_end_date: string;
+  branches: number[] | null;
+  currency: string;
+  current: ApiProfitLossSummary;
+  previous: ApiProfitLossSummary;
+  comparison: Record<keyof ApiProfitLossSummary, { change: string; change_percent: string | null }>;
+};
+
+export async function fetchProfitLossApi(period: string, startDate?: string, endDate?: string, branchId?: string) {
+  const params = new URLSearchParams({ period });
+  if (period === "custom" && startDate && endDate) {
+    params.set("start_date", startDate);
+    params.set("end_date", endDate);
+  }
+  if (branchId) params.set("branch", branchId);
+  return apiFetch<ApiProfitLossReport>(`/api/v1/reports/profit-loss/?${params.toString()}`);
+}
+
+export type ApiBranchOverviewRow = {
+  id: number;
+  name: string;
+  opening_date: string;
+  current_period: { start_date: string; end_date: string };
+  comparison_period: { start_date: string; end_date: string; operating_days: number };
+  current_operating_days: number;
+  current: ApiProfitLossSummary;
+  previous: ApiProfitLossSummary;
+  comparisons: Record<string, {
+    current: string;
+    previous: string;
+    current_per_operating_day: string | null;
+    previous_per_operating_day: string | null;
+    change_percent: string | null;
+    comparison_available: boolean;
+  }>;
+  inventory: { cost_value: string; retail_value: string };
+  customer_outstanding: string;
+  supplier_outstanding: string;
+  outgoing_stock_in_transit: number;
+};
+
+export type ApiBranchOverview = {
+  period: string;
+  start_date: string;
+  end_date: string;
+  previous_start_date: string;
+  previous_end_date: string;
+  selected_branches: number[];
+  includes_unassigned_records: boolean;
+  branches: ApiBranchOverviewRow[];
+  total: ApiProfitLossSummary;
+  previous_total: ApiProfitLossSummary;
+  inventory: { cost_value: string; retail_value: string };
+  customer_outstanding: string;
+  supplier_outstanding: string;
+};
+
+export async function fetchBranchOverviewApi(period: string, branches: string[] | "all", startDate?: string, endDate?: string) {
+  const params = new URLSearchParams({ period });
+  params.set("branches", branches === "all" ? "all" : branches.join(","));
+  if (period === "custom" && startDate && endDate) {
+    params.set("start_date", startDate);
+    params.set("end_date", endDate);
+  }
+  return apiFetch<ApiBranchOverview>(`/api/v1/reports/branch-overview/?${params.toString()}`);
+}
+
+export async function createOtherIncomeApi(payload: {
+  description: string;
+  amount: number;
+  currency: string;
+  fx_rate_to_base?: number;
+  date: string;
+}) {
+  return apiFetch<ApiExpense>("/api/v1/expenses/other-income/", {
+    method: "POST",
+    body: JSON.stringify({
+      description: payload.description,
+      amount: payload.amount.toFixed(2),
+      currency: payload.currency,
+      fx_rate_to_base: payload.fx_rate_to_base,
+      date: payload.date,
+    }),
+  });
 }
 
 type ApiOfflineAction = {
@@ -1392,6 +2412,35 @@ export async function getFeatureAccessApi() {
 
 export async function fetchRuleInsightsApi() {
   return apiFetch<{ insights: Array<{ type: string; severity: string; message: string }>; timestamp: string }>("/api/v1/reports/insights/");
+}
+
+export type ApiBusinessInsight = {
+  id: number;
+  rule_key: string;
+  title: string;
+  explanation: string;
+  supporting_figures: Record<string, unknown>;
+  period_start: string;
+  period_end: string;
+  period_label: string;
+  severity: "critical" | "high" | "medium" | "info";
+  recommended_action: string;
+  link: string;
+  status: "active" | "acknowledged" | "dismissed" | "resolved";
+  generated_at: string;
+  acknowledged_at: string | null;
+  dismissed_at: string | null;
+  resolved_at: string | null;
+};
+
+export async function fetchBusinessInsightsApi(status: "active" | "all" = "active") {
+  return apiFetch<{ items: ApiBusinessInsight[]; history_count: number; currency: string; evaluated_at: string }>(
+    `/api/v1/reports/insights/?status=${status}`,
+  );
+}
+
+export async function updateBusinessInsightApi(id: number, action: "acknowledge" | "dismiss") {
+  return apiFetch<ApiBusinessInsight>(`/api/v1/reports/insights/${id}/${action}/`, { method: "POST" });
 }
 
 export async function fetchProfitLeaksApi() {

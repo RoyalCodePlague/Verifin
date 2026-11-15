@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Download, FileText, BarChart3, Package, AlertTriangle, Users, Receipt, TrendingUp, Calendar, WalletCards, HandCoins, Truck, HeartPulse } from "lucide-react";
@@ -26,12 +27,20 @@ import {
 import { LockedBadge, useFeatureAccess, useUpgradePrompt } from "@/lib/features";
 import { symbolForCurrency } from "@/lib/currency";
 import {
+  createOtherIncomeApi,
+  createSaleReturnApi,
   createCustomReportApi,
   deleteCustomReportApi,
+  fetchBranchOverviewApi,
+  fetchProfitLossApi,
   getAccessToken,
   listCustomReportsApi,
+  runCustomReportApi,
+  downloadCustomReportApi,
   updateCustomReportApi,
   type ApiCustomReport,
+  type ApiCustomReportMetric,
+  type ApiProfitLossSummary,
 } from "@/lib/api";
 
 const COLORS = ["hsl(152 55% 28%)", "hsl(38 92% 50%)", "hsl(0 72% 51%)", "hsl(200 70% 50%)", "hsl(280 60% 50%)"];
@@ -39,19 +48,33 @@ const COLORS = ["hsl(152 55% 28%)", "hsl(38 92% 50%)", "hsl(0 72% 51%)", "hsl(20
 type SavedCustomReport = {
   id?: number;
   name: string;
-  metric: "sales" | "profit" | "transactions";
+  metric: ApiCustomReportMetric;
+  metrics: ApiCustomReportMetric[];
   group: "day" | "month" | "year";
+  sort: "asc" | "desc";
   start: string;
   end: string;
   branchFilter: string;
 };
+
+type CustomReportRow = { period: string; values: Partial<Record<ApiCustomReportMetric, number>> };
+
+const CUSTOM_REPORT_METRICS: { value: ApiCustomReportMetric; label: string }[] = [
+  { value: "sales", label: "Sales" },
+  { value: "profit", label: "Gross profit" },
+  { value: "transactions", label: "Transactions" },
+];
+
+type ProfitLossPeriod = "today" | "this_week" | "this_month" | "previous_month" | "this_quarter" | "this_year" | "custom";
 
 function mapSavedCustomReport(report: ApiCustomReport): SavedCustomReport {
   return {
     id: report.id,
     name: report.name,
     metric: report.metric,
+    metrics: report.metrics?.length ? report.metrics : [report.metric],
     group: report.group_by,
+    sort: report.sort_order || "asc",
     start: report.start_date || "",
     end: report.end_date || "",
     branchFilter: report.branch_filter === "branch" && report.branch
@@ -61,20 +84,81 @@ function mapSavedCustomReport(report: ApiCustomReport): SavedCustomReport {
 }
 
 const Reports = () => {
+  const queryClient = useQueryClient();
   const [financePeriod, setFinancePeriod] = useState<FinancePeriod>("months");
-  const { sales, expenses, products, discrepancies, customers, profile, supplyEntries, branches, staff } = useStore();
+  const { sales, expenses, products, discrepancies, customers, profile, supplyEntries, branches } = useStore();
+  const approvedExpenses = useMemo(
+    () => expenses.filter((expense) => (expense.approvalStatus || "approved") === "approved"),
+    [expenses],
+  );
   const access = useFeatureAccess();
   const { canUse } = access;
   const customReportsEnabled = canUse("custom_reports");
+  const profitLossEnabled = canUse("advanced_analytics");
   const promptUpgrade = useUpgradePrompt();
+  const [profitLossPeriod, setProfitLossPeriod] = useState<ProfitLossPeriod>("this_month");
+  const [profitLossStart, setProfitLossStart] = useState("");
+  const [profitLossEnd, setProfitLossEnd] = useState("");
+  const [branchOverviewPeriod, setBranchOverviewPeriod] = useState<ProfitLossPeriod>("this_month");
+  const [branchOverviewStart, setBranchOverviewStart] = useState("");
+  const [branchOverviewEnd, setBranchOverviewEnd] = useState("");
+  const [branchOverviewSelection, setBranchOverviewSelection] = useState<string[] | "all">("all");
+  const [returnSaleId, setReturnSaleId] = useState("");
+  const [returnItemId, setReturnItemId] = useState("");
+  const [returnQuantity, setReturnQuantity] = useState("1");
+  const [refundMethod, setRefundMethod] = useState<"Cash" | "EFT" | "Card">("Cash");
+  const [returnSaving, setReturnSaving] = useState(false);
+  const [returnedQuantities, setReturnedQuantities] = useState<Record<string, number>>({});
+  const [incomeForm, setIncomeForm] = useState({ description: "", amount: "", date: new Date().toISOString().slice(0, 10) });
+  const [incomeSaving, setIncomeSaving] = useState(false);
+  const profitLossQuery = useQuery({
+    queryKey: ["profit-loss", profitLossPeriod, profitLossStart, profitLossEnd],
+    queryFn: () => fetchProfitLossApi(profitLossPeriod, profitLossStart, profitLossEnd),
+    enabled: profitLossEnabled && (profitLossPeriod !== "custom" || (!!profitLossStart && !!profitLossEnd)),
+    retry: false,
+  });
+  const branchOverviewQuery = useQuery({
+    queryKey: ["branch-overview", branchOverviewPeriod, branchOverviewSelection, branchOverviewStart, branchOverviewEnd],
+    queryFn: () => fetchBranchOverviewApi(
+      branchOverviewPeriod,
+      branchOverviewSelection,
+      branchOverviewStart,
+      branchOverviewEnd,
+    ),
+    enabled: canUse("multi_branch")
+      && branches.length > 0
+      && (branchOverviewPeriod !== "custom" || (!!branchOverviewStart && !!branchOverviewEnd)),
+    retry: false,
+  });
   const sym = profile.currencySymbol || "R";
+  const returnSale = sales.find((sale) => sale.id === returnSaleId);
+  const returnableItems = (returnSale?.saleItems || []).filter((item) => {
+    if (!item.id) return false;
+    const alreadyReturned = (item.returnedQuantity || 0) + (returnedQuantities[item.id] || 0);
+    return item.quantity > alreadyReturned;
+  });
+  const selectedReturnItem = returnableItems.find((item) => item.id === returnItemId);
+  const profitLossRows: Array<{ key: keyof ApiProfitLossSummary; label: string }> = [
+    { key: "gross_sales", label: "Gross sales" },
+    { key: "discounts", label: "Discounts" },
+    { key: "sales_returns", label: "Sales returns / refunds" },
+    { key: "net_sales", label: "Net sales" },
+    { key: "cost_of_goods_sold", label: "Cost of goods sold" },
+    { key: "gross_profit", label: "Gross profit" },
+    { key: "operating_expenses", label: "Operating expenses" },
+    { key: "other_income", label: "Other income" },
+    { key: "other_expenses", label: "Other expenses" },
+    { key: "net_profit", label: "Net profit / loss" },
+    { key: "cash_received", label: "Cash received" },
+    { key: "supplier_payments", label: "Supplier payments (cash outflow)" },
+  ];
   const isToday = (value: string) => {
     const parsed = parseBusinessDate(value);
     return !!parsed && parsed.toDateString() === new Date().toDateString();
   };
   const todaySales = sales.filter((sale) => isToday(sale.date));
   const todaySalesTotal = todaySales.reduce((sum, s) => sum + s.total, 0);
-  const totalExpenses = expenses.reduce((sum, e) => sum + expenseBaseAmount(e), 0);
+  const totalExpenses = approvedExpenses.reduce((sum, e) => sum + expenseBaseAmount(e), 0);
   const paidSupplyRevenue = supplyEntries
     .filter((entry) => entry.direction === "outgoing" && entry.paymentStatus === "paid")
     .map((entry) => ({
@@ -87,22 +171,23 @@ const Reports = () => {
   const grossProfit = totalSales - totalCostOfGoods;
   const inventoryCost = products.reduce((sum, p) => sum + p.stock * (p.costPrice || 0), 0);
   const inventoryMarginValue = products.reduce((sum, p) => sum + p.stock * (p.price - (p.costPrice || 0)), 0);
-  const weeklyData = buildWeeklyFinanceData(sales, expenses, new Date(), paidSupplyRevenue);
+  const weeklyData = buildWeeklyFinanceData(sales, approvedExpenses, new Date(), paidSupplyRevenue);
   const weeklySalesTotal = weeklyData.reduce((sum, d) => sum + d.sales, 0);
   const weeklyExpensesTotal = weeklyData.reduce((sum, d) => sum + d.expenses, 0);
-  const monthlyFinanceData = buildPeriodFinanceData(sales, expenses, "months", new Date(), paidSupplyRevenue);
-  const periodFinanceData = buildPeriodFinanceData(sales, expenses, financePeriod, new Date(), paidSupplyRevenue);
+  const monthlyFinanceData = buildPeriodFinanceData(sales, approvedExpenses, "months", new Date(), paidSupplyRevenue);
+  const periodFinanceData = buildPeriodFinanceData(sales, approvedExpenses, financePeriod, new Date(), paidSupplyRevenue);
   const monthlySalesTotal = monthlyFinanceData.reduce((sum, d) => sum + d.sales, 0);
   const monthlyExpensesTotal = monthlyFinanceData.reduce((sum, d) => sum + d.expenses, 0);
   const paymentBreakdown = salePaymentBreakdown(sales, profile.currency);
   const customerDebtTotal = customers.reduce((sum, c) => sum + (c.debtAmount || 0), 0);
-  const cashflowForecast = buildCashflowForecast(sales, expenses, customers, supplyEntries, profile.currency);
+  const cashflowForecast = buildCashflowForecast(sales, approvedExpenses, customers, supplyEntries, profile.currency);
   const debtorFollowUps = buildDebtorFollowUps(customers, sym);
   const reorderSuggestions = buildReorderSuggestions(products, sales);
-  const profitLeaks = buildProfitLeaks(products, sales, expenses, customers, discrepancies, sym);
-  const businessHealth = buildBusinessHealthScore({ products, sales, expenses, customers, discrepancies, cashflow: cashflowForecast });
-  const [customMetric, setCustomMetric] = useState<SavedCustomReport["metric"]>("sales");
+  const profitLeaks = buildProfitLeaks(products, sales, approvedExpenses, customers, discrepancies, sym);
+  const businessHealth = buildBusinessHealthScore({ products, sales, expenses: approvedExpenses, customers, discrepancies, cashflow: cashflowForecast });
+  const [customMetrics, setCustomMetrics] = useState<ApiCustomReportMetric[]>(["sales"]);
   const [customGroup, setCustomGroup] = useState<SavedCustomReport["group"]>("month");
+  const [customSort, setCustomSort] = useState<SavedCustomReport["sort"]>("asc");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
   const [branchFilter, setBranchFilter] = useState("all");
@@ -110,34 +195,49 @@ const Reports = () => {
     try {
       const stored = JSON.parse(localStorage.getItem("verifin_custom_reports") || "[]") as Array<Partial<SavedCustomReport>>;
       return Array.isArray(stored) ? stored.filter((report) => typeof report.name === "string")
-        .map((report) => ({
-          id: report.id,
-          name: report.name as string,
-          metric: report.metric === "profit" || report.metric === "transactions" ? report.metric : "sales",
-          group: report.group === "day" || report.group === "year" ? report.group : "month",
-          start: report.start || "",
-          end: report.end || "",
-          branchFilter: report.branchFilter || "all",
-        })) : [];
+        .map((report) => {
+          const legacyMetric: ApiCustomReportMetric = report.metric === "profit" || report.metric === "transactions" ? report.metric : "sales";
+          const metrics = Array.isArray(report.metrics)
+            ? report.metrics.filter((metric): metric is ApiCustomReportMetric => metric === "sales" || metric === "profit" || metric === "transactions")
+            : [legacyMetric];
+          const selectedMetrics = metrics.length ? metrics : [legacyMetric];
+          return {
+            id: report.id,
+            name: report.name as string,
+            metric: selectedMetrics[0],
+            metrics: selectedMetrics,
+            group: report.group === "day" || report.group === "year" ? report.group : "month",
+            sort: report.sort === "desc" ? "desc" : "asc",
+            start: report.start || "",
+            end: report.end || "",
+            branchFilter: report.branchFilter || "all",
+          };
+        }) : [];
     } catch { return []; }
   });
+  const [serverCustomRows, setServerCustomRows] = useState<CustomReportRow[]>([]);
+  const [serverCustomRunKey, setServerCustomRunKey] = useState("");
+  const [customReportRunning, setCustomReportRunning] = useState(false);
   const legacySavedReports = useRef(savedReports.filter((report) => !report.id));
   const customRows = useMemo(() => {
     const rows = sales.filter((sale) => (!customStart || sale.date >= customStart) && (!customEnd || sale.date <= customEnd) && (branchFilter === "all" || (branchFilter === "unassigned" ? !sale.branchId : sale.branchId === branchFilter)));
-    const grouped = new Map<string, number>();
+    const grouped = new Map<string, Partial<Record<ApiCustomReportMetric, number>>>();
     for (const sale of rows) {
       const date = parseBusinessDate(sale.date);
       const key = !date ? "Unknown" : customGroup === "day" ? sale.date : customGroup === "year" ? String(date.getFullYear()) : `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}`;
-      const value = customMetric === "transactions" ? 1 : customMetric === "profit" ? (sale.grossProfit ?? (sale.total - (sale.totalCost || 0))) : sale.total;
-      grouped.set(key, (grouped.get(key) || 0) + value);
+      const values = grouped.get(key) || {};
+      for (const metric of customMetrics) {
+        const value = metric === "transactions" ? 1 : metric === "profit" ? (sale.grossProfit ?? (sale.total - (sale.totalCost || 0))) : sale.total;
+        values[metric] = (values[metric] || 0) + value;
+      }
+      grouped.set(key, values);
     }
-    return [...grouped].sort(([a],[b]) => a.localeCompare(b)).map(([period,value]) => ({period,value}));
-  }, [sales, customMetric, customGroup, customStart, customEnd, branchFilter]);
+    return [...grouped].sort(([a],[b]) => customSort === "desc" ? b.localeCompare(a) : a.localeCompare(b)).map(([period,values]) => ({period,values}));
+  }, [sales, customMetrics, customGroup, customStart, customEnd, branchFilter, customSort]);
   const forecastWindow = sales.filter(sale => { const date = parseBusinessDate(sale.date); const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-30); return date && date >= cutoff; });
   const averageDailySales = forecastWindow.reduce((sum,sale)=>sum+sale.total,0)/30;
   const projectedWeek = averageDailySales * 7;
   const projectedMonth = averageDailySales * 30;
-  const branchSummary = branches.map(branch=>({branch, sales:sales.filter(sale=>sale.branchId===branch.id).reduce((sum,sale)=>sum+sale.total,0), products:products.filter(product=>product.branchId===branch.id).length, staff:staff.filter(member=>member.branchId===branch.id).length}));
   useEffect(() => {
     if (!customReportsEnabled || !getAccessToken()) return;
     let cancelled = false;
@@ -157,12 +257,19 @@ const Reports = () => {
     return () => { cancelled = true; };
   }, [customReportsEnabled]);
 
-  const saveCustomReport = async () => {
-    if (!canUse("custom_reports")) { promptUpgrade("custom_reports", "Custom Reports"); return; }
+  const saveCustomReport = async (showToast = true): Promise<number | null> => {
+    if (!canUse("custom_reports")) { promptUpgrade("custom_reports", "Custom Reports"); return null; }
+    if (!customMetrics.length) {
+      toast.error("Select at least one report field.");
+      return null;
+    }
+    const metricLabels = Object.fromEntries(CUSTOM_REPORT_METRICS.map((item) => [item.value, item.label])) as Record<ApiCustomReportMetric, string>;
     const item: SavedCustomReport = {
-      name: `${customMetric} by ${customGroup}`,
-      metric: customMetric,
+      name: `${customMetrics.map((metric) => metricLabels[metric]).join(" + ")} by ${customGroup}`,
+      metric: customMetrics[0],
+      metrics: [...customMetrics],
       group: customGroup,
+      sort: customSort,
       start: customStart,
       end: customEnd,
       branchFilter,
@@ -173,7 +280,9 @@ const Reports = () => {
       const payload = {
         name: item.name,
         metric: item.metric,
+        metrics: item.metrics,
         group_by: item.group,
+        sort_order: item.sort,
         start_date: item.start || null,
         end_date: item.end || null,
         branch_filter: branchFilterKind as ApiCustomReport["branch_filter"],
@@ -185,15 +294,46 @@ const Reports = () => {
       const next = [mapSavedCustomReport(saved), ...savedReports.filter((report) => report.name !== item.name)].slice(0, 20);
       setSavedReports(next);
       localStorage.setItem("verifin_custom_reports", JSON.stringify(next));
-      toast.success("Report template saved to your account.");
+      if (showToast) toast.success("Report template saved to your account.");
+      return saved.id;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not save report template.");
+      return null;
+    }
+  };
+
+  const currentCustomRunKey = JSON.stringify({ customMetrics, customGroup, customSort, customStart, customEnd, branchFilter });
+  const displayedCustomRows = serverCustomRunKey === currentCustomRunKey
+    ? serverCustomRows
+    : customRows;
+
+  const runCustomReport = async () => {
+    if (!canUse("custom_reports")) { promptUpgrade("custom_reports", "Custom Reports"); return; }
+    setCustomReportRunning(true);
+    try {
+      const id = await saveCustomReport(false);
+      if (!id) return;
+      const result = await runCustomReportApi(id);
+      setServerCustomRows(result.rows.map((row) => {
+        const values = row.values || { [result.report.metric]: row.value };
+        return {
+          period: row.period,
+          values: Object.fromEntries(Object.entries(values).map(([metric, value]) => [metric, Number(value)])) as Partial<Record<ApiCustomReportMetric, number>>,
+        };
+      }));
+      setServerCustomRunKey(currentCustomRunKey);
+      toast.success("Report refreshed from the server.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not run the custom report.");
+    } finally {
+      setCustomReportRunning(false);
     }
   };
 
   const loadCustomReport = (report: SavedCustomReport) => {
-    setCustomMetric(report.metric);
+    setCustomMetrics(report.metrics?.length ? report.metrics : [report.metric]);
     setCustomGroup(report.group);
+    setCustomSort(report.sort);
     setCustomStart(report.start);
     setCustomEnd(report.end);
     setBranchFilter(report.branchFilter);
@@ -216,10 +356,82 @@ const Reports = () => {
       toast.error(error instanceof Error ? error.message : "Could not delete report template.");
     }
   };
-  const exportCustomReport = () => {
+
+  const recordSaleReturn = async () => {
+    if (!returnSaleId || !selectedReturnItem?.id) {
+      toast.error("Choose a sale item to return.");
+      return;
+    }
+    const saleItemId = selectedReturnItem.id;
+    const quantity = Number(returnQuantity);
+    const available = selectedReturnItem.quantity - (selectedReturnItem.returnedQuantity || 0) - (returnedQuantities[saleItemId] || 0);
+    if (!Number.isInteger(quantity) || quantity <= 0 || quantity > available) {
+      toast.error(`Enter a return quantity between 1 and ${available}.`);
+      return;
+    }
+    setReturnSaving(true);
+    try {
+      const saved = await createSaleReturnApi(returnSaleId, {
+        sale_item: Number(selectedReturnItem.id),
+        quantity,
+        refund_method: refundMethod,
+      });
+      setReturnedQuantities((previous) => ({
+        ...previous,
+        [saleItemId]: (previous[saleItemId] || 0) + quantity,
+      }));
+      setReturnItemId("");
+      setReturnQuantity("1");
+      await queryClient.invalidateQueries({ queryKey: ["profit-loss"] });
+      toast.success(`Return recorded. Refund: ${formatMoney(Number(saved.refund_amount), sym)}. Returned stock is available again.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not record the return.");
+    } finally {
+      setReturnSaving(false);
+    }
+  };
+
+  const recordOtherIncome = async () => {
+    const amount = Number(incomeForm.amount);
+    if (!incomeForm.description.trim() || !Number.isFinite(amount) || amount <= 0 || !incomeForm.date) {
+      toast.error("Enter a description, a positive amount, and a date.");
+      return;
+    }
+    setIncomeSaving(true);
+    try {
+      await createOtherIncomeApi({
+        description: incomeForm.description.trim(),
+        amount,
+        currency: profile.currency,
+        date: incomeForm.date,
+      });
+      setIncomeForm({ description: "", amount: "", date: new Date().toISOString().slice(0, 10) });
+      await queryClient.invalidateQueries({ queryKey: ["profit-loss"] });
+      toast.success("Other income recorded.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not record other income.");
+    } finally {
+      setIncomeSaving(false);
+    }
+  };
+
+  const exportCustomReport = async (format: "csv" | "xlsx" | "pdf") => {
     if (!canUse("custom_reports")) { promptUpgrade("custom_reports", "Custom Reports"); return; }
-    const csv = ["Period,Value", ...customRows.map((item) => `${csvCell(item.period)},${csvCell(item.value)}`)].join("\n");
-    const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csv], {type:"text/csv;charset=utf-8"})); link.download = "custom-report.csv"; link.click(); URL.revokeObjectURL(link.href);
+    if (format === "xlsx" && !canUse("excel_exports")) { promptUpgrade("excel_exports", "Excel exports"); return; }
+    const id = await saveCustomReport(false);
+    if (!id) return;
+    try {
+      const blob = await downloadCustomReportApi(id, format);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `custom-report-${customMetrics.join("-")}-${customGroup}.${format}`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast.success(`${format.toUpperCase()} report exported.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not export the custom report.");
+    }
   };
 
   const categoryData = Array.from(
@@ -234,7 +446,7 @@ const Reports = () => {
       .values()
   ).filter((category) => category.value > 0 || category.count > 0);
 
-  const expenseByCat = expenses.reduce((acc, e) => {
+  const expenseByCat = approvedExpenses.reduce((acc, e) => {
     acc[e.category] = (acc[e.category] || 0) + expenseBaseAmount(e);
     return acc;
   }, {} as Record<string, number>);
@@ -245,7 +457,7 @@ const Reports = () => {
     { title: "Stock Movement Report", desc: `${products.length} products tracked - ${products.filter(p => p.status !== "ok").length} need attention`, icon: Package, feature: "advanced_reports" },
     { title: "Discrepancy Report", desc: `${discrepancies.filter(d => d.status !== "resolved").length} open issues`, icon: AlertTriangle, feature: "discrepancy_tracking" },
     { title: "Customer Report", desc: `${customers.length} customers - ${formatMoney(customers.reduce((s, c) => s + c.totalSpent, 0), sym)} revenue - ${formatMoney(customerDebtTotal, sym)} owed`, icon: Users, feature: "advanced_reports" },
-    { title: "Expense Analysis", desc: `${expenses.length} expenses across ${Object.keys(expenseByCat).length} categories`, icon: Receipt },
+    { title: "Expense Analysis", desc: `${approvedExpenses.length} approved expenses across ${Object.keys(expenseByCat).length} categories`, icon: Receipt },
     { title: "Profit & Loss", desc: `Revenue: ${formatMoney(totalSales, sym)} - COGS: ${formatMoney(totalCostOfGoods, sym)} - Gross profit: ${formatMoney(grossProfit, sym)}`, icon: TrendingUp, feature: "advanced_analytics" },
     { title: "Monthly Overview", desc: `12-month sales: ${formatMoney(monthlySalesTotal, sym)} - expenses: ${formatMoney(monthlyExpensesTotal, sym)}`, icon: Calendar, feature: "advanced_reports" },
     { title: "Cashflow Forecast", desc: `90-day net: ${formatMoney(cashflowForecast.find((point) => point.days === 90)?.projectedNet || 0, sym)}`, icon: WalletCards, feature: "advanced_analytics" },
@@ -265,6 +477,10 @@ const Reports = () => {
     }
     if (!canUse("excel_exports") && !title.includes("Sales") && !title.includes("Expense")) {
       promptUpgrade("excel_exports", "Advanced exports");
+      return;
+    }
+    if (title === "Profit & Loss" && !profitLossQuery.data) {
+      toast.info("Wait for the selected Profit & Loss period to finish loading before exporting.");
       return;
     }
     let csvRows: string[] = [];
@@ -294,13 +510,16 @@ const Reports = () => {
         ...monthlyFinanceData.map(d => row([profile.currency, d.period, formatMoney(d.sales, sym), formatMoney(d.expenses, sym), formatMoney(d.sales - d.expenses, sym)])),
       ];
     } else if (title === "Profit & Loss") {
+      const report = profitLossQuery.data!;
       csvRows = [
-        "Currency,Metric,Value",
-        row([profile.currency, "Total Sales", formatMoney(totalSales, sym)]),
-        row([profile.currency, "Cost of Goods Sold", formatMoney(totalCostOfGoods, sym)]),
-        row([profile.currency, "Gross Profit", formatMoney(grossProfit, sym)]),
-        row([profile.currency, "Expenses", formatMoney(totalExpenses, sym)]),
-        row([profile.currency, "Net Profit", formatMoney(grossProfit - totalExpenses, sym)]),
+        "Currency,Metric,Current Period,Previous Period,Change",
+        ...profitLossRows.map((item) => row([
+          report.currency,
+          item.label,
+          report.current[item.key],
+          report.previous[item.key],
+          report.comparison[item.key].change,
+        ])),
       ];
     } else if (title.includes("Cashflow")) {
       csvRows = [
@@ -350,7 +569,7 @@ const Reports = () => {
     } else if (title.includes("Expense")) {
       csvRows = [
         "Base Currency,Entry Currency,Description,Original Amount,Base Amount,Date,Category",
-        ...expenses.map(e => row([profile.currency, e.currency || profile.currency, e.desc, formatMoney(e.amount, symbolForCurrency(e.currency || profile.currency)), formatMoney(expenseBaseAmount(e), sym), e.date, e.category])),
+        ...approvedExpenses.map(e => row([profile.currency, e.currency || profile.currency, e.desc, formatMoney(e.amount, symbolForCurrency(e.currency || profile.currency)), formatMoney(expenseBaseAmount(e), sym), e.date, e.category])),
       ];
     } else {
       csvRows = [
@@ -376,9 +595,199 @@ const Reports = () => {
     toast.success(`${title} exported as spreadsheet!`);
   };
 
+  const toggleBranchOverviewBranch = (branchId: string, checked: boolean) => {
+    const current = branchOverviewSelection === "all"
+      ? branches.map((branch) => branch.id)
+      : branchOverviewSelection;
+    const next = checked
+      ? [...new Set([...current, branchId])]
+      : current.filter((id) => id !== branchId);
+    setBranchOverviewSelection(next.length === branches.length ? "all" : next);
+  };
+
   return (
     <div className="space-y-6">
       <p className="text-muted-foreground text-sm">Generate and export business reports</p>
+
+      {profitLossEnabled ? (
+        <Card className="shadow-soft">
+          <CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="font-display">Profit &amp; Loss</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">Transaction-based reporting with period comparison and historical sale costs.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                aria-label="Profit and loss period"
+                value={profitLossPeriod}
+                onChange={(event) => setProfitLossPeriod(event.target.value as ProfitLossPeriod)}
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="today">Today</option>
+                <option value="this_week">This week</option>
+                <option value="this_month">This month</option>
+                <option value="previous_month">Previous month</option>
+                <option value="this_quarter">This quarter</option>
+                <option value="this_year">This year</option>
+                <option value="custom">Custom range</option>
+              </select>
+              <Button variant="outline" onClick={() => exportToExcel("Profit & Loss")}>
+                <Download className="mr-2 h-4 w-4" /> Export
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {profitLossPeriod === "custom" ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="text-sm">
+                  Start date
+                  <input type="date" value={profitLossStart} onChange={(event) => setProfitLossStart(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3" />
+                </label>
+                <label className="text-sm">
+                  End date
+                  <input type="date" value={profitLossEnd} onChange={(event) => setProfitLossEnd(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3" />
+                </label>
+              </div>
+            ) : null}
+            {profitLossQuery.isError ? (
+              <p role="alert" className="text-sm text-destructive">
+                {profitLossQuery.error instanceof Error ? profitLossQuery.error.message : "Could not load the Profit & Loss report."}
+              </p>
+            ) : null}
+            {profitLossPeriod === "custom" && (!profitLossStart || !profitLossEnd) ? (
+              <p className="text-sm text-muted-foreground">Choose both dates to run a custom report.</p>
+            ) : null}
+            {profitLossQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading financial transactions…</p> : null}
+            {profitLossQuery.data ? (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  Current period: {profitLossQuery.data.start_date} – {profitLossQuery.data.end_date}
+                  {" · "}Comparison: {profitLossQuery.data.previous_start_date} – {profitLossQuery.data.previous_end_date}
+                </p>
+                <div className="overflow-x-auto rounded-md border border-border">
+                  <table className="w-full min-w-[640px] text-sm">
+                    <thead className="bg-muted/50 text-left">
+                      <tr>
+                        <th className="p-3 font-medium">Financial line</th>
+                        <th className="p-3 text-right font-medium">Current</th>
+                        <th className="p-3 text-right font-medium">Previous</th>
+                        <th className="p-3 text-right font-medium">Change</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {profitLossRows.map(({ key, label }) => {
+                        const deduction = ["discounts", "sales_returns", "cost_of_goods_sold", "operating_expenses", "other_expenses", "supplier_payments"].includes(key);
+                        const currentValue = Number(profitLossQuery.data.current[key]);
+                        const previousValue = Number(profitLossQuery.data.previous[key]);
+                        const change = Number(profitLossQuery.data.comparison[key].change);
+                        const amount = (value: number) => formatMoney(deduction ? -value : value, sym);
+                        const isTotal = ["net_sales", "gross_profit", "net_profit"].includes(key);
+                        return (
+                          <tr key={key} className={isTotal ? "font-semibold" : ""}>
+                            <td className="p-3">{label}</td>
+                            <td className="p-3 text-right tabular-nums">{amount(currentValue)}</td>
+                            <td className="p-3 text-right tabular-nums">{amount(previousValue)}</td>
+                            <td className="p-3 text-right tabular-nums">
+                              {formatMoney(change, sym)}
+                              {profitLossQuery.data.comparison[key].change_percent != null
+                                ? ` (${Number(profitLossQuery.data.comparison[key].change_percent).toFixed(1)}%)`
+                                : " (no prior baseline)"}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Cash received is shown separately from sales revenue. Supplier payments are cash outflows and inventory purchases are not expensed here; cost of goods sold uses each sale’s saved cost.
+                </p>
+              </>
+            ) : null}
+
+            <div className="grid gap-5 border-t border-border pt-5 md:grid-cols-2">
+              <section className="space-y-3">
+                <div>
+                  <h3 className="font-semibold">Record a sales return</h3>
+                  <p className="text-xs text-muted-foreground">Refunds use the original sale price and return the quantity to stock.</p>
+                </div>
+                <label className="block text-sm">
+                  Sale
+                  <select
+                    value={returnSaleId}
+                    onChange={(event) => { setReturnSaleId(event.target.value); setReturnItemId(""); }}
+                    className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3"
+                  >
+                    <option value="">Choose a sale</option>
+                    {sales.filter((sale) => Number.isSafeInteger(Number(sale.id)) && Number(sale.id) > 0 && sale.saleItems?.some((item) => item.id)).map((sale) => (
+                      <option key={sale.id} value={sale.id}>{sale.date} · {sale.items} · {formatMoney(sale.total, sym)}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-sm">
+                  Item
+                  <select value={returnItemId} onChange={(event) => setReturnItemId(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3">
+                    <option value="">Choose an item</option>
+                    {returnableItems.map((item) => {
+                      const remaining = item.quantity - (item.returnedQuantity || 0) - (item.id ? returnedQuantities[item.id] || 0 : 0);
+                      return <option key={item.id} value={item.id}>{item.productName} · {remaining} available</option>;
+                    })}
+                  </select>
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="text-sm">
+                    Quantity
+                    <input type="number" min="1" max={selectedReturnItem ? selectedReturnItem.quantity - (selectedReturnItem.returnedQuantity || 0) - (selectedReturnItem.id ? returnedQuantities[selectedReturnItem.id] || 0 : 0) : 1} value={returnQuantity} onChange={(event) => setReturnQuantity(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3" />
+                  </label>
+                  <label className="text-sm">
+                    Refund method
+                    <select value={refundMethod} onChange={(event) => setRefundMethod(event.target.value as "Cash" | "EFT" | "Card")} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3">
+                      <option value="Cash">Cash</option><option value="EFT">EFT</option><option value="Card">Card</option>
+                    </select>
+                  </label>
+                </div>
+                <Button onClick={() => void recordSaleReturn()} disabled={returnSaving || !returnSaleId || !returnItemId}>
+                  {returnSaving ? "Recording…" : "Record return"}
+                </Button>
+              </section>
+
+              <section className="space-y-3">
+                <div>
+                  <h3 className="font-semibold">Record other income</h3>
+                  <p className="text-xs text-muted-foreground">Income is recorded in your base currency and included in the selected P&amp;L period by date.</p>
+                </div>
+                <label className="block text-sm">
+                  Description
+                  <input value={incomeForm.description} onChange={(event) => setIncomeForm((form) => ({ ...form, description: event.target.value }))} placeholder="e.g. Interest received" className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3" />
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="text-sm">
+                    Amount ({profile.currency})
+                    <input type="number" min="0.01" step="0.01" value={incomeForm.amount} onChange={(event) => setIncomeForm((form) => ({ ...form, amount: event.target.value }))} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3" />
+                  </label>
+                  <label className="text-sm">
+                    Date
+                    <input type="date" value={incomeForm.date} onChange={(event) => setIncomeForm((form) => ({ ...form, date: event.target.value }))} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3" />
+                  </label>
+                </div>
+                <Button onClick={() => void recordOtherIncome()} disabled={incomeSaving || !incomeForm.description.trim() || !incomeForm.amount}>
+                  {incomeSaving ? "Recording…" : "Record other income"}
+                </Button>
+              </section>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="shadow-soft">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-5">
+            <div>
+              <h2 className="font-display font-semibold">Profit &amp; Loss</h2>
+              <p className="text-sm text-muted-foreground">Period-based financial reporting is available with Advanced Analytics.</p>
+            </div>
+            <Button variant="outline" onClick={() => promptUpgrade("advanced_analytics", "Profit & Loss")}>View plans</Button>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid lg:grid-cols-2 gap-6">
         <Card className="shadow-soft lg:col-span-2">
@@ -543,16 +952,48 @@ const Reports = () => {
       <Card className="shadow-soft">
         <CardHeader><CardTitle className="font-display flex items-center gap-2">Custom Reports {!canUse("custom_reports") && <LockedBadge />}</CardTitle></CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">Build a sales report with a metric, date range, branch, and grouping. Saved templates sync to your account.</p>
+          <p className="text-sm text-muted-foreground">Choose one or more fields, a date range, branch, and time grouping. Saved templates sync to your account.</p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            <select aria-label="Metric" className="h-10 rounded-md border bg-background px-3 text-sm" value={customMetric} onChange={e=>setCustomMetric(e.target.value as SavedCustomReport["metric"])}><option value="sales">Sales</option><option value="profit">Gross profit</option><option value="transactions">Transactions</option></select>
+            <fieldset className="rounded-md border p-3 sm:col-span-2 lg:col-span-5">
+              <legend className="px-1 text-sm font-medium">Report fields</legend>
+              <div className="flex flex-wrap gap-x-5 gap-y-2">
+                {CUSTOM_REPORT_METRICS.map((item) => (
+                  <label key={item.value} className="inline-flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={customMetrics.includes(item.value)}
+                      onChange={() => setCustomMetrics((current) => current.includes(item.value)
+                        ? (current.length > 1 ? current.filter((metric) => metric !== item.value) : current)
+                        : [...current, item.value])}
+                    />
+                    {item.label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
             <select aria-label="Group by" className="h-10 rounded-md border bg-background px-3 text-sm" value={customGroup} onChange={e=>setCustomGroup(e.target.value as SavedCustomReport["group"])}><option value="day">Day</option><option value="month">Month</option><option value="year">Year</option></select>
+            <select aria-label="Sort order" className="h-10 rounded-md border bg-background px-3 text-sm" value={customSort} onChange={e=>setCustomSort(e.target.value as SavedCustomReport["sort"])}><option value="asc">Oldest first</option><option value="desc">Newest first</option></select>
             <select aria-label="Branch filter" className="h-10 rounded-md border bg-background px-3 text-sm" value={branchFilter} onChange={e=>setBranchFilter(e.target.value)}><option value="all">All branches</option><option value="unassigned">No branch</option>{branches.map(branch=><option key={branch.id} value={branch.id}>{branch.name}</option>)}</select>
             <input aria-label="Start date" type="date" className="h-10 rounded-md border bg-background px-3 text-sm" value={customStart} onChange={e=>setCustomStart(e.target.value)} />
             <input aria-label="End date" type="date" className="h-10 rounded-md border bg-background px-3 text-sm" value={customEnd} onChange={e=>setCustomEnd(e.target.value)} />
-            <div className="flex gap-2"><Button variant="outline" onClick={() => void saveCustomReport()}>Save template</Button><Button onClick={exportCustomReport}>Export CSV</Button></div>
+            <div className="flex flex-wrap gap-2"><Button variant="outline" onClick={() => void saveCustomReport()}>Save template</Button><Button variant="outline" disabled={customReportRunning} onClick={() => void runCustomReport()}>{customReportRunning ? "Running…" : "Run report"}</Button><Button onClick={() => void exportCustomReport("csv")}>CSV</Button><Button variant="outline" onClick={() => void exportCustomReport("xlsx")}>Excel</Button><Button variant="outline" onClick={() => void exportCustomReport("pdf")}>PDF</Button></div>
           </div>
-          {customRows.length ? <div className="grid gap-2 sm:grid-cols-3">{customRows.slice(-6).map(row=><div key={row.period} className="rounded-md border p-3"><p className="text-xs text-muted-foreground">{row.period}</p><p className="font-semibold">{customMetric === "transactions" ? row.value : formatMoney(row.value,sym)}</p></div>)}</div> : <p className="rounded-md border p-4 text-sm text-muted-foreground">No sales match this date range.</p>}
+          {displayedCustomRows.length ? (
+            <div className="overflow-x-auto rounded-md border">
+              <table className="w-full min-w-[540px] text-sm">
+                <thead><tr className="border-b bg-muted/50"><th className="p-3 text-left font-medium">Period</th>{customMetrics.map((metric) => <th key={metric} className="p-3 text-right font-medium">{CUSTOM_REPORT_METRICS.find((item) => item.value === metric)?.label}</th>)}</tr></thead>
+                <tbody>{displayedCustomRows.slice(-20).map((row) => (
+                  <tr key={row.period} className="border-b last:border-0">
+                    <td className="p-3">{row.period}</td>
+                    {customMetrics.map((metric) => {
+                      const value = row.values[metric] ?? 0;
+                      return <td key={metric} className="p-3 text-right tabular-nums">{metric === "transactions" ? value.toLocaleString() : formatMoney(value, sym)}</td>;
+                    })}
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          ) : <p className="rounded-md border p-4 text-sm text-muted-foreground">No sales match this date range.</p>}
           {savedReports.length > 0 ? (
             <div className="space-y-2">
               <p className="text-sm font-medium">Saved templates</p>
@@ -572,7 +1013,133 @@ const Reports = () => {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="shadow-soft"><CardHeader><CardTitle className="font-display">Forecast {!canUse("forecasting") && <LockedBadge />}</CardTitle></CardHeader><CardContent className="space-y-3"><p className="text-sm text-muted-foreground">Straight-line estimate from the last 30 days of recorded sales.</p><div className="grid grid-cols-2 gap-3"><div className="rounded-md border p-3"><p className="text-xs text-muted-foreground">Next 7 days</p><p className="font-semibold">{formatMoney(projectedWeek,sym)}</p></div><div className="rounded-md border p-3"><p className="text-xs text-muted-foreground">Next 30 days</p><p className="font-semibold">{formatMoney(projectedMonth,sym)}</p></div></div><p className="text-xs text-muted-foreground">{forecastWindow.length} sales included; estimates do not adjust for seasonality.</p></CardContent></Card>
-        <Card className="shadow-soft"><CardHeader><CardTitle className="font-display">Branch Comparison {!canUse("multi_branch") && <LockedBadge />}</CardTitle></CardHeader><CardContent className="space-y-2">{branchSummary.length ? branchSummary.map(({branch,sales:branchSales,products:branchProducts,staff:branchStaff})=><div key={branch.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3"><span className="font-medium">{branch.name}</span><span className="text-xs text-muted-foreground">Sales {formatMoney(branchSales,sym)} · {branchProducts} products · {branchStaff} staff</span></div>) : <p className="rounded-md border p-4 text-sm text-muted-foreground">Create branches in Settings to compare branch sales, inventory, and staff.</p>}</CardContent></Card>
+        <Card className="shadow-soft lg:col-span-2">
+          <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <CardTitle className="font-display flex items-center gap-2">Branch Comparison {!canUse("multi_branch") && <LockedBadge />}</CardTitle>
+              <p className="mt-1 text-sm text-muted-foreground">Consolidated and branch-level profit, expenses, inventory, and outstanding balances.</p>
+            </div>
+            {canUse("multi_branch") && branches.length > 0 && (
+              <select
+                aria-label="Branch comparison period"
+                value={branchOverviewPeriod}
+                onChange={(event) => setBranchOverviewPeriod(event.target.value as ProfitLossPeriod)}
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="today">Today</option>
+                <option value="this_week">This week</option>
+                <option value="this_month">This month</option>
+                <option value="previous_month">Previous month</option>
+                <option value="this_quarter">This quarter</option>
+                <option value="this_year">This year</option>
+                <option value="custom">Custom range</option>
+              </select>
+            )}
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {!canUse("multi_branch") ? (
+              <p className="rounded-md border p-4 text-sm text-muted-foreground">Branch reporting is available on an eligible plan.</p>
+            ) : branches.length === 0 ? (
+              <p className="rounded-md border p-4 text-sm text-muted-foreground">Create branches in Settings to compare branch performance.</p>
+            ) : (
+              <>
+                {branchOverviewPeriod === "custom" && (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="text-sm">Start date<input aria-label="Branch comparison start date" type="date" value={branchOverviewStart} onChange={(event) => setBranchOverviewStart(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3" /></label>
+                    <label className="text-sm">End date<input aria-label="Branch comparison end date" type="date" value={branchOverviewEnd} onChange={(event) => setBranchOverviewEnd(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3" /></label>
+                  </div>
+                )}
+                <fieldset className="space-y-2">
+                  <legend className="text-sm font-medium">Branches to include</legend>
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    <label className="flex min-h-10 items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                      <input type="checkbox" checked={branchOverviewSelection === "all"} onChange={(event) => setBranchOverviewSelection(event.target.checked ? "all" : [])} />
+                      <span>Entire business, including unassigned records</span>
+                    </label>
+                    {branches.map((branch) => {
+                      const checked = branchOverviewSelection === "all" || branchOverviewSelection.includes(branch.id);
+                      return (
+                        <label key={branch.id} className="flex min-h-10 items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                          <input type="checkbox" checked={checked} onChange={(event) => toggleBranchOverviewBranch(branch.id, event.target.checked)} />
+                          <span>{branch.name}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+                {branchOverviewQuery.isLoading && <p className="text-sm text-muted-foreground">Loading branch figures…</p>}
+                {branchOverviewQuery.isError && <p role="alert" className="rounded-md border border-destructive/40 p-3 text-sm text-destructive">{branchOverviewQuery.error instanceof Error ? branchOverviewQuery.error.message : "Branch figures could not be loaded."}</p>}
+                {branchOverviewPeriod === "custom" && (!branchOverviewStart || !branchOverviewEnd) && (
+                  <p className="text-sm text-muted-foreground">Choose both dates to load the custom comparison.</p>
+                )}
+                {branchOverviewQuery.data && branchOverviewSelection !== "all" && branchOverviewSelection.length === 0 ? (
+                  <p className="rounded-md border p-4 text-sm text-muted-foreground">Select one or more branches, or choose the entire business.</p>
+                ) : branchOverviewQuery.data && (
+                  <div className="space-y-4">
+                    <p className="text-xs text-muted-foreground">
+                      {branchOverviewQuery.data.start_date} to {branchOverviewQuery.data.end_date}
+                      {branchOverviewQuery.data.includes_unassigned_records ? " · Entire business includes unassigned records" : " · Only selected branches are included"}
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      {[
+                        ["Net sales", branchOverviewQuery.data.total.net_sales],
+                        ["Gross profit", branchOverviewQuery.data.total.gross_profit],
+                        ["Operating expenses", branchOverviewQuery.data.total.operating_expenses],
+                        ["Other expenses", branchOverviewQuery.data.total.other_expenses],
+                        ["Net profit / loss", branchOverviewQuery.data.total.net_profit],
+                        ["Inventory at cost", branchOverviewQuery.data.inventory.cost_value],
+                        ["Inventory at retail", branchOverviewQuery.data.inventory.retail_value],
+                        ["Customer debt (current)", branchOverviewQuery.data.customer_outstanding],
+                        ["Supplier debt (current)", branchOverviewQuery.data.supplier_outstanding],
+                      ].map(([label, value]) => (
+                        <div key={label} className="rounded-md border p-3">
+                          <p className="text-xs text-muted-foreground">{label}</p>
+                          <p className="mt-1 font-semibold">{formatMoney(Number(value), sym)}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {branchOverviewQuery.data.branches.length === 0 ? (
+                      <p className="rounded-md border p-4 text-sm text-muted-foreground">No branch figures match this selection and period.</p>
+                    ) : (
+                      <div className="grid gap-3 xl:grid-cols-2">
+                        {branchOverviewQuery.data.branches.map((branch) => (
+                          <div key={branch.id} className="space-y-3 rounded-lg border p-4">
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div>
+                                <h3 className="font-semibold">{branch.name}</h3>
+                                <p className="text-xs text-muted-foreground">{branch.current_period.start_date} to {branch.current_period.end_date} · {branch.current_operating_days} operating days</p>
+                              </div>
+                              {branch.comparisons.sales.change_percent != null && (
+                                <span className="rounded-full bg-muted px-2.5 py-1 text-xs">Sales per operating day: {Number(branch.comparisons.sales.change_percent).toFixed(1)}% vs prior period</span>
+                              )}
+                            </div>
+                            <div className="grid gap-2 sm:grid-cols-3">
+                              {[
+                                ["Net sales", branch.current.net_sales],
+                                ["Gross profit", branch.current.gross_profit],
+                                ["Net profit / loss", branch.current.net_profit],
+                                ["Operating expenses", branch.current.operating_expenses],
+                                ["Inventory at cost", branch.inventory.cost_value],
+                                ["Customer debt (current)", branch.customer_outstanding],
+                                ["Supplier debt (current)", branch.supplier_outstanding],
+                                ["Stock in transit", String(branch.outgoing_stock_in_transit)],
+                              ].map(([label, value]) => (
+                                <div key={label} className="rounded-md bg-muted/50 p-2.5">
+                                  <p className="text-xs text-muted-foreground">{label}</p>
+                                  <p className="mt-1 text-sm font-medium">{label === "Stock in transit" ? value : formatMoney(Number(value), sym)}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

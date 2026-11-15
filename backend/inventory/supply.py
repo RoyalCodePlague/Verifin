@@ -5,6 +5,7 @@ from django.db.models import Sum
 from django.contrib.auth import get_user_model
 from rest_framework import serializers, viewsets, mixins
 from rest_framework.permissions import IsAuthenticated
+from accounts.branch_access import require_staff_branch, scope_queryset_to_staff_branch
 from core.currency import get_rate_to_base
 from .models import ProductBatch, SupplyEntry, Product, StockMovement
 
@@ -44,6 +45,7 @@ class SupplyEntrySerializer(serializers.ModelSerializer):
             return attrs
         if attrs["product"].user_id != user.id:
             raise serializers.ValidationError({"productId": "Product does not belong to this account."})
+        require_staff_branch(self.context["request"], attrs["product"].branch_id)
         attrs["currency"] = attrs["currency"].upper()
         attrs["fx_rate_to_base"] = get_rate_to_base(user, attrs["currency"], attrs.get("fx_rate_to_base"))
         return attrs
@@ -84,4 +86,5 @@ class SupplyEntryViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixin
     http_method_names = ["get", "post", "patch", "head", "options"]
 
     def get_queryset(self):
-        return SupplyEntry.objects.filter(user=self.request.user, is_deleted=False).select_related("product")
+        queryset = SupplyEntry.objects.filter(user=self.request.user, is_deleted=False).select_related("product")
+        return scope_queryset_to_staff_branch(self.request, queryset, "product__branch_id")

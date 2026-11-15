@@ -1,6 +1,6 @@
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Search, Plus, Trash2, Users, QrCode, Gift, Edit2, Award, Star, Trophy, Crown, HandCoins, ReceiptText, AlertTriangle } from "lucide-react";
+import { Search, Plus, Trash2, Users, QrCode, Gift, Edit2, Award, Star, Trophy, Crown, HandCoins, ReceiptText, AlertTriangle, FileText, Printer } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -13,6 +13,8 @@ import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import { addToOfflineQueue, canQueueOfflineAction, hasQueuedLocalCreate, removeQueuedLocalCreate } from "@/lib/offlineQueue";
 import { buildDebtorFollowUps } from "@/lib/reporting";
+import { useAuth } from "@/lib/auth-context";
+import { addCustomerDebtApi, fetchCustomerStatementApi, listFinancialAccountsApi, recordCustomerPaymentApi, type ApiCustomerStatement, type ApiFinancialAccount } from "@/lib/api";
 
 const badgeConfig: Record<CustomerBadge, { label: string; color: string; icon: typeof Award }> = {
   bronze: { label: "Bronze", color: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400", icon: Award },
@@ -28,8 +30,17 @@ const debtAgeInDays = (startedAt?: string) => {
   return Math.max(0, Math.floor((Date.now() - started.getTime()) / 86400000));
 };
 
+const isPastDueDate = (value?: string) => {
+  if (!value) return false;
+  const due = new Date(`${value}T00:00:00`);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return !Number.isNaN(due.getTime()) && due < today;
+};
+
 const Customers = () => {
-  const { customers, addCustomer, updateCustomer, deleteCustomer, profile } = useStore();
+  const { customers, branches, addCustomer, updateCustomer, deleteCustomer, profile } = useStore();
+  const { isStaffSession } = useAuth();
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -40,42 +51,86 @@ const Customers = () => {
   const [debtModal, setDebtModal] = useState<{ id: string; mode: "add" | "payment" } | null>(null);
   const [debtAmount, setDebtAmount] = useState("");
   const [debtNotes, setDebtNotes] = useState("");
-  const [form, setForm] = useState({ name: "", phone: "", badge: "bronze" as CustomerBadge });
+  const [debtDueDate, setDebtDueDate] = useState("");
+  const [financialAccounts, setFinancialAccounts] = useState<ApiFinancialAccount[]>([]);
+  const [paymentAccountId, setPaymentAccountId] = useState("");
+  const [statementCustomerId, setStatementCustomerId] = useState<string | null>(null);
+  const [customerStatement, setCustomerStatement] = useState<ApiCustomerStatement | null>(null);
+  const [statementLoading, setStatementLoading] = useState(false);
+  const [statementError, setStatementError] = useState("");
+  const paymentRequestKey = useRef<string | null>(null);
+  const [form, setForm] = useState({ name: "", phone: "", badge: "bronze" as CustomerBadge, branchId: "", creditLimit: "" });
   const qrWrapperRef = useRef<HTMLDivElement | null>(null);
   const sym = profile.currencySymbol || "R";
+  const eligibleCollectionAccounts = financialAccounts.filter((account) => account.is_active
+    && account.currency.toUpperCase() === (profile.currency || "ZAR").toUpperCase()
+    && account.opening_date <= new Date().toISOString().slice(0, 10));
+
+  useEffect(() => {
+    listFinancialAccountsApi().then((accounts) => setFinancialAccounts(accounts.filter((account) => account.is_active)))
+      .catch(() => setFinancialAccounts([]));
+  }, []);
 
   const filtered = customers.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.phone.includes(search));
   const viewingCustomer = customers.find(c => c.id === viewQR);
   const creditCustomer = customers.find(c => c.id === creditModal);
   const debtCustomer = customers.find(c => c.id === debtModal?.id);
+  const statementCustomer = customers.find((customer) => customer.id === statementCustomerId);
   const debtors = customers.filter(c => (c.debtAmount || 0) > 0);
   const totalDebt = debtors.reduce((sum, c) => sum + (c.debtAmount || 0), 0);
-  const overdueDebtCount = debtors.filter(c => debtAgeInDays(c.debtStartedAt) >= 30).length;
+  const overdueDebtCount = debtors.filter(c => c.debtDueDate ? isPastDueDate(c.debtDueDate) : debtAgeInDays(c.debtStartedAt) >= 30).length;
   const debtorFollowUps = buildDebtorFollowUps(customers, sym);
 
   const openAdd = () => {
-    setForm({ name: "", phone: "", badge: "bronze" });
+    setForm({ name: "", phone: "", badge: "bronze", branchId: branches.length === 1 ? branches[0].id : "", creditLimit: "" });
     setAddOpen(true);
   };
 
   const openEdit = (id: string) => {
     const c = customers.find(x => x.id === id);
     if (!c) return;
-    setForm({ name: c.name, phone: c.phone, badge: c.badge || "bronze" });
+    setForm({ name: c.name, phone: c.phone, badge: c.badge || "bronze", branchId: c.branchId || "", creditLimit: c.creditLimit?.toString() || "" });
     setEditId(id);
   };
 
   const handleSave = () => {
+    const creditLimit = form.creditLimit.trim() ? Number(form.creditLimit) : undefined;
+    if (creditLimit !== undefined && (!Number.isFinite(creditLimit) || creditLimit < 0)) {
+      toast.error("Enter a valid non-negative credit limit.");
+      return;
+    }
     if (editId) {
-      updateCustomer(editId, { name: form.name, phone: form.phone, badge: form.badge });
+      updateCustomer(editId, {
+        name: form.name,
+        phone: form.phone,
+        badge: form.badge,
+        branchId: form.branchId || undefined,
+        branchName: branches.find((branch) => branch.id === form.branchId)?.name,
+        creditLimit,
+      });
       if (canQueueOfflineAction() && /^\d+$/.test(editId)) {
-        addToOfflineQueue({ type: "customer_update", payload: { id: Number(editId), name: form.name, phone: form.phone, badge: form.badge } });
+        addToOfflineQueue({ type: "customer_update", payload: { id: Number(editId), name: form.name, phone: form.phone, badge: form.badge, credit_limit: creditLimit?.toFixed(2) ?? null, branch: form.branchId ? Number(form.branchId) : null } });
       }
       setEditId(null);
       toast.success(canQueueOfflineAction() ? "Customer update saved locally." : "Customer updated!");
     } else {
       const qrCode = `VRF-CUST-${Date.now().toString(36).toUpperCase()}`;
-      const localId = addCustomer({ name: form.name, phone: form.phone, totalSpent: 0, visits: 0, loyaltyPoints: 0, qrCode, credits: 0, debtAmount: 0, debtNotes: "", lastVisit: "Never", badge: form.badge });
+      const localId = addCustomer({
+        name: form.name,
+        phone: form.phone,
+        branchId: form.branchId || undefined,
+        branchName: branches.find((branch) => branch.id === form.branchId)?.name,
+        totalSpent: 0,
+        visits: 0,
+        loyaltyPoints: 0,
+        qrCode,
+        credits: 0,
+        creditLimit,
+        debtAmount: 0,
+        debtNotes: "",
+        lastVisit: "Never",
+        badge: form.badge,
+      });
       if (canQueueOfflineAction()) {
         addToOfflineQueue({
           type: "customer_create",
@@ -88,16 +143,18 @@ const Customers = () => {
             loyalty_points: 0,
             qr_code: qrCode,
             credits: "0.00",
+            credit_limit: creditLimit?.toFixed(2) ?? null,
             debt_amount: "0.00",
             debt_notes: "",
             badge: form.badge,
+            branch: form.branchId ? Number(form.branchId) : null,
           },
         });
       }
       setAddOpen(false);
       toast.success(canQueueOfflineAction() ? "Customer saved locally with QR code." : "Customer added with QR code!");
     }
-    setForm({ name: "", phone: "", badge: "bronze" });
+    setForm({ name: "", phone: "", badge: "bronze", branchId: "", creditLimit: "" });
   };
 
   const handleAddCredit = () => {
@@ -123,21 +180,63 @@ const Customers = () => {
     setDebtModal({ id, mode });
     setDebtAmount("");
     setDebtNotes(mode === "add" ? customer?.debtNotes || "" : "");
+    setDebtDueDate("");
+    setPaymentAccountId("");
+    paymentRequestKey.current = null;
   };
 
   const closeDebtModal = () => {
     setDebtModal(null);
     setDebtAmount("");
     setDebtNotes("");
+    setDebtDueDate("");
+    setPaymentAccountId("");
+    paymentRequestKey.current = null;
   };
 
-  const queueDebtUpdate = (id: string, updates: Record<string, unknown>) => {
-    if (canQueueOfflineAction() && /^\d+$/.test(id)) {
-      addToOfflineQueue({ type: "customer_update", payload: { id: Number(id), ...updates } });
+  const openCustomerStatement = async (customerId: string) => {
+    setStatementCustomerId(customerId);
+    setCustomerStatement(null);
+    setStatementError("");
+    if (!navigator.onLine) {
+      setStatementError("Connect to the internet to load the current customer statement.");
+      return;
+    }
+    if (!/^\d+$/.test(customerId)) {
+      setStatementError("Sync this customer before loading a financial statement.");
+      return;
+    }
+    setStatementLoading(true);
+    try {
+      setCustomerStatement(await fetchCustomerStatementApi(customerId));
+    } catch (error) {
+      setStatementError(error instanceof Error ? error.message : "Could not load this customer statement.");
+    } finally {
+      setStatementLoading(false);
     }
   };
 
-  const handleDebtSave = () => {
+  const printCustomerStatement = () => {
+    if (!customerStatement) return;
+    const escapeHtml = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (character) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;",
+    })[character] || character);
+    const symbol = customerStatement.currency_symbol || sym;
+    const invoiceRows = customerStatement.invoices.map((invoice) => `<tr><td>${escapeHtml(invoice.invoice_number || `INV-${invoice.id}`)}</td><td>${escapeHtml(invoice.date)}</td><td>${escapeHtml(invoice.due_date || "—")}</td><td>${escapeHtml(Number(invoice.total).toFixed(2))}</td><td>${escapeHtml(Number(invoice.amount_paid_base).toFixed(2))}</td><td>${escapeHtml(Number(invoice.balance_due).toFixed(2))}</td></tr>`).join("");
+    const transactionRows = customerStatement.transactions.map((item) => `<tr><td>${escapeHtml(new Date(item.created_at).toLocaleDateString())}</td><td>${escapeHtml(item.type)}</td><td>${escapeHtml(item.reason)}</td><td>${escapeHtml(Number(item.amount).toFixed(2))}</td></tr>`).join("");
+    const printWindow = window.open("", "_blank", "width=900,height=900");
+    if (!printWindow) {
+      toast.error("Allow pop-ups to print this statement.");
+      return;
+    }
+    printWindow.document.open();
+    printWindow.document.write(`<!doctype html><html><head><title>Statement - ${escapeHtml(customerStatement.customer.name)}</title><meta charset="utf-8"><style>body{font:14px Arial,sans-serif;color:#222;margin:32px}h1{font-size:22px}h2{font-size:16px;margin-top:28px}table{width:100%;border-collapse:collapse;margin-top:10px}th,td{border-bottom:1px solid #ddd;padding:8px;text-align:left}th{background:#f4f4f0}.total{font-size:18px;font-weight:bold;margin-top:20px}@media print{body{margin:15mm}}</style></head><body><h1>Customer statement</h1><p><strong>${escapeHtml(customerStatement.customer.name)}</strong><br>${escapeHtml(customerStatement.customer.phone)}<br>Generated ${escapeHtml(new Date(customerStatement.generated_at).toLocaleString())}</p><h2>Invoices</h2><table><thead><tr><th>Invoice</th><th>Date</th><th>Due</th><th>Total (${escapeHtml(symbol)})</th><th>Paid (${escapeHtml(symbol)})</th><th>Outstanding (${escapeHtml(symbol)})</th></tr></thead><tbody>${invoiceRows || "<tr><td colspan=\"6\">No invoices</td></tr>"}</tbody></table><h2>Account transactions</h2><table><thead><tr><th>Date</th><th>Type</th><th>Reference</th><th>Amount (${escapeHtml(symbol)})</th></tr></thead><tbody>${transactionRows || "<tr><td colspan=\"4\">No account transactions</td></tr>"}</tbody></table><p class="total">Current balance: ${escapeHtml(symbol)}${escapeHtml(Number(customerStatement.customer.debt_amount).toFixed(2))}</p></body></html>`);
+    printWindow.document.close();
+    printWindow.focus();
+    window.setTimeout(() => printWindow.print(), 250);
+  };
+
+  const handleDebtSave = async () => {
     if (!debtModal || !debtCustomer) return;
     const amount = parseFloat(debtAmount);
     if (isNaN(amount) || amount <= 0) {
@@ -145,31 +244,48 @@ const Customers = () => {
       return;
     }
 
-    const currentDebt = debtCustomer.debtAmount || 0;
-    const now = new Date().toISOString();
-    const nextDebt = debtModal.mode === "add" ? currentDebt + amount : Math.max(0, currentDebt - amount);
-    const nextStartedAt = nextDebt > 0 ? (currentDebt > 0 ? debtCustomer.debtStartedAt : now) : undefined;
-    const updates = {
-      debtAmount: nextDebt,
-      debtStartedAt: nextStartedAt,
-      debtUpdatedAt: now,
-      debtNotes: debtModal.mode === "add" ? debtNotes.trim() : debtCustomer.debtNotes || "",
-    };
-
-    updateCustomer(debtModal.id, updates);
-    queueDebtUpdate(debtModal.id, {
-      debt_amount: nextDebt.toFixed(2),
-      debt_started_at: nextStartedAt || null,
-      debt_updated_at: now,
-      debt_notes: updates.debtNotes,
-    });
-
-    toast.success(
-      debtModal.mode === "add"
-        ? `${sym}${amount.toFixed(2)} debt added to ${debtCustomer.name}.`
-        : `${sym}${amount.toFixed(2)} payment recorded. Balance: ${sym}${nextDebt.toFixed(2)}.`
-    );
-    closeDebtModal();
+    if (!navigator.onLine) {
+      toast.error("Customer debt and payment entries need an internet connection. No change was recorded.");
+      return;
+    }
+    if (!/^\d+$/.test(debtModal.id)) {
+      toast.error("Sync this customer before posting financial transactions.");
+      return;
+    }
+    const idempotencyKey = paymentRequestKey.current || (paymentRequestKey.current = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    try {
+      const result = debtModal.mode === "add"
+        ? await addCustomerDebtApi(debtModal.id, {
+            amount: amount.toFixed(2),
+            reason: debtNotes.trim(),
+            ...(debtDueDate ? { due_date: debtDueDate } : {}),
+            idempotency_key: idempotencyKey,
+          })
+        : await recordCustomerPaymentApi(debtModal.id, {
+            amount: amount.toFixed(2),
+            reason: "Customer payment",
+            idempotency_key: idempotencyKey,
+            ...(paymentAccountId && eligibleCollectionAccounts.some((account) => String(account.id) === paymentAccountId)
+              ? { payment_allocations: [{ currency: profile.currency || "ZAR", amount: amount.toFixed(2), account: Number(paymentAccountId) }] }
+              : {}),
+          });
+      const nextDebt = Number(result.debt_amount) || 0;
+      updateCustomer(debtModal.id, {
+        debtAmount: nextDebt,
+        debtStartedAt: result.debt_started_at || undefined,
+        debtUpdatedAt: result.debt_updated_at || undefined,
+        debtDueDate: result.debt_due_date || undefined,
+        debtNotes: result.debt_notes || "",
+      });
+      toast.success(
+        debtModal.mode === "add"
+          ? `${sym}${amount.toFixed(2)} debt added to ${debtCustomer.name}.`
+          : `${sym}${amount.toFixed(2)} payment recorded. Balance: ${sym}${nextDebt.toFixed(2)}.`,
+      );
+      closeDebtModal();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save the customer credit transaction.");
+    }
   };
 
   const downloadQRCode = () => {
@@ -243,6 +359,25 @@ const Customers = () => {
         <div><Label>Customer Name</Label><Input placeholder="e.g. John's Hardware" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="mt-1" /></div>
         <div><Label>Phone Number</Label><Input placeholder="+27 82 555 0101" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="mt-1" /></div>
         <div>
+          <Label>Credit Limit ({sym})</Label>
+          <Input type="number" min="0" step="0.01" placeholder="Leave blank for no limit" value={form.creditLimit} onChange={e => setForm({ ...form, creditLimit: e.target.value })} className="mt-1" />
+          <p className="mt-1 text-xs text-muted-foreground">Credit sales are blocked when this customer's outstanding balance would exceed the limit.</p>
+        </div>
+        <div>
+          <Label htmlFor="customer-branch">Branch</Label>
+          <select
+            id="customer-branch"
+            value={form.branchId}
+            onChange={(event) => setForm({ ...form, branchId: event.target.value })}
+            disabled={isStaffSession}
+            className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+          >
+            {!isStaffSession && <option value="">Business-wide / not assigned</option>}
+            {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+          </select>
+          {isStaffSession && <p className="mt-1 text-xs text-muted-foreground">This customer is assigned to your authorised branch.</p>}
+        </div>
+        <div>
           <Label htmlFor="customer-badge">Customer Badge</Label>
           <select id="customer-badge" aria-label="Customer Badge" value={form.badge} onChange={e => setForm({ ...form, badge: e.target.value as CustomerBadge })} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
             <option value="bronze">Bronze</option>
@@ -277,7 +412,7 @@ const Customers = () => {
           <p className="font-display text-xl font-bold">{sym}{totalDebt.toFixed(2)}</p>
         </div>
         <div className={`rounded-lg border p-4 ${overdueDebtCount > 0 ? "border-destructive/40 bg-destructive/10" : "border-border bg-card"}`}>
-          <p className="text-xs text-muted-foreground">30+ Days Old</p>
+          <p className="text-xs text-muted-foreground">Past due / 30+ days</p>
           <p className={`font-display text-xl font-bold ${overdueDebtCount > 0 ? "text-destructive" : ""}`}>{overdueDebtCount}</p>
         </div>
       </div>
@@ -318,7 +453,7 @@ const Customers = () => {
             const BadgeIcon = badge.icon;
             const debtAmount = c.debtAmount || 0;
             const debtAge = debtAgeInDays(c.debtStartedAt);
-            const isOverdueDebt = debtAmount > 0 && debtAge >= 30;
+            const isOverdueDebt = debtAmount > 0 && (c.debtDueDate ? isPastDueDate(c.debtDueDate) : debtAge >= 30);
             return (
               <Card key={c.id} className={`shadow-soft group cursor-pointer hover:shadow-elevated transition-shadow ${isOverdueDebt ? "border-destructive/50" : ""}`} onClick={() => openEdit(c.id)}>
                 <CardContent className="p-4">
@@ -339,6 +474,7 @@ const Customers = () => {
                       <button aria-label="Add credit to customer" onClick={() => setCreditModal(c.id)} className="p-1.5 rounded hover:bg-muted"><Gift className="h-3.5 w-3.5 text-accent" /></button>
                       <button aria-label="Add customer debt" onClick={() => openDebtModal(c.id, "add")} className="p-1.5 rounded hover:bg-muted"><HandCoins className="h-3.5 w-3.5 text-amber-600" /></button>
                       {debtAmount > 0 && <button aria-label="Record partial payment" onClick={() => openDebtModal(c.id, "payment")} className="p-1.5 rounded hover:bg-muted"><ReceiptText className="h-3.5 w-3.5 text-success" /></button>}
+                      {debtAmount > 0 && <button aria-label={`View statement for ${c.name}`} onClick={() => void openCustomerStatement(c.id)} className="p-1.5 rounded hover:bg-muted"><FileText className="h-3.5 w-3.5 text-primary" /></button>}
                       <button aria-label="Delete customer" onClick={() => setDeleteId(c.id)} className="p-1.5 rounded hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="h-3.5 w-3.5 text-destructive" /></button>
                     </div>
                   </div>
@@ -357,6 +493,7 @@ const Customers = () => {
                         </span>
                         <span>{debtAge} day{debtAge === 1 ? "" : "s"}</span>
                       </div>
+                      {c.debtDueDate ? <p className="mt-1">Due {c.debtDueDate}{isPastDueDate(c.debtDueDate) ? " · overdue" : ""}</p> : null}
                       {c.debtNotes && <p className="mt-1 text-muted-foreground">{c.debtNotes}</p>}
                     </div>
                   )}
@@ -431,6 +568,49 @@ const Customers = () => {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={!!statementCustomerId} onOpenChange={(open) => { if (!open) { setStatementCustomerId(null); setCustomerStatement(null); setStatementError(""); } }}>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-4xl overflow-y-auto overscroll-contain">
+          <DialogHeader>
+            <DialogTitle className="font-display">Customer statement</DialogTitle>
+            <DialogDescription>{statementCustomer?.name || "Account activity, invoices, payments, and outstanding balance."}</DialogDescription>
+          </DialogHeader>
+          {statementLoading ? <p role="status" className="py-8 text-center text-sm text-muted-foreground">Loading statement…</p> : null}
+          {statementError ? <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{statementError}</p> : null}
+          {customerStatement ? <div className="space-y-5">
+            <div className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-medium">{customerStatement.customer.name}</p>
+                <p className="text-xs text-muted-foreground">{customerStatement.customer.phone || "No phone recorded"} · Generated {new Date(customerStatement.generated_at).toLocaleString()}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <p className="text-sm font-semibold">Outstanding: {customerStatement.currency_symbol}{Number(customerStatement.customer.debt_amount).toFixed(2)}</p>
+                <Button size="sm" variant="outline" onClick={printCustomerStatement}><Printer className="mr-2 h-4 w-4" />Print</Button>
+              </div>
+            </div>
+            <section className="space-y-2">
+              <h3 className="text-sm font-semibold">Invoices</h3>
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full min-w-[650px] text-sm">
+                  <thead><tr className="border-b bg-muted/50 text-left text-xs text-muted-foreground"><th className="p-2">Invoice</th><th className="p-2">Date</th><th className="p-2">Due date</th><th className="p-2 text-right">Original</th><th className="p-2 text-right">Paid</th><th className="p-2 text-right">Outstanding</th></tr></thead>
+                  <tbody>{customerStatement.invoices.map((invoice) => <tr key={invoice.id} className="border-b last:border-0"><td className="p-2 font-medium">{invoice.invoice_number || `INV-${invoice.id}`}</td><td className="p-2">{invoice.date}</td><td className="p-2">{invoice.due_date || "—"}</td><td className="p-2 text-right">{customerStatement.currency_symbol}{Number(invoice.total).toFixed(2)}</td><td className="p-2 text-right">{customerStatement.currency_symbol}{Number(invoice.amount_paid_base).toFixed(2)}</td><td className="p-2 text-right">{customerStatement.currency_symbol}{Number(invoice.balance_due).toFixed(2)}</td></tr>)}</tbody>
+                </table>
+              </div>
+              {customerStatement.invoices.length === 0 ? <p className="text-sm text-muted-foreground">No sales invoices are linked to this customer.</p> : null}
+            </section>
+            <section className="space-y-2">
+              <h3 className="text-sm font-semibold">Account transactions</h3>
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full min-w-[550px] text-sm">
+                  <thead><tr className="border-b bg-muted/50 text-left text-xs text-muted-foreground"><th className="p-2">Date</th><th className="p-2">Type</th><th className="p-2">Reference</th><th className="p-2 text-right">Amount</th></tr></thead>
+                  <tbody>{customerStatement.transactions.map((transaction) => <tr key={transaction.id} className="border-b last:border-0"><td className="p-2">{new Date(transaction.created_at).toLocaleDateString()}</td><td className="p-2 capitalize">{transaction.type}</td><td className="p-2">{transaction.reason || "—"}</td><td className="p-2 text-right">{customerStatement.currency_symbol}{Number(transaction.amount).toFixed(2)}</td></tr>)}</tbody>
+                </table>
+              </div>
+              {customerStatement.transactions.length === 0 ? <p className="text-sm text-muted-foreground">No account transactions recorded.</p> : null}
+            </section>
+          </div> : null}
+        </DialogContent>
+      </Dialog>
+
       {/* Debt Dialog */}
       <Dialog open={!!debtModal} onOpenChange={closeDebtModal}>
         <DialogContent>
@@ -450,11 +630,26 @@ const Customers = () => {
                 <Label>{debtModal?.mode === "payment" ? "Payment Amount" : "Debt Amount"} ({sym})</Label>
                 <Input type="number" min="0" step="0.01" placeholder={debtModal?.mode === "payment" ? "e.g. 2" : "e.g. 5"} value={debtAmount} onChange={e => setDebtAmount(e.target.value)} className="mt-1" />
               </div>
-              {debtModal?.mode === "add" && (
+              {debtModal?.mode === "payment" ? (
                 <div>
-                  <Label>Note</Label>
-                  <Input placeholder="e.g. bread and sugar" value={debtNotes} onChange={e => setDebtNotes(e.target.value)} className="mt-1" />
+                  <Label>Financial account (optional)</Label>
+                  <select value={eligibleCollectionAccounts.some((account) => String(account.id) === paymentAccountId) ? paymentAccountId : ""} onChange={(event) => setPaymentAccountId(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                    <option value="">Do not post to an account ledger</option>
+                    {eligibleCollectionAccounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {account.currency}</option>)}
+                  </select>
                 </div>
+              ) : null}
+              {debtModal?.mode === "add" && (
+                <>
+                  <div>
+                    <Label>Due Date</Label>
+                    <Input type="date" value={debtDueDate} onChange={e => setDebtDueDate(e.target.value)} className="mt-1" />
+                  </div>
+                  <div>
+                    <Label>Note</Label>
+                    <Input placeholder="e.g. goods taken on credit" value={debtNotes} onChange={e => setDebtNotes(e.target.value)} className="mt-1" />
+                  </div>
+                </>
               )}
               <Button onClick={handleDebtSave} disabled={!debtAmount} className="w-full">
                 {debtModal?.mode === "payment" ? "Record Payment" : "Add Debt"}

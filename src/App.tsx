@@ -18,13 +18,17 @@ const Features = lazy(() => import("./pages/Features"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Inventory = lazy(() => import("./pages/Inventory"));
+const InventoryIntelligence = lazy(() => import("./pages/InventoryIntelligence"));
+const Insights = lazy(() => import("./pages/Insights"));
 const Sales = lazy(() => import("./pages/Sales"));
 const Expenses = lazy(() => import("./pages/Expenses"));
 const Audits = lazy(() => import("./pages/Audits"));
 const Reports = lazy(() => import("./pages/Reports"));
+const FinancialAccounts = lazy(() => import("./pages/FinancialAccounts"));
 const Customers = lazy(() => import("./pages/Customers"));
 const Suppliers = lazy(() => import("./pages/Suppliers"));
 const Staff = lazy(() => import("./pages/Staff"));
+const Approvals = lazy(() => import("./pages/Approvals"));
 const SettingsPage = lazy(() => import("./pages/Settings"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const Pricing = lazy(() => import("./pages/Pricing"));
@@ -94,14 +98,18 @@ const App = () => (
                 <Route path="/api" element={<ApiDocs />} />
                 <Route path="/dashboard" element={<ProtectedRoute permission="dashboard"><AppRoute><Dashboard /></AppRoute></ProtectedRoute>} />
                 <Route path="/inventory" element={<ProtectedRoute permission="inventory"><AppRoute><Inventory /></AppRoute></ProtectedRoute>} />
+                <Route path="/inventory/intelligence" element={<ProtectedRoute permission="inventory"><AppRoute><InventoryIntelligence /></AppRoute></ProtectedRoute>} />
+                <Route path="/insights" element={<ProtectedRoute permission="reports"><AppRoute><Insights /></AppRoute></ProtectedRoute>} />
                 <Route path="/sales" element={<ProtectedRoute permission="sales"><AppRoute><Sales /></AppRoute></ProtectedRoute>} />
                 <Route path="/expenses" element={<ProtectedRoute permission="expenses"><AppRoute><Expenses /></AppRoute></ProtectedRoute>} />
                 <Route path="/audits" element={<ProtectedRoute permission="audits"><AppRoute><Audits /></AppRoute></ProtectedRoute>} />
                 <Route path="/reports" element={<ProtectedRoute permission="reports"><AppRoute><Reports /></AppRoute></ProtectedRoute>} />
+                <Route path="/accounts" element={<ProtectedRoute permission="reports"><AppRoute><FinancialAccounts /></AppRoute></ProtectedRoute>} />
                 <Route path="/customers" element={<ProtectedRoute permission="customers"><AppRoute><Customers /></AppRoute></ProtectedRoute>} />
                 <Route path="/invoices" element={<Navigate to="/suppliers" replace />} />
                 <Route path="/suppliers" element={<ProtectedRoute permission="suppliers"><AppRoute><Suppliers /></AppRoute></ProtectedRoute>} />
                 <Route path="/staff" element={<ProtectedRoute permission="staff"><AppRoute><Staff /></AppRoute></ProtectedRoute>} />
+                <Route path="/approvals" element={<ProtectedRoute permission="dashboard"><AppRoute><Approvals /></AppRoute></ProtectedRoute>} />
                 <Route path="/settings" element={<ProtectedRoute permission="settings"><AppRoute><SettingsPage /></AppRoute></ProtectedRoute>} />
                 <Route path="/billing" element={<ProtectedRoute permission="billing"><AppRoute><Billing /></AppRoute></ProtectedRoute>} />
                 <Route path="*" element={<NotFound />} />

@@ -42,7 +42,10 @@ const Dashboard = () => {
   const { canUse } = useFeatureAccess();
   const promptUpgrade = useUpgradePrompt();
   const canAccessExpenses = canAccess("expenses");
-  const effectiveExpenses = useMemo(() => canAccessExpenses ? expenses : [], [canAccessExpenses, expenses]);
+  const effectiveExpenses = useMemo(
+    () => canAccessExpenses ? expenses.filter((expense) => (expense.approvalStatus || "approved") === "approved") : [],
+    [canAccessExpenses, expenses],
+  );
   const ruleInsights = useQuery({
     queryKey: ["rule-insights"],
     queryFn: fetchRuleInsightsApi,
@@ -428,10 +431,15 @@ const Dashboard = () => {
         </Card>
 
         <Card className="shadow-soft">
-          <CardHeader className="pb-2">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-base font-display flex items-center gap-2">
               <MessageSquare className="h-4 w-4 text-accent" /> Smart Insights
             </CardTitle>
+            {canUse("rule_insights") && (
+              <Button size="sm" variant="ghost" onClick={() => navigate("/insights")}>
+                View all
+              </Button>
+            )}
           </CardHeader>
           <CardContent className="p-4 pt-0 space-y-3">
             {(ruleInsights.data?.insights.map((item) => ({ text: item.message, type: item.severity })) ?? insights).map((ins, i) => (

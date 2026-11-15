@@ -2,13 +2,15 @@ from .google_auth import GoogleSignInView
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
-from .views import ApiKeyViewSet, ChangePasswordView, CustomTokenObtainPairView, LogoutOtherDevicesView, LogoutView, MeView, ProfileViewSet, RegisterView, ResendVerificationEmailView, StaffActivityLogViewSet, StaffLoginView, StaffViewSet, VerifyEmailView, WebhookDeliveryViewSet, WebhookEndpointViewSet
+from .views import ApiKeyRequestLogViewSet, ApiKeyViewSet, ApprovalRequestViewSet, ApprovalSettingsView, ChangePasswordView, CustomTokenObtainPairView, LogoutOtherDevicesView, LogoutView, MeView, ProfileViewSet, RegisterView, ResendVerificationEmailView, StaffActivityLogViewSet, StaffLoginView, StaffViewSet, VerifyEmailView, WebhookDeliveryViewSet, WebhookEndpointViewSet
 
 router = DefaultRouter()
 router.register("profiles", ProfileViewSet, basename="profile")
 router.register("staff", StaffViewSet, basename="staff")
 router.register("activity-logs", StaffActivityLogViewSet, basename="activity-logs")
+router.register("approval-requests", ApprovalRequestViewSet, basename="approval-requests")
 router.register("api-keys", ApiKeyViewSet, basename="api-keys")
+router.register("api-key-usage", ApiKeyRequestLogViewSet, basename="api-key-usage")
 router.register("webhooks", WebhookEndpointViewSet, basename="webhooks")
 router.register("webhook-deliveries", WebhookDeliveryViewSet, basename="webhook-deliveries")
 
@@ -19,6 +21,7 @@ urlpatterns = [
     path("resend-verification/", ResendVerificationEmailView.as_view(), name="resend_verification"),
     path("login/", CustomTokenObtainPairView.as_view(), name="login"),
     path("staff-login/", StaffLoginView.as_view(), name="staff_login"),
+    path("approval-settings/", ApprovalSettingsView.as_view(), name="approval_settings"),
     path("token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("logout/", LogoutView.as_view(), name="logout"),
     path("change-password/", ChangePasswordView.as_view(), name="change_password"),

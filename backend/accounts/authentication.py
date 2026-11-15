@@ -1,13 +1,23 @@
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import Throttled
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from django.utils import timezone
+from django.conf import settings
+from django.db import transaction
+from datetime import timedelta
 
 
 ROLE_DEFAULT_PERMISSIONS = {
     "Owner": ["*"],
+    "Administrator": ["dashboard", "inventory", "sales", "expenses", "customers", "reports", "audits", "suppliers", "staff", "settings"],
+    "Branch Manager": ["dashboard", "inventory", "sales", "expenses", "customers", "reports", "audits", "suppliers"],
     "Manager": ["dashboard", "inventory", "sales", "expenses", "customers", "reports", "audits", "suppliers"],
+    "Accountant": ["dashboard", "expenses", "customers", "reports", "suppliers", "financial"],
+    "Inventory Manager": ["dashboard", "inventory", "audits", "suppliers"],
     "Stock Manager": ["dashboard", "inventory", "audits", "suppliers"],
+    "Salesperson": ["dashboard", "sales", "customers", "inventory"],
     "Cashier": ["dashboard", "sales", "customers", "inventory"],
+    "Custom": [],
 }
 
 
@@ -16,12 +26,18 @@ PATH_PERMISSIONS = (
     ("/api/v1/sync/conflicts", "settings"),
     ("/api/v1/sync/pull", "settings"),
     ("/api/v1/accounts/api-keys", "settings"),
+    ("/api/v1/accounts/api-key-usage", "settings"),
     ("/api/v1/accounts/webhooks", "settings"),
     ("/api/v1/accounts/webhook-deliveries", "settings"),
     ("/api/v1/accounts/profiles", "settings"),
     ("/api/v1/accounts/change-password", "settings"),
     ("/api/v1/accounts/logout-other-devices", "settings"),
     ("/api/v1/accounts/activity-logs", "staff"),
+    ("/api/v1/accounts/approval-requests", "dashboard"),
+    ("/api/v1/accounts/approval-settings", "settings"),
+    ("/api/v1/reports/account-transactions", "financial"),
+    ("/api/v1/reports/account-transfers", "financial"),
+    ("/api/v1/reports/accounts", "financial"),
     ("/api/v1/inventory/supply-entries", "suppliers"),
     ("/api/v1/billing", "billing"),
     ("/api/v1/reports", "reports"),
@@ -64,6 +80,15 @@ class StaffAwareJWTAuthentication(JWTAuthentication):
             permission = "settings"
         if permission and not self.staff_can_access(token, permission):
             raise PermissionDenied("This staff account does not have access to this area.")
+        financial_path = request.path.startswith((
+            "/api/v1/reports/accounts/",
+            "/api/v1/reports/account-transactions/",
+            "/api/v1/reports/account-transfers/",
+        ))
+        if request.path.startswith("/api/v1/reports/") and not financial_path and not request.path.startswith(
+            ("/api/v1/reports/branch-overview/", "/api/v1/reports/profit-loss/")
+        ):
+            raise PermissionDenied("This report is not scoped to the staff member's authorised branch.")
         return result
 
     @staticmethod
@@ -88,7 +113,7 @@ class StaffAwareJWTAuthentication(JWTAuthentication):
         if not raw_key:
             return None
 
-        from .models import ApiKey
+        from .models import ApiKey, ApiKeyRequestLog
 
         prefix = raw_key[:18]
         candidates = ApiKey.objects.select_related("user").filter(
@@ -102,18 +127,46 @@ class StaffAwareJWTAuthentication(JWTAuthentication):
         for api_key in candidates:
             if not api_key.verify(raw_key):
                 continue
-            if api_key.expires_at and api_key.expires_at <= timezone.now():
+            now = timezone.now()
+            limited = False
+            expired = False
+            django_request = getattr(request, "_request", request)
+            with transaction.atomic():
+                locked_key = ApiKey.objects.select_for_update().select_related("user").get(pk=api_key.pk)
+                recent_requests = ApiKeyRequestLog.objects.filter(
+                    api_key=locked_key,
+                    created_at__gte=now - timedelta(hours=1),
+                ).count()
+                request.api_key = locked_key
+                django_request.api_key = locked_key
+                expired = bool(locked_key.expires_at and locked_key.expires_at <= now)
+                if recent_requests >= settings.API_KEY_REQUESTS_PER_HOUR:
+                    usage_log = ApiKeyRequestLog.objects.create(
+                        api_key=locked_key, method=request.method, path=request.path[:255], status_code=429,
+                    )
+                    request.api_key_request_log_id = usage_log.id
+                    django_request.api_key_request_log_id = usage_log.id
+                    limited = True
+                else:
+                    usage_log = ApiKeyRequestLog.objects.create(
+                        api_key=locked_key, method=request.method, path=request.path[:255],
+                    )
+                    request.api_key_request_log_id = usage_log.id
+                    django_request.api_key_request_log_id = usage_log.id
+                    if not expired:
+                        locked_key.last_used_at = now
+                        locked_key.save(update_fields=["last_used_at", "updated_at"])
+            if limited:
+                raise Throttled(wait=3600, detail="API key request limit exceeded. Try again later.")
+            if expired:
                 raise PermissionDenied("This API key has expired.")
             permission = self.permission_for_path(request.path)
             if permission is None:
                 raise PermissionDenied("API keys can only access scoped integration endpoints.")
-            permissions = api_key.permissions or []
+            permissions = locked_key.permissions or []
             if permission and "*" not in permissions and permission not in permissions:
                 raise PermissionDenied("This API key does not have access to this area.")
-            api_key.last_used_at = timezone.now()
-            api_key.save(update_fields=["last_used_at", "updated_at"])
-            request.api_key = api_key
-            return (api_key.user, api_key)
+            return (locked_key.user, locked_key)
         return None
 
 

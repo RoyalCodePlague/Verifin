@@ -1,4 +1,5 @@
 from accounts.authentication import require_area
+from accounts.branch_access import get_staff_member
 from rest_framework.exceptions import ValidationError
 from django.db import transaction
 from django.utils.dateparse import parse_datetime
@@ -194,13 +195,19 @@ class SyncPushView(APIView):
             elif action_type == "expense":
                 category_name = payload.get("categoryName") or payload.get("category_name")
                 if category_name:
-                    category, _ = ExpenseCategory.objects.get_or_create(name=category_name)
+                    subcategory_name = str(payload.pop("subcategoryName", "") or "").strip()
+                    category, _ = ExpenseCategory.objects.get_or_create(name=category_name, parent=None)
+                    if subcategory_name:
+                        category, _ = ExpenseCategory.objects.get_or_create(name=subcategory_name, parent=category)
                     payload["category"] = category.id
+                payload.pop("categoryName", None)
+                payload.pop("category_name", None)
+                payload.pop("expenseType", None)
                 serializer = ExpenseSerializer(data=payload, context={"request": request})
                 if serializer.is_valid():
                     try:
                         with transaction.atomic():
-                            serializer.save(created_by=request.user)
+                            serializer.save(created_by=request.user, created_by_staff=get_staff_member(request))
                         processed += 1
                     except ValidationError as exc:
                         errors.append({"action": action, "detail": exc.detail})

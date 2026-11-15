@@ -2,7 +2,7 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 from core.models import TimeStampedSoftDeleteModel
-from inventory.models import Product
+from inventory.models import Branch, Product
 
 
 class AuditSchedule(TimeStampedSoftDeleteModel):
@@ -22,6 +22,7 @@ class Audit(TimeStampedSoftDeleteModel):
     items_counted = models.PositiveIntegerField(default=0)
     discrepancies_found = models.PositiveIntegerField(default=0)
     conductor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="audits")
+    branch = models.ForeignKey(Branch, on_delete=models.SET_NULL, blank=True, null=True, related_name="audits")
     schedule = models.ForeignKey(
         AuditSchedule, on_delete=models.SET_NULL, blank=True, null=True, related_name="audits"
     )

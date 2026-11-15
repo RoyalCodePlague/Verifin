@@ -70,9 +70,15 @@ function saveStaffSession(staff: StaffSession) {
 
 export const ROLE_DEFAULT_PERMISSIONS: Record<string, string[]> = {
   Owner: ["*"],
+  Administrator: ["dashboard", "inventory", "sales", "expenses", "customers", "reports", "audits", "suppliers", "staff", "settings"],
+  "Branch Manager": ["dashboard", "inventory", "sales", "expenses", "customers", "reports", "audits", "suppliers"],
   Manager: ["dashboard", "inventory", "sales", "expenses", "customers", "reports", "audits", "suppliers"],
+  Accountant: ["dashboard", "expenses", "customers", "reports", "suppliers", "financial"],
+  "Inventory Manager": ["dashboard", "inventory", "audits", "suppliers"],
   "Stock Manager": ["dashboard", "inventory", "audits", "suppliers"],
+  Salesperson: ["dashboard", "sales", "customers", "inventory"],
   Cashier: ["dashboard", "sales", "customers", "inventory"],
+  Custom: [],
 };
 
 type AuthContextValue = {

@@ -18,7 +18,7 @@ it("preserves structured sales and server supply entries while loading the store
   const data = await loadServerData(user);
   expect(data.audits[0].conductor).toBe("You");
   expect(data.sales[0].customerId).toBe("2");
-  expect(data.sales[0].saleItems).toEqual([{ productName: "Bread", quantity: 3, unitPrice: 10 }]);
+  expect(data.sales[0].saleItems).toEqual([{ productName: "Bread", quantity: 3, unitPrice: 10, discountAmount: 0, returnedQuantity: 0 }]);
   expect(data.supplyEntries[0].requestId).toBe("saved-entry");
 });
 it("does not fall back to cached data when permission is denied", async () => {

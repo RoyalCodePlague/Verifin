@@ -1,20 +1,24 @@
 from django.contrib.auth import get_user_model
 from django.conf import settings
+from django.db.models import Q
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from datetime import timedelta
 import secrets
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 from billing.services import enforce_feature, enforce_limit
+from .branch_access import SENSITIVE_OPERATION_ROLE_DEFAULTS, get_staff_member, require_business_owner, scope_queryset_to_staff_branch
 from .activity import log_staff_activity
-from .models import ApiKey, Profile, Staff, StaffActivityLog, WebhookDelivery, WebhookEndpoint
+from .models import ApprovalRequest, ApprovalSettings, ApiKey, ApiKeyRequestLog, Profile, Staff, StaffActivityLog, WebhookDelivery, WebhookEndpoint
 from .permissions import IsOwnerOrManager
-from .serializers import ApiKeySerializer, ChangePasswordSerializer, CustomTokenObtainPairSerializer, ProfileSerializer, RegisterSerializer, StaffActivityLogSerializer, StaffLoginSerializer, StaffSerializer, UserSerializer, WebhookDeliverySerializer, WebhookEndpointSerializer
+from .serializers import ApiKeyRequestLogSerializer, ApiKeySerializer, ApprovalRequestSerializer, ApprovalSettingsSerializer, ChangePasswordSerializer, CustomTokenObtainPairSerializer, ProfileSerializer, RegisterSerializer, StaffActivityLogSerializer, StaffLoginSerializer, StaffSerializer, UserSerializer, WebhookDeliverySerializer, WebhookEndpointSerializer
 
 User = get_user_model()
 
@@ -168,20 +172,214 @@ class StaffViewSet(viewsets.ModelViewSet):
     search_fields = ["name", "role"]
 
     def get_queryset(self):
-        return Staff.objects.filter(user=self.request.user, is_deleted=False)
+        queryset = Staff.objects.filter(user=self.request.user, is_deleted=False)
+        return scope_queryset_to_staff_branch(self.request, queryset)
 
     def perform_create(self, serializer):
         enforce_limit(self.request.user, "users")
-        serializer.save(user=self.request.user)
+        staff = serializer.save(user=self.request.user)
+        log_staff_activity(
+            self.request.user, "staff_created", f"Created staff login for {staff.name}",
+            actor=self.request.user, request=self.request, object_type="staff", object_id=staff.id,
+            metadata={"after": {
+                "name": staff.name, "role": staff.role, "status": staff.status,
+                "branch_id": staff.branch_id, "permissions": staff.permissions,
+                "login_enabled": staff.login_enabled,
+            }},
+        )
+
+    def perform_update(self, serializer):
+        staff = serializer.instance
+        before = {
+            "name": staff.name, "role": staff.role, "status": staff.status,
+            "branch_id": staff.branch_id, "permissions": staff.permissions,
+            "login_enabled": staff.login_enabled,
+        }
+        staff = serializer.save()
+        after = {
+            "name": staff.name, "role": staff.role, "status": staff.status,
+            "branch_id": staff.branch_id, "permissions": staff.permissions,
+            "login_enabled": staff.login_enabled,
+        }
+        if before != after:
+            log_staff_activity(
+                self.request.user, "staff_updated", f"Updated staff access for {staff.name}",
+                actor=self.request.user, request=self.request, object_type="staff", object_id=staff.id,
+                metadata={"before": before, "after": after},
+            )
+
+    def perform_destroy(self, instance):
+        before = {
+            "name": instance.name, "role": instance.role, "status": instance.status,
+            "branch_id": instance.branch_id, "permissions": instance.permissions,
+            "login_enabled": instance.login_enabled,
+        }
+        instance.is_deleted = True
+        instance.save(update_fields=["is_deleted", "updated_at"])
+        log_staff_activity(
+            self.request.user, "staff_deleted", f"Deactivated staff login for {instance.name}",
+            actor=self.request.user, request=self.request, object_type="staff", object_id=instance.id,
+            metadata={"before": before, "after": {**before, "is_deleted": True}},
+        )
 
 
 class StaffActivityLogViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = StaffActivityLogSerializer
     permission_classes = [permissions.IsAuthenticated]
+    filterset_fields = ["action", "object_type", "staff_actor"]
+    search_fields = ["action", "object_type", "object_id", "summary", "actor_name", "actor__email"]
+    ordering_fields = ["created_at", "action", "object_type"]
+    ordering = ["-created_at", "-id"]
 
     def get_queryset(self):
         enforce_feature(self.request.user, "staff_activity_logs")
-        return StaffActivityLog.objects.filter(user=self.request.user, is_deleted=False)
+        return StaffActivityLog.objects.filter(
+            user=self.request.user, is_deleted=False,
+        ).select_related("actor", "staff_actor")
+
+
+class ApprovalSettingsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        settings_record, _ = ApprovalSettings.objects.get_or_create(user=request.user)
+        return Response(ApprovalSettingsSerializer(settings_record).data)
+
+    def patch(self, request):
+        if getattr(request, "api_key", None):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("API keys cannot change approval settings.")
+        require_business_owner(request)
+        settings_record, _ = ApprovalSettings.objects.get_or_create(user=request.user)
+        before = ApprovalSettingsSerializer(settings_record).data
+        serializer = ApprovalSettingsSerializer(settings_record, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        settings_record = serializer.save()
+        after = ApprovalSettingsSerializer(settings_record).data
+        if before != after:
+            log_staff_activity(
+                request.user, "approval_settings_updated", "Updated approval thresholds",
+                actor=request.user, request=request, object_type="approval_settings", object_id=settings_record.id,
+                metadata={"before": before, "after": after},
+            )
+        return Response(after)
+
+
+class ApprovalRequestViewSet(viewsets.ReadOnlyModelViewSet):
+    """Business scoped inbox for pending staff approvals and their decisions."""
+    serializer_class = ApprovalRequestSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends = []
+    ordering = ["-created_at", "-id"]
+
+    @staticmethod
+    def staff_can_review_action(staff, action_name):
+        permissions_set = set(staff.permissions or [])
+        return (
+            "*" in permissions_set
+            or action_name in permissions_set
+            or staff.role in SENSITIVE_OPERATION_ROLE_DEFAULTS.get(action_name, set())
+        )
+
+    def get_queryset(self):
+        if getattr(self.request, "api_key", None):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("API keys cannot access staff approval requests.")
+        now = timezone.now()
+        ApprovalRequest.objects.filter(
+            user=self.request.user,
+            status__in=[ApprovalRequest.STATUS_PENDING, ApprovalRequest.STATUS_APPROVED],
+            expires_at__lte=now,
+        ).update(status=ApprovalRequest.STATUS_EXPIRED, updated_at=now)
+        queryset = ApprovalRequest.objects.filter(user=self.request.user).select_related(
+            "requested_by_staff", "branch", "decided_by", "decided_by_staff",
+        )
+        staff = get_staff_member(self.request)
+        if staff is not None:
+            visible_actions = [
+                action_name for action_name, _label in ApprovalRequest.ACTION_CHOICES
+                if self.staff_can_review_action(staff, action_name)
+            ]
+            visibility = Q(requested_by_staff=staff)
+            if staff.branch_id and visible_actions:
+                visibility |= Q(branch_id=staff.branch_id, action__in=visible_actions)
+            queryset = queryset.filter(visibility)
+
+        requested_status = self.request.query_params.get("status")
+        if requested_status:
+            valid_statuses = {value for value, _label in ApprovalRequest.STATUS_CHOICES}
+            if requested_status not in valid_statuses:
+                raise serializers.ValidationError({"status": "Unknown approval request status."})
+            queryset = queryset.filter(status=requested_status)
+        return queryset.order_by("-created_at", "-id")
+
+    def _authorize_decision(self, request, approval):
+        staff = get_staff_member(request)
+        if staff is None:
+            return None
+        if staff.id == approval.requested_by_staff_id:
+            raise PermissionDenied("The staff member who requested approval cannot decide their own request.")
+        if not staff.branch_id or staff.branch_id != approval.branch_id:
+            raise PermissionDenied("This approval request belongs to a different branch.")
+        if not self.staff_can_review_action(staff, approval.action):
+            raise PermissionDenied("This staff account cannot review this action.")
+        return staff
+
+    def _decide(self, request, approval_id, decision):
+        if getattr(request, "api_key", None):
+            raise PermissionDenied("API keys cannot decide staff approval requests.")
+        with transaction.atomic():
+            approval = get_object_or_404(
+                self.get_queryset().select_for_update(), pk=approval_id,
+            )
+            deciding_staff = self._authorize_decision(request, approval)
+            if approval.status != ApprovalRequest.STATUS_PENDING:
+                return Response({"detail": "This approval request has already been decided."}, status=status.HTTP_409_CONFLICT)
+            now = timezone.now()
+            if approval.expires_at <= now:
+                approval.status = ApprovalRequest.STATUS_EXPIRED
+                approval.save(update_fields=["status", "updated_at"])
+                return Response({"detail": "This approval request has expired."}, status=status.HTTP_409_CONFLICT)
+
+            note = serializers.CharField(max_length=500, allow_blank=True, required=False).run_validation(
+                request.data.get("decision_note", "")
+            )
+            approval.status = decision
+            approval.decided_by = request.user
+            approval.decided_by_staff = deciding_staff
+            approval.decision_note = note.strip()
+            approval.decided_at = now
+            if decision == ApprovalRequest.STATUS_APPROVED:
+                # Give the requester a short window to retry the exact same operation.
+                approval.expires_at = now + timedelta(minutes=30)
+            approval.save(update_fields=[
+                "status", "decided_by", "decided_by_staff", "decision_note", "decided_at",
+                "expires_at", "updated_at",
+            ])
+            label = approval.get_action_display()
+            log_staff_activity(
+                request.user, f"approval_request_{decision}",
+                f"{label} request #{approval.id} {decision}",
+                actor=request.user, actor_staff=deciding_staff, request=request,
+                object_type="approval_request", object_id=approval.id,
+                metadata={"action": approval.action, "payload_hash": approval.payload_hash, "decision_note": approval.decision_note},
+            )
+            from notifications.models import NotificationLog
+            NotificationLog.objects.create(
+                user=approval.user,
+                type=f"approval_request_{decision}",
+                message=f"{label} request #{approval.id} was {decision}.",
+                channel="push",
+            )
+            return Response(self.get_serializer(approval).data)
+
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        return self._decide(request, pk, ApprovalRequest.STATUS_APPROVED)
+
+    @action(detail=True, methods=["post"])
+    def reject(self, request, pk=None):
+        return self._decide(request, pk, ApprovalRequest.STATUS_REJECTED)
 
 
 class ApiKeyViewSet(viewsets.ModelViewSet):
@@ -201,28 +399,41 @@ class ApiKeyViewSet(viewsets.ModelViewSet):
         api_key = serializer.save(user=request.user, created_by=request.user)
         api_key.set_key(raw_key)
         api_key.save(update_fields=["key_prefix", "key_hash", "updated_at"])
-        log_staff_activity(request.user, "api_key_created", f"Created API key {api_key.name}", actor=request.user, object_type="api_key", object_id=api_key.id)
+        log_staff_activity(request.user, "api_key_created", f"Created API key {api_key.name}", actor=request.user, request=request, object_type="api_key", object_id=api_key.id, metadata={"after": {"name": api_key.name, "permissions": api_key.permissions, "expires_at": api_key.expires_at.isoformat() if api_key.expires_at else None}})
         data = ApiKeySerializer(api_key).data
         data["raw_key"] = raw_key
         return Response(data, status=status.HTTP_201_CREATED)
 
     def perform_update(self, serializer):
         api_key = serializer.save()
-        log_staff_activity(self.request.user, "api_key_updated", f"Updated API key {api_key.name}", actor=self.request.user, object_type="api_key", object_id=api_key.id)
+        log_staff_activity(self.request.user, "api_key_updated", f"Updated API key {api_key.name}", actor=self.request.user, request=self.request, object_type="api_key", object_id=api_key.id)
 
     def perform_destroy(self, instance):
         instance.status = ApiKey.REVOKED
         instance.is_deleted = True
         instance.save(update_fields=["status", "is_deleted", "updated_at"])
-        log_staff_activity(self.request.user, "api_key_revoked", f"Revoked API key {instance.name}", actor=self.request.user, object_type="api_key", object_id=instance.id)
+        log_staff_activity(self.request.user, "api_key_revoked", f"Revoked API key {instance.name}", actor=self.request.user, request=self.request, object_type="api_key", object_id=instance.id)
 
     @action(detail=True, methods=["post"], url_path="revoke")
     def revoke(self, request, pk=None):
         api_key = self.get_object()
         api_key.status = ApiKey.REVOKED
         api_key.save(update_fields=["status", "updated_at"])
-        log_staff_activity(request.user, "api_key_revoked", f"Revoked API key {api_key.name}", actor=request.user, object_type="api_key", object_id=api_key.id)
+        log_staff_activity(request.user, "api_key_revoked", f"Revoked API key {api_key.name}", actor=request.user, request=request, object_type="api_key", object_id=api_key.id)
         return Response(ApiKeySerializer(api_key).data)
+
+
+class ApiKeyRequestLogViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = ApiKeyRequestLogSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self):
+        enforce_feature(self.request.user, "api_access")
+        return ApiKeyRequestLog.objects.filter(api_key__user=self.request.user).select_related("api_key").order_by("-created_at", "-id")
+
+    def list(self, request, *args, **kwargs):
+        return Response(self.get_serializer(self.get_queryset()[:100], many=True).data)
 
 
 class WebhookEndpointViewSet(viewsets.ModelViewSet):
@@ -244,7 +455,7 @@ class WebhookEndpointViewSet(viewsets.ModelViewSet):
         endpoint = serializer.save(user=request.user, secret_ciphertext=encrypt_webhook_secret(secret))
         log_staff_activity(
             request.user, "webhook_created", f"Created webhook {endpoint.name}",
-            actor=request.user, object_type="webhook", object_id=endpoint.id,
+            actor=request.user, request=request, object_type="webhook", object_id=endpoint.id,
         )
         data = self.get_serializer(endpoint).data
         data["secret"] = secret
@@ -254,7 +465,7 @@ class WebhookEndpointViewSet(viewsets.ModelViewSet):
         endpoint = serializer.save()
         log_staff_activity(
             self.request.user, "webhook_updated", f"Updated webhook {endpoint.name}",
-            actor=self.request.user, object_type="webhook", object_id=endpoint.id,
+            actor=self.request.user, request=self.request, object_type="webhook", object_id=endpoint.id,
         )
 
     def perform_destroy(self, instance):
@@ -263,7 +474,7 @@ class WebhookEndpointViewSet(viewsets.ModelViewSet):
         instance.save(update_fields=["is_active", "is_deleted", "updated_at"])
         log_staff_activity(
             self.request.user, "webhook_deleted", f"Deleted webhook {instance.name}",
-            actor=self.request.user, object_type="webhook", object_id=instance.id,
+            actor=self.request.user, request=self.request, object_type="webhook", object_id=instance.id,
         )
 
 

@@ -35,6 +35,9 @@ import {
   getAnalyticsConsentApi,
   getAutomationPreferencesApi,
   listApiKeysApi,
+  listApiKeyUsageApi,
+  listAutomationExecutionsApi,
+  listAutomationRulesApi,
   listWebhooksApi,
   listWebhookDeliveriesApi,
   listSyncConflicts,
@@ -43,6 +46,10 @@ import {
   pushOfflineActions,
   updateNotificationPreferencesApi,
   updateAutomationPreferencesApi,
+  createAutomationRuleApi,
+  updateAutomationRuleApi,
+  deleteAutomationRuleApi,
+  retryAutomationExecutionApi,
   updateAnalyticsConsentApi,
   revokeApiKeyApi,
   updateWebhookApi,
@@ -51,7 +58,12 @@ import {
   apiFetch,
   type ApiBranch,
   type ApiAutomationPreferences,
+  type ApiAutomationAction,
+  type ApiAutomationExecution,
+  type ApiAutomationRule,
+  type ApiAutomationTrigger,
   type ApiIntegrationKey,
+  type ApiKeyRequestLog,
   type ApiWebhookEndpoint,
   type ApiWebhookEvent,
   type ApiWebhookDelivery,
@@ -213,7 +225,7 @@ function passwordStrength(password: string) {
 }
 
 const SettingsPage = () => {
-  const { profile, setProfile, branches, upsertBranch, deleteBranch } = useStore();
+  const { profile, setProfile, branches, staff, upsertBranch, deleteBranch } = useStore();
   const { logout, refreshUser, user } = useAuth();
   const navigate = useNavigate();
   const { canUse } = useFeatureAccess();
@@ -221,16 +233,32 @@ const SettingsPage = () => {
   const multiBranchEnabled = canUse("multi_branch");
   const apiAccessEnabled = canUse("api_access");
   const promptUpgrade = useUpgradePrompt();
-  const [branchForm, setBranchForm] = useState({ name: "", code: "", phone: "", address: "" });
+  const [branchForm, setBranchForm] = useState({
+    name: "",
+    code: "",
+    phone: "",
+    email: "",
+    address: "",
+    openingDate: new Date().toISOString().slice(0, 10),
+    managerId: "",
+  });
   const [editingBranchId, setEditingBranchId] = useState<string | null>(null);
   const [branchSaving, setBranchSaving] = useState(false);
   const [branchDeleteId, setBranchDeleteId] = useState<string | null>(null);
   const [automationRules, setAutomationRules] = useState<ApiAutomationPreferences>(loadAutomationPreferences);
+  const [customAutomationRules, setCustomAutomationRules] = useState<ApiAutomationRule[]>([]);
+  const [automationExecutions, setAutomationExecutions] = useState<ApiAutomationExecution[]>([]);
+  const [automationRuleName, setAutomationRuleName] = useState("");
+  const [automationTrigger, setAutomationTrigger] = useState<ApiAutomationTrigger>("stock_below_minimum");
+  const [automationAction, setAutomationAction] = useState<ApiAutomationAction>("create_notification");
+  const [automationThreshold, setAutomationThreshold] = useState("");
+  const [automationRuleSaving, setAutomationRuleSaving] = useState(false);
   const [automationSaving, setAutomationSaving] = useState(false);
   const [automationEvents, setAutomationEvents] = useState<{rule:string;severity:string;message:string}[]>([]);
   const [analyticsEnabled, setAnalyticsEnabled] = useState(false);
   const [analyticsSaving, setAnalyticsSaving] = useState(false);
   const [apiKeys, setApiKeys] = useState<ApiIntegrationKey[]>([]);
+  const [apiKeyUsage, setApiKeyUsage] = useState<ApiKeyRequestLog[]>([]);
   const [apiKeyName, setApiKeyName] = useState("");
   const [apiKeyExpiry, setApiKeyExpiry] = useState("");
   const [apiKeyPermissions, setApiKeyPermissions] = useState<string[]>(["inventory", "sales"]);
@@ -245,6 +273,27 @@ const SettingsPage = () => {
   const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
   const [webhookSaving, setWebhookSaving] = useState(false);
   const [webhookDeleteId, setWebhookDeleteId] = useState<number | null>(null);
+  const automationActions: Record<ApiAutomationTrigger, { value: ApiAutomationAction; label: string }[]> = {
+    stock_below_minimum: [{ value: "create_notification", label: "Create notification" }],
+    customer_overdue: [{ value: "create_follow_up", label: "Create follow-up reminder" }, { value: "create_notification", label: "Create notification" }],
+    expense_exceeds_limit: [{ value: "require_manager_approval", label: "Require manager approval" }, { value: "create_notification", label: "Create notification" }],
+    purchase_order_approved: [{ value: "create_notification", label: "Notify business account" }],
+    till_session_closed: [{ value: "create_reconciliation_summary", label: "Create reconciliation summary" }, { value: "create_notification", label: "Create notification" }],
+  };
+  const automationCondition: Partial<Record<ApiAutomationTrigger, { key: string; label: string; required?: boolean }>> = {
+    stock_below_minimum: { key: "maximum_stock", label: "Maximum stock units (optional)" },
+    customer_overdue: { key: "minimum_debt_base", label: "Minimum overdue balance (optional)" },
+    expense_exceeds_limit: { key: "amount_base", label: "Expense approval limit (base currency)", required: true },
+    purchase_order_approved: { key: "minimum_amount_base", label: "Minimum order amount (optional)" },
+    till_session_closed: { key: "minimum_variance_base", label: "Minimum cash variance (optional)" },
+  };
+  const automationTriggerLabels: Record<ApiAutomationTrigger, string> = {
+    stock_below_minimum: "Stock below minimum",
+    customer_overdue: "Customer account overdue",
+    expense_exceeds_limit: "Expense exceeds limit",
+    purchase_order_approved: "Purchase order approved",
+    till_session_closed: "Till session closed",
+  };
   const updateAutomation = async (next: ApiAutomationPreferences) => {
     if (!automationEnabled) {
       promptUpgrade("automation_rules", "Automation Rules");
@@ -260,6 +309,59 @@ const SettingsPage = () => {
       toast.error(error instanceof Error ? error.message : "Could not save automation preferences.");
     } finally {
       setAutomationSaving(false);
+    }
+  };
+  const createAutomationRule = async () => {
+    if (!automationEnabled) {
+      promptUpgrade("automation_rules", "Automation Rules");
+      return;
+    }
+    const condition = automationCondition[automationTrigger];
+    if (!automationRuleName.trim() || (condition?.required && !automationThreshold)) return;
+    setAutomationRuleSaving(true);
+    try {
+      const rule = await createAutomationRuleApi({
+        name: automationRuleName.trim(),
+        trigger: automationTrigger,
+        conditions: condition && automationThreshold ? { [condition.key]: automationThreshold } : {},
+        action: automationAction,
+        enabled: true,
+      });
+      setCustomAutomationRules((current) => [...current, rule].sort((left, right) => left.name.localeCompare(right.name)));
+      setAutomationRuleName("");
+      setAutomationThreshold("");
+      toast.success("Automation rule created.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not create automation rule.");
+    } finally {
+      setAutomationRuleSaving(false);
+    }
+  };
+  const toggleAutomationRule = async (rule: ApiAutomationRule, enabled: boolean) => {
+    try {
+      const saved = await updateAutomationRuleApi(rule.id, { ...rule, enabled });
+      setCustomAutomationRules((current) => current.map((item) => item.id === saved.id ? saved : item));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update automation rule.");
+    }
+  };
+  const removeAutomationRule = async (rule: ApiAutomationRule) => {
+    try {
+      await deleteAutomationRuleApi(rule.id);
+      setCustomAutomationRules((current) => current.filter((item) => item.id !== rule.id));
+      toast.success("Automation rule deleted.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not delete automation rule.");
+    }
+  };
+  const retryAutomation = async (execution: ApiAutomationExecution) => {
+    try {
+      const result = await retryAutomationExecutionApi(execution.id);
+      setAutomationExecutions((current) => current.map((item) => item.id === result.id ? result : item));
+      if (result.status === "succeeded") toast.success("Automation retry succeeded.");
+      else toast.error(result.last_error || "Automation retry failed.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not retry automation.");
     }
   };
   const copySensitiveValue = async (value: string, label: string) => {
@@ -323,12 +425,24 @@ const SettingsPage = () => {
     name: branch.name,
     code: branch.code || "",
     phone: branch.phone || "",
+    email: branch.email || "",
     address: branch.address || "",
+    openingDate: branch.opening_date || "",
+    managerId: branch.manager ? String(branch.manager) : "",
+    managerName: branch.manager_name || "",
     isPrimary: branch.is_primary,
   });
 
   const resetBranchForm = () => {
-    setBranchForm({ name: "", code: "", phone: "", address: "" });
+    setBranchForm({
+      name: "",
+      code: "",
+      phone: "",
+      email: "",
+      address: "",
+      openingDate: new Date().toISOString().slice(0, 10),
+      managerId: "",
+    });
     setEditingBranchId(null);
   };
 
@@ -352,7 +466,10 @@ const SettingsPage = () => {
         name: branchForm.name.trim(),
         code: branchForm.code.trim(),
         phone: branchForm.phone.trim(),
+        email: branchForm.email.trim(),
         address: branchForm.address.trim(),
+        opening_date: branchForm.openingDate,
+        manager: editingBranchId && branchForm.managerId ? Number(branchForm.managerId) : null,
       };
       if (editingBranchId) {
         const saved = await updateBranchApi(editingBranchId, payload);
@@ -588,16 +705,24 @@ const SettingsPage = () => {
     void apiFetch<{alerts:{rule:string;severity:string;message:string}[]}>('/api/v1/reports/automation-alerts/')
       .then(result => { if (!cancelled) setAutomationEvents(result.alerts || []); })
       .catch((error) => { if (!cancelled) toast.error(error instanceof Error ? error.message : "Could not load automation alerts."); });
+    void Promise.all([listAutomationRulesApi(), listAutomationExecutionsApi()])
+      .then(([rules, executions]) => {
+        if (cancelled) return;
+        setCustomAutomationRules(rules);
+        setAutomationExecutions(executions.slice(0, 20));
+      })
+      .catch((error) => { if (!cancelled) toast.error(error instanceof Error ? error.message : "Could not load automation rules."); });
     return () => { cancelled = true; };
   }, [automationEnabled]);
 
   useEffect(() => {
     if (!getAccessToken() || !apiAccessEnabled) return;
     let cancelled = false;
-    void Promise.all([listApiKeysApi(), listWebhooksApi(), listWebhookDeliveriesApi()])
-      .then(([keys, endpoints, deliveries]) => {
+    void Promise.all([listApiKeysApi(), listWebhooksApi(), listWebhookDeliveriesApi(), listApiKeyUsageApi()])
+      .then(([keys, endpoints, deliveries, usage]) => {
         if (cancelled) return;
         setApiKeys(keys);
+        setApiKeyUsage(usage.slice(0, 10));
         setWebhooks(endpoints);
         setWebhookDeliveries(deliveries);
       })
@@ -1000,7 +1125,25 @@ const SettingsPage = () => {
             <div><Label>Branch name</Label><Input className="mt-1" maxLength={120} value={branchForm.name} onChange={(event) => setBranchForm({ ...branchForm, name: event.target.value })} /></div>
             <div><Label>Branch code</Label><Input className="mt-1" maxLength={30} value={branchForm.code} onChange={(event) => setBranchForm({ ...branchForm, code: event.target.value })} /></div>
             <div><Label>Phone</Label><Input className="mt-1" maxLength={30} value={branchForm.phone} onChange={(event) => setBranchForm({ ...branchForm, phone: event.target.value })} /></div>
+            <div><Label>Email</Label><Input className="mt-1" type="email" maxLength={254} value={branchForm.email} onChange={(event) => setBranchForm({ ...branchForm, email: event.target.value })} /></div>
             <div><Label>Address</Label><Input className="mt-1" maxLength={255} value={branchForm.address} onChange={(event) => setBranchForm({ ...branchForm, address: event.target.value })} /></div>
+            <div><Label>Opening date</Label><Input className="mt-1" type="date" value={branchForm.openingDate} onChange={(event) => setBranchForm({ ...branchForm, openingDate: event.target.value })} /></div>
+            {editingBranchId && (
+              <div>
+                <Label>Branch manager</Label>
+                <select
+                  className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={branchForm.managerId}
+                  onChange={(event) => setBranchForm({ ...branchForm, managerId: event.target.value })}
+                >
+                  <option value="">No manager assigned</option>
+                  {staff.filter((member) => member.branchId === editingBranchId && member.status === "Active").map((member) => (
+                    <option key={member.id} value={member.id}>{member.name}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-muted-foreground">Assign the manager to this branch in Team settings first.</p>
+              </div>
+            )}
           </div>
           <div className="flex gap-2">
             <Button onClick={() => void saveBranch()} disabled={branchSaving}>
@@ -1014,11 +1157,11 @@ const SettingsPage = () => {
                 <div key={branch.id} className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
                     <p className="font-medium">{branch.name} {branch.isPrimary && <span className="text-xs text-primary">(Primary)</span>}</p>
-                    <p className="text-xs text-muted-foreground">{[branch.code, branch.phone, branch.address].filter(Boolean).join(" · ") || "No additional details"}</p>
+                    <p className="text-xs text-muted-foreground">{[branch.code, branch.phone, branch.email, branch.address, branch.openingDate ? `Opened ${branch.openingDate}` : "", branch.managerName ? `Manager: ${branch.managerName}` : ""].filter(Boolean).join(" · ") || "No additional details"}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {!branch.isPrimary && <Button variant="outline" size="sm" onClick={() => void setPrimaryBranch(branch.id)}>Set Primary</Button>}
-                    <Button variant="outline" size="sm" onClick={() => { setEditingBranchId(branch.id); setBranchForm({ name: branch.name, code: branch.code, phone: branch.phone, address: branch.address }); }}>Edit</Button>
+                    <Button variant="outline" size="sm" onClick={() => { setEditingBranchId(branch.id); setBranchForm({ name: branch.name, code: branch.code, phone: branch.phone, email: branch.email || "", address: branch.address, openingDate: branch.openingDate || "", managerId: branch.managerId || "" }); }}>Edit</Button>
                     <Button variant="destructive" size="sm" onClick={() => setBranchDeleteId(branch.id)}>Delete</Button>
                   </div>
                 </div>
@@ -1238,13 +1381,49 @@ const SettingsPage = () => {
           <div className="grid gap-3 sm:grid-cols-2"><label className="text-sm">Alert severity<select disabled={automationSaving} className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={automationRules.severity} onChange={e=>{void updateAutomation({...automationRules,severity:e.target.value as ApiAutomationPreferences["severity"]});}}><option value="info">Informational</option><option value="warning">Warning</option><option value="critical">Critical</option></select></label><label className="text-sm">Notification channel<select disabled={automationSaving} className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={automationRules.channel} onChange={e=>{void updateAutomation({...automationRules,channel:e.target.value as ApiAutomationPreferences["channel"]});}}><option value="in_app">In app</option><option value="email">Email preference</option><option value="whatsapp">WhatsApp preference</option></select></label></div>
           <p className="text-xs text-muted-foreground">Save Settings after changing email consent. Daily email digests are sent to your account email only when you choose Email and enable email delivery consent. WhatsApp remains a manual preference.</p>
           <div className="space-y-2"><p className="text-sm font-medium">Recent rule evaluations</p>{automationEvents.length ? automationEvents.map((event,index)=><div key={`${event.rule}-${index}`} className="rounded-md border p-3"><p className="text-sm font-medium">{event.message}</p><p className="text-xs capitalize text-muted-foreground">{event.rule.replace(/_/g," ")} · {event.severity}</p></div>) : <p className="rounded-md border p-3 text-sm text-muted-foreground">No active alerts right now.</p>}</div>
+          <div className="space-y-4 border-t pt-4">
+            <div>
+              <h3 className="text-sm font-semibold">Configurable business rules</h3>
+              <p className="mt-1 text-sm text-muted-foreground">Rules run on committed business events. Stock and overdue account rules are evaluated by the scheduled automation worker.</p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div><Label htmlFor="automation-rule-name">Rule name</Label><Input id="automation-rule-name" maxLength={120} value={automationRuleName} onChange={(event) => setAutomationRuleName(event.target.value)} placeholder="e.g. Alert on overdue debt" className="mt-1" /></div>
+              <label className="text-sm">When<select aria-label="Automation trigger" className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={automationTrigger} onChange={(event) => { const trigger = event.target.value as ApiAutomationTrigger; setAutomationTrigger(trigger); setAutomationAction(automationActions[trigger][0].value); setAutomationThreshold(""); }}>
+                {(Object.keys(automationTriggerLabels) as ApiAutomationTrigger[]).map((trigger) => <option key={trigger} value={trigger}>{automationTriggerLabels[trigger]}</option>)}
+              </select></label>
+              <label className="text-sm">Then<select aria-label="Automation action" className="mt-1 h-10 w-full rounded-md border bg-background px-3" value={automationAction} onChange={(event) => setAutomationAction(event.target.value as ApiAutomationAction)}>
+                {automationActions[automationTrigger].map((action) => <option key={action.value} value={action.value}>{action.label}</option>)}
+              </select></label>
+              {automationCondition[automationTrigger] ? <div><Label htmlFor="automation-threshold">{automationCondition[automationTrigger]?.label}</Label><Input id="automation-threshold" aria-label={automationCondition[automationTrigger]?.label} type="number" min="0" step={automationTrigger === "stock_below_minimum" ? "1" : "0.01"} value={automationThreshold} onChange={(event) => setAutomationThreshold(event.target.value)} className="mt-1" /></div> : null}
+            </div>
+            <Button disabled={automationRuleSaving || !automationRuleName.trim() || Boolean(automationCondition[automationTrigger]?.required && !automationThreshold)} onClick={() => void createAutomationRule()}>
+              {automationRuleSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}Add rule
+            </Button>
+            <div className="space-y-2">
+              {customAutomationRules.length ? customAutomationRules.map((rule) => (
+                <div key={rule.id} className="flex flex-col gap-3 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0"><p className="truncate text-sm font-medium">{rule.name}</p><p className="text-xs text-muted-foreground">{automationTriggerLabels[rule.trigger]} · {rule.action.replace(/_/g, " ")}{Object.keys(rule.conditions).length ? ` · ${Object.entries(rule.conditions).map(([key, value]) => `${key.replace(/_/g, " ")}: ${value}`).join(", ")}` : ""}</p></div>
+                  <div className="flex items-center gap-3"><Switch aria-label={`Enable ${rule.name}`} checked={rule.enabled} onCheckedChange={(checked) => void toggleAutomationRule(rule, checked)} /><Button variant="ghost" size="sm" onClick={() => void removeAutomationRule(rule)}>Delete</Button></div>
+                </div>
+              )) : <p className="rounded-md border p-3 text-sm text-muted-foreground">No configurable rules yet. Create one to automate a business workflow.</p>}
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Execution history</p>
+              {automationExecutions.length ? automationExecutions.map((execution) => (
+                <div key={execution.id} className="flex flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0"><p className="text-sm font-medium">{execution.rule_name} · <span className="capitalize">{execution.status}</span></p><p className="text-xs text-muted-foreground">{execution.message || execution.last_error || `${execution.object_type} #${execution.object_id}`} · {new Date(execution.created_at).toLocaleString()} · {execution.attempts} attempt{execution.attempts === 1 ? "" : "s"}</p>{execution.last_error ? <p className="mt-1 text-xs text-destructive">{execution.last_error}</p> : null}</div>
+                  {execution.status === "failed" ? <Button variant="outline" size="sm" onClick={() => void retryAutomation(execution)}>Retry</Button> : null}
+                </div>
+              )) : <p className="rounded-md border p-3 text-sm text-muted-foreground">No automation executions have been recorded yet.</p>}
+            </div>
+          </div>
         </CardContent>
       </Card>
 
       <Card className="shadow-soft">
         <CardHeader><CardTitle className="font-display flex items-center gap-2 text-base">API keys {!apiAccessEnabled && <LockedBadge />}</CardTitle></CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">Create scoped keys for integrations. The full key is shown only once; store it securely and revoke it if it is exposed.</p>
+          <p className="text-sm text-muted-foreground">Create scoped keys for integrations. The full key is shown only once. Requests are limited to {apiKeys[0]?.rate_limit_per_hour ?? 1000} per key each hour, with status and response time recorded.</p>
           <div className="grid gap-3 md:grid-cols-2">
             <div><Label htmlFor="api-key-name">Key name</Label><Input id="api-key-name" maxLength={120} value={apiKeyName} onChange={(event) => setApiKeyName(event.target.value)} placeholder="e.g. Warehouse sync" className="mt-1" /></div>
             <div><Label htmlFor="api-key-expiry">Optional expiration</Label><Input id="api-key-expiry" type="datetime-local" value={apiKeyExpiry} onChange={(event) => setApiKeyExpiry(event.target.value)} className="mt-1" /></div>
@@ -1287,6 +1466,17 @@ const SettingsPage = () => {
                 {key.status === "active" ? <Button variant="outline" size="sm" disabled={apiKeySaving} onClick={() => setApiKeyRevokeId(key.id)}>Revoke</Button> : null}
               </div>
             )) : <p className="text-sm text-muted-foreground">No API keys have been created.</p>}
+          </div>
+          <div className="border-t pt-4">
+            <h3 className="text-sm font-semibold">Recent API requests</h3>
+            <div className="mt-3 space-y-2">
+              {apiKeyUsage.length ? apiKeyUsage.map((item) => (
+                <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3 text-xs">
+                  <div className="min-w-0"><p className="font-medium">{item.api_key_name} · {item.method} {item.path}</p><p className="text-muted-foreground">{new Date(item.created_at).toLocaleString()}</p></div>
+                  <span className="text-muted-foreground">{item.status_code ?? "Pending"} · {item.response_time_ms == null ? "—" : `${item.response_time_ms} ms`}</span>
+                </div>
+              )) : <p className="text-sm text-muted-foreground">No API requests have been recorded yet.</p>}
+            </div>
           </div>
           <div className="border-t pt-4">
             <h3 className="text-sm font-semibold">Webhooks</h3>

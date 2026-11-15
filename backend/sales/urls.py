@@ -11,6 +11,8 @@ till_detail = TillSessionViewSet.as_view({"get": "retrieve", "patch": "partial_u
 till_current = TillSessionViewSet.as_view({"get": "current"})
 till_summary = TillSessionViewSet.as_view({"get": "summary"})
 till_close = TillSessionViewSet.as_view({"post": "close"})
+till_review = TillSessionViewSet.as_view({"post": "review"})
+till_cash_movements = TillSessionViewSet.as_view({"get": "cash_movements", "post": "cash_movements"})
 
 urlpatterns = [
     path("tills/", till_list),
@@ -18,5 +20,7 @@ urlpatterns = [
     path("tills/summary/", till_summary),
     path("tills/<int:pk>/", till_detail),
     path("tills/<int:pk>/close/", till_close),
+    path("tills/<int:pk>/review/", till_review),
+    path("tills/<int:pk>/cash-movements/", till_cash_movements),
     path("", include(router.urls)),
 ]

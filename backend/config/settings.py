@@ -70,8 +70,10 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
+    "accounts.middleware.ApiKeyUsageLogMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+API_KEY_REQUESTS_PER_HOUR = max(int(os.getenv("API_KEY_REQUESTS_PER_HOUR", "1000")), 1)
 
 ROOT_URLCONF = "config.urls"
 TEMPLATES = [
@@ -166,6 +168,7 @@ REST_FRAMEWORK = {
     "DEFAULT_VERSIONING_CLASS": "rest_framework.versioning.URLPathVersioning",
     "DEFAULT_VERSION": "v1",
     "ALLOWED_VERSIONS": ["v1"],
+    "EXCEPTION_HANDLER": "accounts.exceptions.api_exception_handler",
 }
 
 SIMPLE_JWT = {

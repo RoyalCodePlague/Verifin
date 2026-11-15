@@ -2,6 +2,7 @@ from django.contrib.auth.models import AbstractUser
 from django.contrib.auth.hashers import check_password, make_password
 from django.db import models
 from django.utils import timezone
+from decimal import Decimal
 import secrets
 import string
 from core.models import TimeStampedSoftDeleteModel
@@ -69,13 +70,25 @@ class Profile(TimeStampedSoftDeleteModel):
 
 class Staff(TimeStampedSoftDeleteModel):
     OWNER = "Owner"
+    ADMINISTRATOR = "Administrator"
+    BRANCH_MANAGER = "Branch Manager"
     CASHIER = "Cashier"
+    SALESPERSON = "Salesperson"
     STOCK_MANAGER = "Stock Manager"
+    INVENTORY_MANAGER = "Inventory Manager"
+    ACCOUNTANT = "Accountant"
+    CUSTOM = "Custom"
     MANAGER = "Manager"
     ROLE_CHOICES = [
         (OWNER, OWNER),
+        (ADMINISTRATOR, ADMINISTRATOR),
+        (BRANCH_MANAGER, BRANCH_MANAGER),
         (CASHIER, CASHIER),
+        (SALESPERSON, SALESPERSON),
         (STOCK_MANAGER, STOCK_MANAGER),
+        (INVENTORY_MANAGER, INVENTORY_MANAGER),
+        (ACCOUNTANT, ACCOUNTANT),
+        (CUSTOM, CUSTOM),
         (MANAGER, MANAGER),
     ]
     ACTIVE = "Active"
@@ -111,9 +124,75 @@ class Staff(TimeStampedSoftDeleteModel):
         return check_password(raw_password, self.password)
 
 
+class ApprovalSettings(TimeStampedSoftDeleteModel):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="approval_settings")
+    discount_percent_threshold = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("20.00"), blank=True, null=True)
+    refund_amount_base_threshold = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("100.00"), blank=True, null=True)
+    stock_adjustment_units_threshold = models.PositiveIntegerField(default=10, blank=True, null=True)
+    supplier_payment_amount_base_threshold = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("500.00"), blank=True, null=True)
+    purchase_order_amount_base_threshold = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("500.00"), blank=True, null=True)
+
+
+class ApprovalRequest(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_APPROVED = "approved"
+    STATUS_REJECTED = "rejected"
+    STATUS_CONSUMED = "consumed"
+    STATUS_EXPIRED = "expired"
+    ACTION_CHOICES = [
+        ("sales.void", "Void sale"),
+        ("sales.discount_approve", "Approve discount"),
+        ("sales.refund", "Approve refund"),
+        ("inventory.adjust", "Adjust inventory"),
+        ("suppliers.pay", "Pay supplier"),
+        ("purchasing.approve", "Approve purchase order"),
+        ("till.review", "Review till"),
+        ("financial.adjust", "Adjust financial account"),
+    ]
+    STATUS_CHOICES = [
+        ("pending", "Pending"),
+        ("approved", "Approved"),
+        ("rejected", "Rejected"),
+        ("consumed", "Consumed"),
+        ("expired", "Expired"),
+    ]
+
+    user = models.ForeignKey(User, related_name="approval_requests", on_delete=models.CASCADE)
+    requested_by_staff = models.ForeignKey(Staff, related_name="approval_requests", on_delete=models.CASCADE)
+    branch = models.ForeignKey("inventory.Branch", blank=True, null=True, related_name="approval_requests", on_delete=models.SET_NULL)
+    action = models.CharField(max_length=40, choices=ACTION_CHOICES)
+    payload = models.JSONField(default=dict)
+    payload_hash = models.CharField(max_length=64, db_index=True)
+    summary = models.CharField(max_length=255)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="pending", db_index=True)
+    decided_by = models.ForeignKey(User, related_name="decided_approval_requests", blank=True, null=True, on_delete=models.SET_NULL)
+    decided_by_staff = models.ForeignKey(Staff, related_name="decided_approval_requests", blank=True, null=True, on_delete=models.SET_NULL)
+    decision_note = models.CharField(max_length=500, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    expires_at = models.DateTimeField()
+    decided_at = models.DateTimeField(blank=True, null=True)
+    consumed_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["requested_by_staff", "action", "payload_hash"],
+                condition=models.Q(status="pending"),
+                name="unique_pending_staff_approval_payload",
+            ),
+        ]
+        indexes = [models.Index(fields=["user", "status", "created_at"])]
+
+
 class StaffActivityLog(TimeStampedSoftDeleteModel):
     user = models.ForeignKey(User, related_name="staff_activity_logs", on_delete=models.CASCADE)
     actor = models.ForeignKey(User, related_name="performed_activity_logs", on_delete=models.SET_NULL, blank=True, null=True)
+    staff_actor = models.ForeignKey(
+        Staff, related_name="activity_logs", on_delete=models.SET_NULL, blank=True, null=True,
+    )
+    actor_name = models.CharField(max_length=255, blank=True)
     action = models.CharField(max_length=80)
     object_type = models.CharField(max_length=80, blank=True)
     object_id = models.CharField(max_length=80, blank=True)
@@ -148,6 +227,19 @@ class ApiKey(TimeStampedSoftDeleteModel):
     def set_key(self, raw_key):
         self.key_prefix = raw_key[:18]
         self.key_hash = make_password(raw_key)
+
+
+class ApiKeyRequestLog(models.Model):
+    api_key = models.ForeignKey(ApiKey, related_name="request_logs", on_delete=models.CASCADE)
+    method = models.CharField(max_length=10)
+    path = models.CharField(max_length=255)
+    status_code = models.PositiveSmallIntegerField(blank=True, null=True)
+    response_time_ms = models.PositiveIntegerField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [models.Index(fields=["api_key", "created_at"])]
 
 
 class WebhookEndpoint(TimeStampedSoftDeleteModel):

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { closeTillApi, createSaleApi, deleteSaleApi, fetchReceiptApi, fetchWhatsAppReceiptApi, getCurrentTillApi, openTillApi, type ApiTillSession } from "@/lib/api";
+import { closeTillApi, createSaleApi, createTillCashMovementApi, deleteSaleApi, fetchReceiptApi, fetchWhatsAppReceiptApi, getCurrentTillApi, listExpensesApi, listFinancialAccountsApi, listTillSessionsApi, openTillApi, reviewTillApi, type ApiExpense, type ApiFinancialAccount, type ApiTillCashMovement, type ApiTillSession } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { addToOfflineQueue, canQueueOfflineAction } from "@/lib/offlineQueue";
 import { motion } from "framer-motion";
@@ -25,9 +25,9 @@ interface SaleLineItem {
   productName: string;
   quantity: number;
   unitPrice: number;
+  discountAmount: number;
 }
 
-const SHOW_TILL_CONTROLS = false;
 const SHOW_SPLIT_PAYMENT = false;
 
 function roundMoney(value: number) {
@@ -42,7 +42,7 @@ const Sales = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { sales, deleteSale, profile, products, customers, branches, addSale } = useStore();
-  const { refreshUser } = useAuth();
+  const { refreshUser, isStaffSession, staffSession } = useAuth();
   const { canUse } = useFeatureAccess();
   const promptUpgrade = useUpgradePrompt();
   const canUseMultiBranch = canUse("multi_branch");
@@ -60,22 +60,67 @@ const Sales = () => {
   const [firstSalePrompt, setFirstSalePrompt] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [till, setTill] = useState<ApiTillSession | null>(null);
-  const [tillForm, setTillForm] = useState({ cashier: "", openingCash: "0", closingCash: "" });
-  const [method, setMethod] = useState<"Cash" | "EFT" | "Card">("Cash");
+  const [tillHistory, setTillHistory] = useState<ApiTillSession[]>([]);
+  const [tillExpenses, setTillExpenses] = useState<ApiExpense[]>([]);
+  const [tillExpensesError, setTillExpensesError] = useState("");
+  const [savingTillMovement, setSavingTillMovement] = useState(false);
+  const [tillMovementForm, setTillMovementForm] = useState({
+    movementType: "withdrawal" as ApiTillCashMovement["movement_type"],
+    amount: "",
+    expense: "",
+    note: "",
+  });
+  const [tillForm, setTillForm] = useState({ cashier: "", openingCash: "0", closingCash: "", notes: "" });
+  const [reviewDialogSession, setReviewDialogSession] = useState<ApiTillSession | null>(null);
+  const [tillReviewNote, setTillReviewNote] = useState("");
+  const [tillReviewSaving, setTillReviewSaving] = useState(false);
+  const [tillHistoryError, setTillHistoryError] = useState("");
+  const canReviewTills = !isStaffSession || ["Owner", "Manager"].includes(staffSession?.role || "");
+  const [method, setMethod] = useState<"Cash" | "EFT" | "Card" | "Credit">("Cash");
+  const [creditPaidAmount, setCreditPaidAmount] = useState("0");
+  const [creditPaymentMethod, setCreditPaymentMethod] = useState<"Cash" | "EFT" | "Card">("Cash");
+  const [creditDueDate, setCreditDueDate] = useState("");
   const [lineItems, setLineItems] = useState<SaleLineItem[]>([]);
   const [selectedProduct, setSelectedProduct] = useState("");
   const [barcodeInput, setBarcodeInput] = useState("");
   const [qty, setQty] = useState("1");
   const [paymentCurrency, setPaymentCurrency] = useState(profile.currency);
+  const [financialAccounts, setFinancialAccounts] = useState<ApiFinancialAccount[]>([]);
+  const [paymentAccountId, setPaymentAccountId] = useState("");
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [paymentRate, setPaymentRate] = useState("");
   const [canUseCameraScan, setCanUseCameraScan] = useState(false);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
   const saleIntegrationIdRef = useRef<string | null>(null);
+  const tillMovementKeyRef = useRef<string | null>(null);
   const baseCurrency = profile.currency || "ZAR";
   const sym = profile.currencySymbol || symbolForCurrency(baseCurrency);
   const enabledCurrencies = profile.enabledCurrencies?.length ? profile.enabledCurrencies : [baseCurrency];
   const secondaryCurrency = enabledCurrencies.find((code) => code !== baseCurrency) || "";
+  const effectivePaymentCurrency = method === "Credit" ? baseCurrency : paymentCurrency;
+  const availablePaymentAccounts = financialAccounts.filter((account) =>
+    account.is_active && account.currency.toUpperCase() === effectivePaymentCurrency.toUpperCase()
+    && account.opening_date <= new Date().toISOString().slice(0, 10)
+  );
+  const linkedTillExpenseIds = new Set((till?.cash_movements || [])
+    .map((movement) => movement.expense)
+    .filter((id): id is number => id !== null));
+  const eligibleTillExpenses = tillExpenses.filter((expense) => {
+    if (linkedTillExpenseIds.has(expense.id) || expense.approval_status === "rejected" || expense.branch !== (till?.branch ?? null)) return false;
+    return (expense.payment_allocations || []).every((allocation) => {
+      if (!allocation.account) return true;
+      return financialAccounts.find((account) => account.id === allocation.account)?.account_type === "cash";
+    });
+  });
+
+  useEffect(() => {
+    listFinancialAccountsApi().then((accounts) => {
+      const active = accounts.filter((account) => account.is_active);
+      setFinancialAccounts(active);
+      const baseAccounts = active.filter((account) => account.currency.toUpperCase() === baseCurrency.toUpperCase());
+      if (baseAccounts.length === 1) setPaymentAccountId(String(baseAccounts[0].id));
+    }).catch(() => setFinancialAccounts([]));
+  }, [baseCurrency]);
 
   useEffect(() => {
     if (!canUseMultiBranch) {
@@ -87,9 +132,35 @@ const Sales = () => {
   }, [branches, canUseMultiBranch, selectedBranchId]);
 
   useEffect(() => {
-    if (!SHOW_TILL_CONTROLS) return;
     getCurrentTillApi().then(setTill).catch(() => setTill(null));
+    let cancelled = false;
+    listTillSessionsApi()
+      .then((sessions) => {
+        if (!cancelled) {
+          setTillHistory(sessions);
+          setTillHistoryError("");
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) setTillHistoryError(error instanceof Error ? error.message : "Till history could not be loaded.");
+      });
+    return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    if (!till?.id) {
+      setTillExpenses([]);
+      setTillExpensesError("");
+      return;
+    }
+    listExpensesApi().then((rows) => {
+      setTillExpenses(rows);
+      setTillExpensesError("");
+    }).catch((error) => {
+      setTillExpenses([]);
+      setTillExpensesError(error instanceof Error ? error.message : "Cash expenses could not be loaded.");
+    });
+  }, [till?.id]);
 
   useEffect(() => {
     setPaymentCurrency(profile.currency);
@@ -149,7 +220,7 @@ const Sales = () => {
   const transactionChangeLabel = previousDaySales.length > 0
     ? `${todayCount - previousDaySales.length >= 0 ? "+" : ""}${todayCount - previousDaySales.length} vs yesterday`
     : todayCount > 0 ? "No prior-day baseline" : "No transactions today";
-  const saleTotal = lineItems.reduce((sum, l) => sum + l.quantity * l.unitPrice, 0);
+  const saleTotal = lineItems.reduce((sum, l) => sum + l.quantity * (l.unitPrice - l.discountAmount), 0);
   const alternateCurrency = SHOW_SPLIT_PAYMENT
     ? paymentCurrency === baseCurrency ? secondaryCurrency : baseCurrency
     : "";
@@ -170,6 +241,9 @@ const Sales = () => {
 
   const resetPaymentForm = () => {
     setMethod("Cash");
+    setCreditPaidAmount("0");
+    setCreditPaymentMethod("Cash");
+    setCreditDueDate("");
     setPaymentCurrency(baseCurrency);
     setPaymentRate("");
   };
@@ -202,7 +276,7 @@ const Sales = () => {
       }
       setLineItems(newItems);
     } else {
-      setLineItems([...lineItems, { productId: product.id, productName: product.name, quantity, unitPrice }]);
+      setLineItems([...lineItems, { productId: product.id, productName: product.name, quantity, unitPrice, discountAmount: 0 }]);
     }
     return true;
   };
@@ -243,12 +317,19 @@ const Sales = () => {
   };
 
   const paymentAllocations = useMemo(() => {
-    const rows: Array<{ currency: string; amount: number; fx_rate_to_base?: number }> = [];
+    const rows: Array<{ currency: string; amount: number; fx_rate_to_base?: number; account?: number }> = [];
+    if (method === "Credit") {
+      const amount = Number(creditPaidAmount);
+      const account = availablePaymentAccounts.find((candidate) => String(candidate.id) === paymentAccountId);
+      if (Number.isFinite(amount) && amount > 0) rows.push({ currency: baseCurrency, amount, ...(account ? { account: account.id } : {}) });
+      return rows;
+    }
     if (SHOW_SPLIT_PAYMENT && alternateCurrency && splitAmountValue > 0) {
       rows.push({
         currency: alternateCurrency,
         amount: splitAmountValue,
         fx_rate_to_base: alternateCurrency === baseCurrency ? undefined : alternateFxRate,
+        ...(availablePaymentAccounts.find((candidate) => String(candidate.id) === paymentAccountId && candidate.currency === alternateCurrency) ? { account: Number(paymentAccountId) } : {}),
       });
     }
     if (saleTotal > 0) {
@@ -256,10 +337,11 @@ const Sales = () => {
         currency: paymentCurrency,
         amount: primaryAmountPreview,
         fx_rate_to_base: paymentCurrency === baseCurrency ? undefined : paymentFxRate,
+        ...(availablePaymentAccounts.find((candidate) => String(candidate.id) === paymentAccountId) ? { account: Number(paymentAccountId) } : {}),
       });
     }
     return rows.filter((row) => row.amount > 0);
-  }, [alternateCurrency, splitAmountValue, alternateFxRate, baseCurrency, saleTotal, paymentCurrency, primaryAmountPreview, paymentFxRate]);
+  }, [method, creditPaidAmount, alternateCurrency, splitAmountValue, alternateFxRate, baseCurrency, saleTotal, paymentCurrency, primaryAmountPreview, paymentFxRate, availablePaymentAccounts, paymentAccountId]);
 
   const createOfflineSale = () => {
     addSale({
@@ -273,6 +355,7 @@ const Sales = () => {
         currency: row.currency,
         amount: row.amount,
         amountBase: roundMoney(row.amount * (row.fx_rate_to_base || 1)),
+        account: row.account,
       })),
       saleItems: lineItems,
       customerId: selectedCustomerId || undefined,
@@ -295,7 +378,16 @@ const Sales = () => {
       return;
     }
 
-    if (paymentCurrency !== baseCurrency && paymentFxRate <= 0) {
+    if (method === "Credit" && !selectedCustomerId) {
+      toast.error("Select a customer before recording a credit sale.");
+      return;
+    }
+    const paidOnCreditSale = Number(creditPaidAmount);
+    if (method === "Credit" && (!Number.isFinite(paidOnCreditSale) || paidOnCreditSale < 0 || paidOnCreditSale > saleTotal)) {
+      toast.error("Enter a payment amount between zero and the sale total.");
+      return;
+    }
+    if (method !== "Credit" && paymentCurrency !== baseCurrency && paymentFxRate <= 0) {
       toast.error(`Enter a valid rate for ${paymentCurrency}.`);
       return;
     }
@@ -314,8 +406,9 @@ const Sales = () => {
 
     const apiPayload = {
       integration_id: integrationId,
-      payment_method: method,
-      payment_currency: paymentCurrency,
+      payment_method: method === "Credit" ? (paidOnCreditSale > 0 ? creditPaymentMethod : "Credit") : method,
+      payment_currency: method === "Credit" ? baseCurrency : paymentCurrency,
+      ...(method === "Credit" && creditDueDate ? { due_date: creditDueDate } : {}),
       branch: till?.branch ?? (selectedBranchId ? Number(selectedBranchId) : null),
       till_session: till?.id || null,
       customer: selectedCustomerId ? Number(selectedCustomerId) : null,
@@ -323,13 +416,15 @@ const Sales = () => {
         product: parseInt(l.productId, 10),
         quantity: l.quantity,
         unit_price: l.unitPrice.toFixed(2),
-        subtotal: (l.quantity * l.unitPrice).toFixed(2),
+        discount_amount: l.discountAmount.toFixed(2),
+        subtotal: (l.quantity * (l.unitPrice - l.discountAmount)).toFixed(2),
       })),
     };
     const offlinePayload = {
       integration_id: integrationId,
-      payment_method: method,
-      payment_currency: paymentCurrency,
+      payment_method: method === "Credit" ? (paidOnCreditSale > 0 ? creditPaymentMethod : "Credit") : method,
+      payment_currency: method === "Credit" ? baseCurrency : paymentCurrency,
+      ...(method === "Credit" && creditDueDate ? { due_date: creditDueDate } : {}),
       branch: till?.branch ?? (selectedBranchId ? Number(selectedBranchId) : null),
       till_session: till?.id || null,
       customer: selectedCustomerId ? Number(selectedCustomerId) : null,
@@ -341,7 +436,8 @@ const Sales = () => {
           product_name: l.productName,
           quantity: l.quantity,
           unit_price: l.unitPrice.toFixed(2),
-          subtotal: (l.quantity * l.unitPrice).toFixed(2),
+          discount_amount: l.discountAmount.toFixed(2),
+          subtotal: (l.quantity * (l.unitPrice - l.discountAmount)).toFixed(2),
         };
       }),
     };
@@ -353,8 +449,15 @@ const Sales = () => {
           currency: row.currency,
           amount: row.amount.toFixed(2),
           fx_rate_to_base: row.fx_rate_to_base,
+          account: row.account,
         })),
       });
+    }
+
+    if (method === "Credit" && !navigator.onLine) {
+      toast.error("Credit sales need an internet connection so the customer balance stays accurate.");
+      setSaving(false);
+      return;
     }
 
     if (!navigator.onLine && !canQueueOfflineAction()) {
@@ -363,7 +466,7 @@ const Sales = () => {
       return;
     }
 
-    if (canQueueOfflineAction()) {
+    if (canQueueOfflineAction() && method !== "Credit") {
       createOfflineSale();
       addToOfflineQueue({ type: "sale", payload: offlinePayload });
       saleIntegrationIdRef.current = null;
@@ -385,7 +488,7 @@ const Sales = () => {
     try {
       await createSaleApi(apiPayload);
     } catch (e) {
-      if (canQueueOfflineAction()) {
+      if (canQueueOfflineAction() && method !== "Credit") {
         createOfflineSale();
         addToOfflineQueue({ type: "sale", payload: offlinePayload });
         toast.success("Sale saved locally. It will sync automatically when you are back online.");
@@ -419,6 +522,11 @@ const Sales = () => {
   };
 
   const handleOpenTill = async () => {
+    const openingCash = Number(tillForm.openingCash);
+    if (!Number.isFinite(openingCash) || openingCash < 0) {
+      toast.error("Enter a valid opening cash amount.");
+      return;
+    }
     try {
       const opened = await openTillApi({
         branch: till?.branch ?? (selectedBranchId ? Number(selectedBranchId) : null),
@@ -426,6 +534,7 @@ const Sales = () => {
         opening_cash: tillForm.openingCash || "0",
       });
       setTill(opened);
+      setTillHistory((current) => [opened, ...current.filter((session) => session.id !== opened.id)]);
       setTillOpen(false);
       toast.success("Till opened");
     } catch (e) {
@@ -435,13 +544,68 @@ const Sales = () => {
 
   const handleCloseTill = async () => {
     if (!till) return;
+    const closingCash = Number(tillForm.closingCash);
+    if (tillForm.closingCash.trim() === "" || !Number.isFinite(closingCash) || closingCash < 0) {
+      toast.error("Enter the actual cash counted to close this till.");
+      return;
+    }
     try {
-      const closed = await closeTillApi(till.id, { closing_cash: tillForm.closingCash || "0" });
+      const closed = await closeTillApi(till.id, { closing_cash: tillForm.closingCash, notes: tillForm.notes.trim() });
       setTill(null);
+      setTillHistory((current) => [closed, ...current.filter((session) => session.id !== closed.id)]);
       setTillOpen(false);
       toast.success(`Till closed. Variance: ${sym}${Number(closed.cash_variance).toLocaleString()}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not close till");
+    }
+  };
+
+  const handleRecordTillMovement = async () => {
+    if (!till || savingTillMovement) return;
+    const isCashExpense = tillMovementForm.movementType === "cash_expense";
+    const amount = Number(tillMovementForm.amount);
+    if (isCashExpense && !tillMovementForm.expense) {
+      toast.error("Choose a recorded cash expense.");
+      return;
+    }
+    if (!isCashExpense && (!Number.isFinite(amount) || amount <= 0)) {
+      toast.error("Enter an amount greater than zero.");
+      return;
+    }
+    setSavingTillMovement(true);
+    tillMovementKeyRef.current ||= crypto.randomUUID();
+    try {
+      await createTillCashMovementApi(till.id, {
+        movement_type: tillMovementForm.movementType,
+        ...(isCashExpense ? { expense: Number(tillMovementForm.expense) } : { amount: tillMovementForm.amount }),
+        note: tillMovementForm.note.trim(),
+        idempotency_key: tillMovementKeyRef.current,
+      });
+      const refreshedTill = await getCurrentTillApi();
+      setTill(refreshedTill);
+      setTillMovementForm({ movementType: "withdrawal", amount: "", expense: "", note: "" });
+      tillMovementKeyRef.current = null;
+      toast.success("Till cash movement recorded.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not record this till movement.");
+    } finally {
+      setSavingTillMovement(false);
+    }
+  };
+
+  const handleReviewTill = async () => {
+    if (!reviewDialogSession) return;
+    setTillReviewSaving(true);
+    try {
+      const reviewed = await reviewTillApi(reviewDialogSession.id, { note: tillReviewNote.trim() });
+      setTillHistory((current) => current.map((session) => session.id === reviewed.id ? reviewed : session));
+      setReviewDialogSession(null);
+      setTillReviewNote("");
+      toast.success("Till reconciliation reviewed.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not review this till session.");
+    } finally {
+      setTillReviewSaving(false);
     }
   };
 
@@ -512,20 +676,38 @@ const Sales = () => {
         ))}
       </div>
 
-      {SHOW_TILL_CONTROLS && (
-        <Card className="shadow-soft">
+      <Card className="shadow-soft">
           <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center"><Wallet className="h-4 w-4 text-primary" /></div>
               <div>
                 <p className="text-sm font-medium">{till ? `Till open - ${till.cashier_name || "Cashier"}` : "No till session open"}</p>
-                <p className="text-xs text-muted-foreground">{till ? `Opening cash: ${sym}${Number(till.opening_cash).toLocaleString()}` : "Open a till to track cash variance for the shift."}</p>
+                <p className="text-xs text-muted-foreground">{till ? `Expected cash: ${sym}${Number(till.expected_cash).toLocaleString()} · sales ${sym}${Number(till.cash_sales || 0).toLocaleString()} · expenses ${sym}${Number(till.cash_expenses || 0).toLocaleString()} · withdrawals ${sym}${Number(till.cash_withdrawals || 0).toLocaleString()}` : "Open a till to track cash variance for the shift."}</p>
               </div>
             </div>
             <Button variant={till ? "outline" : "default"} onClick={() => setTillOpen(true)}>{till ? "Close Till" : "Open Till"}</Button>
           </CardContent>
         </Card>
-      )}
+
+      <Card className="shadow-soft">
+        <CardHeader className="pb-3"><CardTitle className="font-display text-base">Till history</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          {tillHistoryError ? <p role="alert" className="text-sm text-destructive">{tillHistoryError}</p> : null}
+          {tillHistory.slice(0, 10).map((session) => (
+            <div key={session.id} className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">{session.cashier_name || "Till session"} · {session.status}</p>
+                <p className="text-xs text-muted-foreground">Opened {new Date(session.opened_at).toLocaleString()} · opening {sym}{Number(session.opening_cash).toLocaleString()}</p>
+                {session.status === "closed" ? <p className="mt-1 text-xs text-muted-foreground">Expected {sym}{Number(session.expected_cash).toLocaleString()} · counted {sym}{Number(session.closing_cash).toLocaleString()} · variance <span className={Number(session.cash_variance) === 0 ? "text-success" : "text-destructive"}>{sym}{Number(session.cash_variance).toLocaleString()}</span></p> : null}
+                {session.notes ? <p className="mt-1 text-xs text-muted-foreground">Closing note: {session.notes}</p> : null}
+                {session.reviewed_at ? <p className="mt-1 text-xs text-success">Reviewed by {session.reviewer_name || "manager"} · {new Date(session.reviewed_at).toLocaleString()}{session.review_note ? ` · ${session.review_note}` : ""}</p> : null}
+              </div>
+              {session.status === "closed" && !session.reviewed_at && canReviewTills ? <Button size="sm" variant="outline" onClick={() => { setReviewDialogSession(session); setTillReviewNote(""); }}>Review</Button> : null}
+            </div>
+          ))}
+          {!tillHistoryError && tillHistory.length === 0 ? <p className="text-sm text-muted-foreground">No till sessions have been recorded yet.</p> : null}
+        </CardContent>
+      </Card>
 
       <div className="flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 max-w-sm">
@@ -700,13 +882,29 @@ const Sales = () => {
             {lineItems.length > 0 && (
               <div className="border border-border rounded-lg divide-y divide-border">
                 {lineItems.map((item, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-3 text-sm">
-                    <div>
+                  <div key={idx} className="flex flex-wrap items-center justify-between gap-3 p-3 text-sm">
+                    <div className="min-w-0">
                       <span className="font-medium">{item.quantity}x {item.productName}</span>
                       <span className="text-muted-foreground ml-2">@ {sym}{item.unitPrice}</span>
+                      {item.discountAmount > 0 ? <p className="text-xs text-muted-foreground">Discount: {sym}{item.discountAmount} per item</p> : null}
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="font-display font-semibold">{sym}{(item.quantity * item.unitPrice).toLocaleString()}</span>
+                      <div className="w-24">
+                        <Label className="text-[11px]">Discount / item</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max={item.unitPrice}
+                          step="0.01"
+                          value={item.discountAmount}
+                          onChange={(event) => {
+                            const discountAmount = Math.min(item.unitPrice, Math.max(0, Number(event.target.value) || 0));
+                            setLineItems((items) => items.map((line, index) => index === idx ? { ...line, discountAmount } : line));
+                          }}
+                          className="h-8"
+                        />
+                      </div>
+                      <span className="font-display font-semibold">{sym}{(item.quantity * (item.unitPrice - item.discountAmount)).toLocaleString()}</span>
                       <button onClick={() => removeLineItem(idx)} className="p-1 rounded hover:bg-destructive/10"><Trash2 className="h-3.5 w-3.5 text-destructive" /></button>
                     </div>
                   </div>
@@ -720,14 +918,44 @@ const Sales = () => {
 
             <div>
               <Label>Payment Method</Label>
-              <select value={method} onChange={e => setMethod(e.target.value as "Cash" | "EFT" | "Card")} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
+              <select value={method} onChange={e => {
+                const nextMethod = e.target.value as "Cash" | "EFT" | "Card" | "Credit";
+                if (nextMethod === "Credit" && !canUse("customer_credit")) {
+                  promptUpgrade("customer_credit", "Customer credit");
+                  return;
+                }
+                setMethod(nextMethod);
+              }} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
                 <option value="Cash">Cash</option>
                 <option value="EFT">EFT</option>
                 <option value="Card">Card</option>
+                <option value="Credit">Credit / pay later</option>
               </select>
             </div>
 
-            <div>
+            {method === "Credit" ? (
+              <div className="space-y-3 rounded-md border border-amber-200 bg-amber-50/60 p-3 dark:border-amber-900/50 dark:bg-amber-950/20">
+                <div>
+                  <Label>Amount received now ({baseCurrency})</Label>
+                  <Input type="number" min="0" max={saleTotal} step="0.01" value={creditPaidAmount} onChange={e => setCreditPaidAmount(e.target.value)} className="mt-1" />
+                </div>
+                {Number(creditPaidAmount) > 0 && (
+                  <div>
+                    <Label>Payment Method</Label>
+                    <select value={creditPaymentMethod} onChange={e => setCreditPaymentMethod(e.target.value as "Cash" | "EFT" | "Card")} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
+                      <option value="Cash">Cash</option><option value="EFT">EFT</option><option value="Card">Card</option>
+                    </select>
+                  </div>
+                )}
+                <div>
+                  <Label>Due Date (optional)</Label>
+                  <Input type="date" value={creditDueDate} onChange={e => setCreditDueDate(e.target.value)} className="mt-1" />
+                </div>
+                <p className="text-sm font-medium">Outstanding after payment: {sym}{Math.max(0, saleTotal - (Number(creditPaidAmount) || 0)).toFixed(2)}</p>
+              </div>
+            ) : null}
+
+            {method !== "Credit" && <div>
               <Label>Payment Currency</Label>
               <select
                 value={paymentCurrency}
@@ -741,9 +969,24 @@ const Sales = () => {
                   <option key={code} value={code}>{code}</option>
                 ))}
               </select>
+            </div>}
+
+            <div>
+              <Label>Financial account (optional)</Label>
+              <select
+                value={availablePaymentAccounts.some((account) => String(account.id) === paymentAccountId) ? paymentAccountId : ""}
+                onChange={(event) => setPaymentAccountId(event.target.value)}
+                className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="">Do not post to an account ledger</option>
+                {availablePaymentAccounts.map((account) => (
+                  <option key={account.id} value={account.id}>{account.name} · {account.currency}</option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-muted-foreground">Choose where this payment was received. Account currency must match the payment currency.</p>
             </div>
 
-            {paymentCurrency !== baseCurrency ? (
+            {method !== "Credit" && paymentCurrency !== baseCurrency ? (
               <div>
                 <Label>Exchange Rate ({paymentCurrency} to {baseCurrency})</Label>
                 <Input
@@ -785,11 +1028,11 @@ const Sales = () => {
               </div>
             ) : null}
 
-            <div className="rounded-md bg-muted/50 px-3 py-2 text-sm space-y-1">
+            {method !== "Credit" && <div className="rounded-md bg-muted/50 px-3 py-2 text-sm space-y-1">
               <p>Sale total in {baseCurrency}: {sym}{saleTotal.toLocaleString()}</p>
               {splitAmountValue > 0 && alternateCurrency ? <p>Split in {alternateCurrency}: {symbolForCurrency(alternateCurrency)}{splitAmountValue.toLocaleString()} ({sym}{splitBasePreview.toLocaleString()} base)</p> : null}
               {saleTotal > 0 ? <p>Remaining in {paymentCurrency}: {symbolForCurrency(paymentCurrency)}{primaryAmountPreview.toLocaleString()}</p> : null}
-            </div>
+            </div>}
 
             <Button onClick={handleAdd} disabled={lineItems.length === 0 || saving} className="w-full bg-gradient-hero text-primary-foreground">
               {saving ? "Saving..." : `Record Sale - ${sym}${saleTotal.toLocaleString()}`}
@@ -798,8 +1041,7 @@ const Sales = () => {
         </DialogContent>
       </Dialog>
       <BarcodeScanner open={scanOpen} onClose={() => setScanOpen(false)} onDetected={handleBarcodeDetected} />
-      {SHOW_TILL_CONTROLS && (
-        <Dialog open={tillOpen} onOpenChange={setTillOpen}>
+      <Dialog open={tillOpen} onOpenChange={setTillOpen}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle className="font-display">{till ? "Close Till" : "Open Till"}</DialogTitle>
@@ -811,20 +1053,70 @@ const Sales = () => {
               {!till ? (
                 <>
                   <div><Label>Cashier Name</Label><Input value={tillForm.cashier} onChange={e => setTillForm({ ...tillForm, cashier: e.target.value })} className="mt-1" /></div>
-                  <div><Label>Opening Cash ({sym})</Label><Input type="number" value={tillForm.openingCash} onChange={e => setTillForm({ ...tillForm, openingCash: e.target.value })} className="mt-1" /></div>
+                  <div><Label>Opening Cash ({sym})</Label><Input type="number" min="0" step="0.01" value={tillForm.openingCash} onChange={e => setTillForm({ ...tillForm, openingCash: e.target.value })} className="mt-1" /></div>
                   <Button onClick={handleOpenTill} className="w-full">Open Till</Button>
                 </>
               ) : (
                 <>
-                  <p className="text-sm text-muted-foreground">Cash sales: {sym}{Number(till.cash_sales || 0).toLocaleString()}</p>
-                  <div><Label>Actual Cash Counted ({sym})</Label><Input type="number" value={tillForm.closingCash} onChange={e => setTillForm({ ...tillForm, closingCash: e.target.value })} className="mt-1" /></div>
-                  <Button onClick={handleCloseTill} className="w-full">Close Till</Button>
+                  <div className="rounded-lg bg-muted/40 p-3 text-sm">
+                    <p>Opening cash: {sym}{Number(till.opening_cash).toLocaleString()}</p>
+                    <p>Cash sales (after refunds): {sym}{Number(till.cash_sales || 0).toLocaleString()}</p>
+                    <p>Cash expenses: −{sym}{Number(till.cash_expenses || 0).toLocaleString()}</p>
+                    <p>Withdrawals: −{sym}{Number(till.cash_withdrawals || 0).toLocaleString()} · Cash added: {sym}{Number(till.cash_deposits || 0).toLocaleString()}</p>
+                    <p className="mt-1 font-semibold">Expected cash: {sym}{Number(till.expected_cash).toLocaleString()}</p>
+                  </div>
+                  <p className="text-sm text-muted-foreground">Card: {sym}{Number(till.card_sales_total || 0).toLocaleString()} · EFT: {sym}{Number(till.eft_sales_total || 0).toLocaleString()}</p>
+                  <div className="space-y-3 rounded-lg border p-3">
+                    <p className="text-sm font-medium">Record cash movement</p>
+                    <div>
+                      <Label>Movement type</Label>
+                      <select value={tillMovementForm.movementType} onChange={(event) => setTillMovementForm({ ...tillMovementForm, movementType: event.target.value as ApiTillCashMovement["movement_type"], amount: "", expense: "" })} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                        <option value="withdrawal">Cash withdrawal</option>
+                        <option value="deposit">Cash added</option>
+                        <option value="cash_expense">Link recorded cash expense</option>
+                      </select>
+                    </div>
+                    {tillMovementForm.movementType === "cash_expense" ? (
+                      <div>
+                        <Label>Cash expense</Label>
+                        <select value={tillMovementForm.expense} onChange={(event) => setTillMovementForm({ ...tillMovementForm, expense: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                          <option value="">Choose an unlinked cash expense</option>
+                          {eligibleTillExpenses.map((expense) => <option key={expense.id} value={expense.id}>{expense.description} · {new Date(`${expense.date}T12:00:00`).toLocaleDateString()} · {sym}{Number(expense.amount_base ?? expense.amount).toFixed(2)}</option>)}
+                        </select>
+                        {tillExpensesError ? <p role="alert" className="mt-1 text-xs text-destructive">{tillExpensesError}</p> : null}
+                        {!tillExpensesError && eligibleTillExpenses.length === 0 ? <p className="mt-1 text-xs text-muted-foreground">No unlinked cash expenses for this till branch. Record the expense in Expenses first.</p> : null}
+                      </div>
+                    ) : (
+                      <div><Label>Amount ({sym})</Label><Input type="number" min="0.01" step="0.01" value={tillMovementForm.amount} onChange={(event) => setTillMovementForm({ ...tillMovementForm, amount: event.target.value })} className="mt-1" /></div>
+                    )}
+                    <div><Label>Note (optional)</Label><Input maxLength={255} value={tillMovementForm.note} onChange={(event) => setTillMovementForm({ ...tillMovementForm, note: event.target.value })} className="mt-1" /></div>
+                    <Button variant="outline" className="w-full" onClick={() => void handleRecordTillMovement()} disabled={savingTillMovement || (tillMovementForm.movementType === "cash_expense" && !tillMovementForm.expense)}>{savingTillMovement ? "Recording…" : "Record cash movement"}</Button>
+                  </div>
+                  {till.cash_movements?.length ? <div className="space-y-2"><p className="text-sm font-medium">Cash movement history</p>{till.cash_movements.map((movement) => <div key={movement.id} className="flex items-start justify-between gap-3 rounded-md border p-2 text-xs"><span>{movement.movement_type.replace("_", " ")} · {movement.expense_description || movement.note || "No note"}</span><span className="shrink-0">{sym}{Number(movement.amount).toFixed(2)}</span></div>)}</div> : null}
+                  <div><Label>Actual Cash Counted ({sym})</Label><Input type="number" min="0" step="0.01" value={tillForm.closingCash} onChange={e => setTillForm({ ...tillForm, closingCash: e.target.value })} className="mt-1" /></div>
+                  <div><Label>Closing Notes</Label><Input maxLength={2000} value={tillForm.notes} onChange={e => setTillForm({ ...tillForm, notes: e.target.value })} className="mt-1" placeholder="Explain any cash difference" /></div>
+                  <Button onClick={handleCloseTill} disabled={!tillForm.closingCash.trim()} className="w-full">Close Till</Button>
                 </>
               )}
             </div>
           </DialogContent>
         </Dialog>
-      )}
+
+      <Dialog open={!!reviewDialogSession} onOpenChange={(open) => { if (!open) setReviewDialogSession(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="font-display">Review till reconciliation</DialogTitle>
+            <DialogDescription>Confirm the cash count and variance before marking this session reviewed.</DialogDescription>
+          </DialogHeader>
+          {reviewDialogSession ? <div className="space-y-2 rounded-md bg-muted/50 p-3 text-sm">
+            <p>Expected: {sym}{Number(reviewDialogSession.expected_cash).toLocaleString()}</p>
+            <p>Counted: {sym}{Number(reviewDialogSession.closing_cash).toLocaleString()}</p>
+            <p>Variance: {sym}{Number(reviewDialogSession.cash_variance).toLocaleString()}</p>
+          </div> : null}
+          <div><Label>Review note (optional)</Label><Input maxLength={255} value={tillReviewNote} onChange={(event) => setTillReviewNote(event.target.value)} className="mt-1" /></div>
+          <Button onClick={() => void handleReviewTill()} disabled={tillReviewSaving}>{tillReviewSaving ? "Saving review…" : "Confirm review"}</Button>
+        </DialogContent>
+      </Dialog>
       <Dialog open={receiptOpen} onOpenChange={setReceiptOpen}>
         <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
           <DialogHeader>

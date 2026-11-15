@@ -46,9 +46,22 @@ class StaffAdmin(admin.ModelAdmin):
 
 @admin.register(StaffActivityLog)
 class StaffActivityLogAdmin(admin.ModelAdmin):
-    list_display = ("user", "actor", "action", "object_type", "summary", "created_at")
+    list_display = ("user", "actor_name", "action", "object_type", "summary", "created_at")
     list_filter = ("action", "object_type")
-    search_fields = ("user__email", "actor__email", "summary")
+    search_fields = ("user__email", "actor__email", "actor_name", "summary")
+    readonly_fields = tuple(field.name for field in StaffActivityLog._meta.fields)
+
+    def has_view_permission(self, request, obj=None):
+        return request.user.has_perm("accounts.view_staffactivitylog")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(ApiKey)

@@ -25,9 +25,12 @@ export interface Product {
 }
 
 export interface SaleItem {
+  id?: string;
   productName: string;
   quantity: number;
   unitPrice: number;
+  discountAmount?: number;
+  returnedQuantity?: number;
 }
 
 export interface Sale {
@@ -38,9 +41,12 @@ export interface Sale {
   grossProfit?: number;
   time: string;
   date: string;
-  method: "Cash" | "EFT" | "Card";
+  method: "Cash" | "EFT" | "Card" | "Credit";
   paymentCurrency?: string;
-  paymentAllocations?: Array<{ currency: string; amount: number; amountBase?: number }>;
+  paymentAllocations?: Array<{ currency: string; amount: number; amountBase?: number; account?: number }>;
+  amountPaidBase?: number;
+  balanceDue?: number;
+  dueDate?: string;
   branchId?: string;
   customerId?: string;
   saleItems?: SaleItem[];
@@ -52,9 +58,14 @@ export interface Expense {
   amount: number;
   currency?: string;
   amountBase?: number;
-  paymentAllocations?: Array<{ currency: string; amount: number; amountBase?: number }>;
+  paymentAllocations?: Array<{ currency: string; amount: number; amountBase?: number; account?: number }>;
   date: string;
   category: string;
+  employeeName?: string;
+  branchId?: string;
+  expenseType?: "operating" | "other";
+  approvalStatus?: "pending" | "approved" | "rejected";
+  approvalNote?: string;
   receiptImage?: string;
   receiptFileName?: string;
 }
@@ -83,6 +94,8 @@ export type CustomerBadge = "bronze" | "silver" | "gold" | "platinum";
 
 export interface Customer {
   id: string;
+  branchId?: string;
+  branchName?: string;
   name: string;
   phone: string;
   totalSpent: number;
@@ -91,8 +104,10 @@ export interface Customer {
   qrCode: string;
   credits: number;
   debtAmount?: number;
+  creditLimit?: number;
   debtStartedAt?: string;
   debtUpdatedAt?: string;
+  debtDueDate?: string;
   debtNotes?: string;
   lastVisit: string;
   badge: CustomerBadge;
@@ -101,7 +116,7 @@ export interface Customer {
 export interface StaffMember {
   id: string;
   name: string;
-  role: "Owner" | "Cashier" | "Stock Manager" | "Manager";
+  role: "Owner" | "Administrator" | "Branch Manager" | "Cashier" | "Salesperson" | "Stock Manager" | "Inventory Manager" | "Accountant" | "Custom" | "Manager";
   status: "Active" | "Inactive";
   lastActive: string;
   branchId?: string;
@@ -117,7 +132,11 @@ export interface Branch {
   name: string;
   code: string;
   phone: string;
+  email?: string;
   address: string;
+  openingDate?: string;
+  managerId?: string;
+  managerName?: string;
   isPrimary: boolean;
 }
 

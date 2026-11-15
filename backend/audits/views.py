@@ -3,6 +3,7 @@ from django.utils import timezone
 from rest_framework import viewsets, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from accounts.branch_access import require_business_owner, scope_queryset_to_staff_branch
 from billing.services import enforce_feature
 from datetime import timedelta
 
@@ -24,7 +25,8 @@ class AuditViewSet(AuditFeatureMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         if self.request.user and self.request.user.is_authenticated:
-            return Audit.objects.filter(conductor=self.request.user, is_deleted=False)
+            queryset = Audit.objects.filter(conductor=self.request.user, is_deleted=False)
+            return scope_queryset_to_staff_branch(self.request, queryset)
         else:
             return Audit.objects.filter(is_deleted=False)
 
@@ -56,6 +58,7 @@ class AuditScheduleViewSet(AuditFeatureMixin, viewsets.ModelViewSet):
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
         enforce_feature(request.user, "background_audits")
+        require_business_owner(request)
 
     def get_queryset(self):
         return AuditSchedule.objects.filter(user=self.request.user, is_deleted=False)
@@ -86,7 +89,8 @@ class StockCountViewSet(AuditFeatureMixin, viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return StockCount.objects.filter(counted_by=self.request.user, is_deleted=False)
+        queryset = StockCount.objects.filter(counted_by=self.request.user, is_deleted=False)
+        return scope_queryset_to_staff_branch(self.request, queryset, "audit__branch_id")
 
     def perform_create(self, serializer):
         serializer.save(counted_by=self.request.user)
@@ -98,7 +102,8 @@ class DiscrepancyViewSet(AuditFeatureMixin, viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Discrepancy.objects.filter(audit__conductor=self.request.user, is_deleted=False)
+        queryset = Discrepancy.objects.filter(audit__conductor=self.request.user, is_deleted=False)
+        return scope_queryset_to_staff_branch(self.request, queryset, "audit__branch_id")
 
     @action(detail=True, methods=["post"], url_path="resolve")
     def resolve(self, request, pk=None):

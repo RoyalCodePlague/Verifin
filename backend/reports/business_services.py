@@ -68,7 +68,7 @@ def query_expenses(filters: dict = None, user=None) -> dict:
     try:
         from expenses.models import Expense
 
-        expenses = Expense.objects.filter(created_by=user, is_deleted=False) if user else Expense.objects.filter(is_deleted=False)
+        expenses = Expense.objects.filter(created_by=user, is_deleted=False, approval_status="approved") if user else Expense.objects.filter(is_deleted=False, approval_status="approved")
         if filters:
             expenses = expenses.filter(**filters)
 
@@ -234,7 +234,7 @@ def generate_whatsapp_summary(user):
 
     today = django_timezone.localdate()
     sales = Sale.objects.filter(created_by=user, date=today, is_deleted=False)
-    expenses = Expense.objects.filter(created_by=user, date=today, is_deleted=False)
+    expenses = Expense.objects.filter(created_by=user, date=today, is_deleted=False, approval_status="approved")
     products = Product.objects.filter(user=user, is_deleted=False)
     sales_total = sales.aggregate(total=Sum("total"))["total"] or 0
     expenses_total = expenses.aggregate(total=Sum("amount_base"))["total"] or 0

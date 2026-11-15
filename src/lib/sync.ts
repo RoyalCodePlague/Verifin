@@ -63,14 +63,17 @@ type ApiProduct = {
 
 type ApiSale = {
   id: number;
-  items: string | Array<{ product_name?: string; quantity: number; unit_price: string }>;
-  line_items?: Array<{ product_name?: string; quantity: number; unit_price: string }>;
+  items: string | Array<{ id?: number; product_name?: string; quantity: number; unit_price: string; discount_amount?: string; returned_quantity?: number }>;
+  line_items?: Array<{ id?: number; product_name?: string; quantity: number; unit_price: string; discount_amount?: string; returned_quantity?: number }>;
   total: string;
   total_cost?: string;
   gross_profit?: string;
-  payment_method: "Cash" | "EFT" | "Card";
+  payment_method: "Cash" | "EFT" | "Card" | "Credit";
   payment_currency?: string;
-  payment_allocations?: Array<{ currency: string; amount: string; amount_base?: string }>;
+  payment_allocations?: Array<{ currency: string; amount: string; amount_base?: string; account?: number }>;
+  amount_paid_base?: string;
+  balance_due?: string;
+  due_date?: string | null;
   branch?: number | null;
   date: string;
   time: string;
@@ -83,14 +86,22 @@ type ApiExpense = {
   amount: string;
   currency?: string;
   amount_base?: string;
-  payment_allocations?: Array<{ currency: string; amount: string; amount_base?: string }>;
+  expense_type?: "operating" | "other";
+  payment_allocations?: Array<{ currency: string; amount: string; amount_base?: string; account?: number }>;
   date: string;
+  branch?: number | null;
   category_name?: string | null;
+  category_label?: string;
+  employee_name?: string;
   receipt_image?: string | null;
+  approval_status?: "pending" | "approved" | "rejected";
+  approval_note?: string;
 };
 
 type ApiCustomer = {
   id: number;
+  branch?: number | null;
+  branch_name?: string | null;
   name: string;
   phone: string;
   total_spent: string;
@@ -101,7 +112,9 @@ type ApiCustomer = {
   debt_amount?: string;
   debt_started_at?: string | null;
   debt_updated_at?: string | null;
+  debt_due_date?: string | null;
   debt_notes?: string | null;
+  credit_limit?: string | null;
   last_visit: string | null;
   badge: Customer["badge"];
 };
@@ -124,7 +137,11 @@ type ApiBranch = {
   name: string;
   code: string;
   phone: string;
+  email?: string;
   address: string;
+  opening_date?: string;
+  manager?: number | null;
+  manager_name?: string | null;
   is_primary: boolean;
 };
 
@@ -243,7 +260,11 @@ export async function loadServerData(user: {
     name: b.name,
     code: b.code || "",
     phone: b.phone || "",
+    email: b.email || "",
     address: b.address || "",
+    openingDate: b.opening_date || "",
+    managerId: b.manager ? String(b.manager) : undefined,
+    managerName: b.manager_name || "",
     isPrimary: b.is_primary,
   }));
 
@@ -278,6 +299,9 @@ export async function loadServerData(user: {
     total: parseFloat(String(s.total ?? 0)),
     totalCost: parseFloat(String(s.total_cost ?? (s as ApiSale & Partial<Sale>).totalCost ?? "0")),
     grossProfit: parseFloat(String(s.gross_profit ?? (s as ApiSale & Partial<Sale>).grossProfit ?? "0")),
+    amountPaidBase: parseFloat(String(s.amount_paid_base ?? (s as ApiSale & Partial<Sale>).amountPaidBase ?? "0")),
+    balanceDue: parseFloat(String(s.balance_due ?? (s as ApiSale & Partial<Sale>).balanceDue ?? "0")),
+    dueDate: s.due_date || (s as ApiSale & Partial<Sale>).dueDate,
     time: saleTime(s.time, s.created_at) || (s as ApiSale & Partial<Sale>).time || "",
     date: saleDisplayDate(s.date, s.created_at) || (s as ApiSale & Partial<Sale>).date || "",
     method: s.payment_method || (s as ApiSale & Partial<Sale>).method || "Cash",
@@ -286,11 +310,19 @@ export async function loadServerData(user: {
       currency: row.currency,
       amount: parseFloat(String(row.amount)),
       amountBase: parseFloat(String(row.amount_base || (row as { amountBase?: number }).amountBase || "0")),
+      account: row.account,
     })),
     branchId: s.branch ? String(s.branch) : undefined,
     customerId: (s as ApiSale & { customer?: number }).customer ? String((s as ApiSale & { customer?: number }).customer) : undefined,
     saleItems: (Array.isArray(s.items) ? s.items : s.line_items || [])
-      .map(item => ({ productName: item.product_name || "Item", quantity: item.quantity, unitPrice: Number(item.unit_price) })),
+      .map(item => ({
+        ...(item.id != null ? { id: String(item.id) } : {}),
+        productName: item.product_name || "Item",
+        quantity: item.quantity,
+        unitPrice: Number(item.unit_price),
+        discountAmount: Number(item.discount_amount || 0),
+        returnedQuantity: Number(item.returned_quantity || 0),
+      })),
   }));
 
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -304,14 +336,22 @@ export async function loadServerData(user: {
       currency: row.currency,
       amount: parseFloat(String(row.amount)),
       amountBase: parseFloat(String(row.amount_base || (row as { amountBase?: number }).amountBase || "0")),
+      account: row.account,
     })),
     date: e.date === todayStr ? "Today" : e.date,
-    category: e.category_name || (e as ApiExpense & Partial<Expense>).category || "Other",
+    category: e.category_label || e.category_name || (e as ApiExpense & Partial<Expense>).category || "Other",
+    employeeName: e.employee_name || (e as ApiExpense & Partial<Expense>).employeeName,
+    branchId: e.branch ? String(e.branch) : undefined,
+    expenseType: e.expense_type || "operating",
+    approvalStatus: e.approval_status || "approved",
+    approvalNote: e.approval_note || "",
     receiptImage: e.receipt_image || (e as ApiExpense & Partial<Expense>).receiptImage || undefined,
   }));
 
   const customers: Customer[] = rawCustomers.map((c) => ({
     id: String(c.id),
+    branchId: c.branch ? String(c.branch) : undefined,
+    branchName: c.branch_name || "",
     name: c.name,
     phone: c.phone,
     totalSpent: parseFloat(String(c.total_spent ?? (c as ApiCustomer & Partial<Customer>).totalSpent ?? 0)),
@@ -320,8 +360,10 @@ export async function loadServerData(user: {
     qrCode: String(c.qr_code || (c as ApiCustomer & Partial<Customer>).qrCode || ""),
     credits: parseFloat(String(c.credits ?? 0)),
     debtAmount: parseFloat(String(c.debt_amount ?? (c as ApiCustomer & Partial<Customer>).debtAmount ?? 0)),
+    creditLimit: c.credit_limit == null ? undefined : parseFloat(String(c.credit_limit)),
     debtStartedAt: c.debt_started_at || (c as ApiCustomer & Partial<Customer>).debtStartedAt || undefined,
     debtUpdatedAt: c.debt_updated_at || (c as ApiCustomer & Partial<Customer>).debtUpdatedAt || undefined,
+    debtDueDate: c.debt_due_date || (c as ApiCustomer & Partial<Customer>).debtDueDate || undefined,
     debtNotes: c.debt_notes || (c as ApiCustomer & Partial<Customer>).debtNotes || "",
     lastVisit: c.last_visit ? fmtDate(c.last_visit) : (c as ApiCustomer & Partial<Customer>).lastVisit || "",
     badge: c.badge,

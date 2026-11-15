@@ -4,7 +4,8 @@ import {
   LayoutDashboard, Package, ShoppingCart, Receipt, ClipboardCheck,
   BarChart3, Users, UserCog, Settings, Menu, X, LogOut,
   Moon, Sun, Clock, Truck, CreditCard, MessageCircle,
-  Lock,
+  Lock, WalletCards, TrendingUp,
+  Sparkles, ShieldCheck,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth-context";
@@ -26,14 +27,18 @@ import { Logo } from "@/components/Logo";
 
 const navItems = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard", permission: "dashboard" },
+  { to: "/inventory/intelligence", icon: TrendingUp, label: "Inventory intelligence", permission: "inventory" },
+  { to: "/insights", icon: Sparkles, label: "VERIFIN INSIGHTS", permission: "reports", feature: "rule_insights" },
   { to: "/inventory", icon: Package, label: "Inventory", permission: "inventory" },
   { to: "/sales", icon: ShoppingCart, label: "Sales", permission: "sales" },
   { to: "/expenses", icon: Receipt, label: "Expenses", permission: "expenses" },
   { to: "/audits", icon: ClipboardCheck, label: "Audits", permission: "audits", feature: "audits" },
   { to: "/reports", icon: BarChart3, label: "Reports", permission: "reports" },
+  { to: "/accounts", icon: WalletCards, label: "Financial accounts", permission: "reports" },
   { to: "/customers", icon: Users, label: "Customers", permission: "customers" },
   { to: "/suppliers", icon: Truck, label: "Suppliers", permission: "suppliers" },
   { to: "/staff", icon: UserCog, label: "Staff", permission: "staff" },
+  { to: "/approvals", icon: ShieldCheck, label: "Approvals", permission: "dashboard" },
   { to: "/billing", icon: CreditCard, label: "Billing", permission: "billing" },
   { to: "/settings", icon: Settings, label: "Settings", permission: "settings" },
 ];
@@ -113,7 +118,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
       }
     };
 
-    const cleanup = setupOfflineSync(syncQueuedActions);
+    const cleanup = setupOfflineSync(async () => syncQueuedActions(false));
     const runSync = async (showErrors = false) => {
       const completedIds = await syncQueuedActions(showErrors);
       if (completedIds) removeQueuedActions(completedIds);

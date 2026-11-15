@@ -2,6 +2,7 @@ from decimal import Decimal
 from django.db import transaction
 from django.db.models import DecimalField, ExpressionWrapper, F, Sum
 from rest_framework import serializers
+from accounts.branch_access import get_staff_member, require_staff_branch
 from billing.services import enforce_feature
 from core.currency import get_rate_to_base
 from .models import Branch, Category, Product, ProductBatch, PurchaseOrder, PurchaseOrderItem, StockMovement, StockTransfer, Supplier, SupplierPayment
@@ -15,10 +16,29 @@ class CategorySerializer(serializers.ModelSerializer):
 
 
 class BranchSerializer(serializers.ModelSerializer):
+    manager_name = serializers.CharField(source="manager.name", read_only=True, allow_null=True)
+
     class Meta:
         model = Branch
         fields = "__all__"
         read_only_fields = ["user", "created_at", "updated_at"]
+
+    def validate_manager(self, manager):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if manager and (manager.user_id != user.id or manager.is_deleted or manager.status != "Active"):
+            raise serializers.ValidationError("Choose an active staff member from this business.")
+        branch = self.instance
+        if manager and (branch is None or manager.branch_id != branch.id):
+            raise serializers.ValidationError("Assign the staff member to this branch before making them its manager.")
+        return manager
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if attrs.get("manager") and attrs["manager"].user_id != user.id:
+            raise serializers.ValidationError({"manager": "Manager does not belong to this account."})
+        return attrs
 
 
 class SupplierSerializer(serializers.ModelSerializer):
@@ -61,6 +81,9 @@ class ProductSerializer(serializers.ModelSerializer):
         user = getattr(request, "user", None)
         branch = attrs.get("branch")
         category = attrs.get("category")
+        stock = attrs.get("stock", self.instance.stock if self.instance else 0)
+        if stock < 0:
+            raise serializers.ValidationError({"stock": "Stock cannot be negative."})
         if self.instance and "stock" in attrs:
             tracked_stock = self.instance.batches.filter(is_deleted=False).aggregate(
                 total=Sum("quantity_remaining")
@@ -77,6 +100,15 @@ class ProductSerializer(serializers.ModelSerializer):
             supplier = attrs.get("preferred_supplier")
             if supplier and supplier.user_id != user.id:
                 raise serializers.ValidationError({"preferred_supplier": "Supplier does not belong to this account."})
+            staff = get_staff_member(request)
+            if staff:
+                if not staff.branch_id:
+                    raise serializers.ValidationError({"branch": "This staff account must be assigned to a branch before managing products."})
+                if "branch" in attrs and getattr(branch, "id", None) != staff.branch_id:
+                    raise serializers.ValidationError({"branch": "Products must be assigned to your authorised branch."})
+                if not self.instance and "branch" not in attrs:
+                    from .models import Branch
+                    attrs["branch"] = Branch.objects.get(pk=staff.branch_id, user=user, is_deleted=False)
         return attrs
 
 
@@ -95,6 +127,8 @@ class StockMovementSerializer(serializers.ModelSerializer):
         batch = attrs.get("batch")
         if batch and batch.product_id != product.id:
             raise serializers.ValidationError({"batch": "Batch does not belong to this product."})
+        if product:
+            require_staff_branch(request, product.branch_id)
         return attrs
 
 
@@ -123,6 +157,8 @@ class ProductBatchSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"product": "Product does not belong to this account."})
             if supplier and supplier.user_id != user.id:
                 raise serializers.ValidationError({"supplier": "Supplier does not belong to this account."})
+            if product:
+                require_staff_branch(request, product.branch_id)
         if self.instance and attrs.get("quantity_received", self.instance.quantity_received) < self.instance.quantity_remaining:
             raise serializers.ValidationError({"quantity_received": "Received quantity cannot be lower than remaining stock."})
         return attrs
@@ -132,11 +168,56 @@ class StockTransferSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source="product.name", read_only=True)
     from_branch_name = serializers.CharField(source="from_branch.name", read_only=True)
     to_branch_name = serializers.CharField(source="to_branch.name", read_only=True)
+    quantity_in_transit = serializers.IntegerField(read_only=True)
+    events = serializers.SerializerMethodField()
+    idempotency_key = serializers.CharField(required=False, allow_blank=True, max_length=120)
 
     class Meta:
         model = StockTransfer
         fields = "__all__"
-        read_only_fields = ["created_by", "created_at", "updated_at"]
+        read_only_fields = [
+            "from_branch", "target_product", "created_by", "status",
+            "quantity_dispatched", "quantity_received", "quantity_discrepant",
+            "approved_by", "dispatched_by", "received_by", "approved_at",
+            "dispatched_at", "received_at", "created_at", "updated_at",
+        ]
+
+    def get_quantity_in_transit(self, obj):
+        return obj.quantity_in_transit
+
+    def get_events(self, obj):
+        return [
+            {
+                "id": event.id,
+                "action": event.action,
+                "quantity": event.quantity,
+                "note": event.note,
+                "created_by": event.created_by_id,
+                "created_at": event.created_at,
+            }
+            for event in obj.events.select_related("created_by").all()
+        ]
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        product = attrs.get("product", getattr(self.instance, "product", None))
+        to_branch = attrs.get("to_branch", getattr(self.instance, "to_branch", None))
+        quantity = attrs.get("quantity", getattr(self.instance, "quantity", None))
+        batch = attrs.get("batch", getattr(self.instance, "batch", None))
+        if not product or product.user_id != user.id or not product.branch_id:
+            raise serializers.ValidationError({"product": "Choose a product assigned to a source branch in this business."})
+        if not to_branch or to_branch.user_id != user.id or to_branch.is_deleted:
+            raise serializers.ValidationError({"to_branch": "Destination branch does not belong to this account."})
+        if product.branch_id == to_branch.id:
+            raise serializers.ValidationError({"to_branch": "Choose a destination different from the source branch."})
+        if quantity is None or quantity <= 0:
+            raise serializers.ValidationError({"quantity": "Quantity must be greater than zero."})
+        if batch and (batch.product_id != product.id or batch.is_deleted):
+            raise serializers.ValidationError({"batch": "Batch does not belong to this product."})
+        if product.branch_id:
+            require_staff_branch(request, product.branch_id)
+        return attrs
 
 
 class PurchaseOrderItemSerializer(serializers.ModelSerializer):
@@ -165,6 +246,8 @@ class PurchaseOrderItemSerializer(serializers.ModelSerializer):
         order = attrs.get("purchase_order") or getattr(self.instance, "purchase_order", None)
         if order and order.branch_id and product and product.branch_id and product.branch_id != order.branch_id:
             raise serializers.ValidationError({"product": "Product belongs to a different branch than this purchase order."})
+        if product:
+            require_staff_branch(request, product.branch_id)
         return attrs
 
 
@@ -192,6 +275,15 @@ class PurchaseOrderSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"branch": "Branch does not belong to this account."})
             if branch:
                 enforce_feature(user, "multi_branch")
+            staff = get_staff_member(request)
+            if staff:
+                if not staff.branch_id:
+                    raise serializers.ValidationError({"branch": "This staff account must be assigned to a branch."})
+                if branch is None:
+                    branch = Branch.objects.filter(pk=staff.branch_id, user=user, is_deleted=False).first()
+                    attrs["branch"] = branch
+                if branch is None or branch.id != staff.branch_id:
+                    raise serializers.ValidationError({"branch": "Purchase orders must use your authorised branch."})
             items = attrs.get("items")
             if items is None and self.instance:
                 items = self.instance.items.select_related("product").all()

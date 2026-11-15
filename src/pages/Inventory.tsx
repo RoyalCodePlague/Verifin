@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { useStore } from "@/lib/store";
-import { createProductApi, deleteProductApi, fetchInventoryForecast, identifyBarcodeProductApi, listProductBatchesApi, mapProductResponse, receiveProductBatchApi, transferProductApi, updateProductApi, type ApiForecastItem, type ApiProductBatch } from "@/lib/api";
+import { createProductApi, createStockTransferApi, deleteProductApi, fetchInventoryForecast, identifyBarcodeProductApi, listProductBatchesApi, listStockTransfersApi, mapProductResponse, receiveProductBatchApi, updateProductApi, updateStockTransferApi, type ApiForecastItem, type ApiProductBatch, type ApiStockTransfer } from "@/lib/api";
 import { addToOfflineQueue, canQueueOfflineAction, hasQueuedProductCreate, removeQueuedProductCreate } from "@/lib/offlineQueue";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
@@ -87,6 +87,12 @@ const Inventory = () => {
   const [transferOpen, setTransferOpen] = useState(false);
   const [transferSaving, setTransferSaving] = useState(false);
   const [transferForm, setTransferForm] = useState({ product: "", toBranch: "", batch: "", quantity: "", note: "" });
+  const [stockTransfers, setStockTransfers] = useState<ApiStockTransfer[]>([]);
+  const [transferHistoryError, setTransferHistoryError] = useState("");
+  const [transferAction, setTransferAction] = useState<{ transfer: ApiStockTransfer; type: "dispatch" | "receive" } | null>(null);
+  const [transferActionForm, setTransferActionForm] = useState({ quantity: "", discrepantQuantity: "0", note: "" });
+  const [transferActionSaving, setTransferActionSaving] = useState(false);
+  const transferIdempotencyKey = useRef("");
   const [canUseCameraScan, setCanUseCameraScan] = useState(false);
   const productNameInputRef = useRef<HTMLInputElement>(null);
   const sym = profile.currencySymbol || "R";
@@ -156,6 +162,29 @@ const Inventory = () => {
     window.addEventListener("verifin:offline-sync-complete", refreshBatches);
     return () => window.removeEventListener("verifin:offline-sync-complete", refreshBatches);
   }, []);
+
+  useEffect(() => {
+    if (!canUseMultiBranch || !navigator.onLine) {
+      setStockTransfers([]);
+      return;
+    }
+    let cancelled = false;
+    const loadTransfers = () => listStockTransfersApi()
+      .then((rows) => {
+        if (cancelled) return;
+        setStockTransfers(rows);
+        setTransferHistoryError("");
+      })
+      .catch((error) => {
+        if (!cancelled) setTransferHistoryError(error instanceof Error ? error.message : "Could not load transfer history.");
+      });
+    void loadTransfers();
+    window.addEventListener("verifin:offline-sync-complete", loadTransfers);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("verifin:offline-sync-complete", loadTransfers);
+    };
+  }, [canUseMultiBranch]);
 
   useEffect(() => {
     if (flaggedView) {
@@ -235,22 +264,77 @@ const Inventory = () => {
     }
     setTransferSaving(true);
     try {
-      const result = await transferProductApi(source.id, {
+      if (!transferIdempotencyKey.current) {
+        transferIdempotencyKey.current = globalThis.crypto?.randomUUID?.() || `transfer-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      }
+      const transfer = await createStockTransferApi({
+        product: Number(source.id),
         to_branch: Number(transferForm.toBranch),
         quantity,
         ...(transferForm.batch && transferForm.batch !== "untracked" ? { batch: Number(transferForm.batch) } : {}),
         note: transferForm.note.trim(),
+        idempotency_key: transferIdempotencyKey.current,
       });
-      upsertProduct(mapProductResponse(result.source));
-      upsertProduct(mapProductResponse(result.target));
+      setStockTransfers((current) => [transfer, ...current.filter((item) => item.id !== transfer.id)]);
+      transferIdempotencyKey.current = "";
       setTransferForm({ product: "", toBranch: "", batch: "", quantity: "", note: "" });
       setTransferOpen(false);
-      toast.success(`${quantity} ${source.name} transferred.`);
-      listProductBatchesApi().then(setBatches).catch((error) => toast.error(error instanceof Error ? error.message : "Could not refresh stock batches."));
+      toast.success(`Transfer request for ${quantity} ${source.name} submitted. Stock changes when it is dispatched and received.`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not transfer stock.");
     } finally {
       setTransferSaving(false);
+    }
+  };
+
+  const openTransferAction = (transfer: ApiStockTransfer, type: "dispatch" | "receive") => {
+    const remaining = type === "dispatch"
+      ? transfer.quantity - transfer.quantity_dispatched
+      : transfer.quantity_in_transit;
+    setTransferAction({ transfer, type });
+    setTransferActionForm({ quantity: String(remaining), discrepantQuantity: "0", note: "" });
+  };
+
+  const handleTransferAction = async () => {
+    if (!transferAction) return;
+    const { transfer, type } = transferAction;
+    const quantity = Number(transferActionForm.quantity);
+    const discrepantQuantity = Number(transferActionForm.discrepantQuantity);
+    if (!Number.isInteger(quantity) || quantity < 0 || (type === "dispatch" && quantity === 0)) {
+      toast.error("Enter a valid whole-number quantity.");
+      return;
+    }
+    if (type === "receive" && (!Number.isInteger(discrepantQuantity) || discrepantQuantity < 0 || quantity + discrepantQuantity <= 0 || quantity + discrepantQuantity > transfer.quantity_in_transit)) {
+      toast.error("Received and discrepant quantities must account for a positive amount currently in transit.");
+      return;
+    }
+    if (type === "receive" && discrepantQuantity > 0 && !transferActionForm.note.trim()) {
+      toast.error("Describe the missing or damaged quantity.");
+      return;
+    }
+    setTransferActionSaving(true);
+    try {
+      const updated = await updateStockTransferApi(transfer.id, type, type === "dispatch"
+        ? { quantity, note: transferActionForm.note.trim() }
+        : { quantity, discrepant_quantity: discrepantQuantity, discrepancy_note: transferActionForm.note.trim(), note: transferActionForm.note.trim() });
+      setStockTransfers((current) => [updated, ...current.filter((item) => item.id !== updated.id)]);
+      setTransferAction(null);
+      if (type === "receive" || type === "dispatch") await refreshUser();
+      toast.success(type === "dispatch" ? "Stock dispatched and recorded in transit." : "Delivery receipt recorded.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : `Could not ${type} this transfer.`);
+    } finally {
+      setTransferActionSaving(false);
+    }
+  };
+
+  const transitionTransfer = async (transfer: ApiStockTransfer, action: "approve" | "reject" | "cancel") => {
+    try {
+      const updated = await updateStockTransferApi(transfer.id, action);
+      setStockTransfers((current) => [updated, ...current.filter((item) => item.id !== updated.id)]);
+      toast.success(`Transfer ${action === "approve" ? "approved" : action === "reject" ? "rejected" : "cancelled"}.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : `Could not ${action} this transfer.`);
     }
   };
 
@@ -680,7 +764,7 @@ const Inventory = () => {
             <option value="unassigned">No branch</option>
             {branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
           </select>
-          {branches.length > 1 && <Button variant="outline" onClick={() => setTransferOpen(true)}>Transfer stock</Button>}
+          {branches.length > 1 && <Button variant="outline" onClick={() => { transferIdempotencyKey.current = globalThis.crypto?.randomUUID?.() || `transfer-${Date.now()}-${Math.random().toString(36).slice(2)}`; setTransferOpen(true); }}>Transfer stock</Button>}
         </div>
       ) : null}
 
@@ -814,6 +898,48 @@ const Inventory = () => {
         )}
       </Card>
 
+      {canUseMultiBranch ? (
+        <Card className="space-y-3 p-4 shadow-soft">
+          <div>
+            <p className="font-medium">Branch transfer history</p>
+            <p className="text-xs text-muted-foreground">Follow each request through approval, dispatch, receiving, and discrepancy recording.</p>
+          </div>
+          {transferHistoryError ? <p role="alert" className="text-sm text-destructive">{transferHistoryError}</p> : null}
+          {stockTransfers.slice(0, 10).map((transfer) => {
+            const productName = transfer.product_name || products.find((product) => Number(product.id) === transfer.product)?.name || `Product ${transfer.product}`;
+            const undispatched = transfer.quantity - transfer.quantity_dispatched;
+            const canDispatch = ["approved", "dispatched", "partially_received"].includes(transfer.status) && undispatched > 0;
+            const canReceive = ["dispatched", "partially_received"].includes(transfer.status) && transfer.quantity_in_transit > 0;
+            const canCancel = ["requested", "approved"].includes(transfer.status);
+            return (
+              <div key={transfer.id} className="rounded-lg border p-3">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">{productName} · {transfer.quantity} requested · {transfer.status.replace(/_/g, " ")}</p>
+                    <p className="text-xs text-muted-foreground">{transfer.from_branch_name} → {transfer.to_branch_name} · {transfer.quantity_dispatched} dispatched · {transfer.quantity_received} received · {transfer.quantity_in_transit} in transit</p>
+                    {transfer.note ? <p className="mt-1 text-xs text-muted-foreground">{transfer.note}</p> : null}
+                    {transfer.discrepancy_note ? <p className="mt-1 text-xs text-destructive">Discrepancy: {transfer.discrepancy_note} ({transfer.quantity_discrepant} units)</p> : null}
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                      {transfer.events.slice(-4).map((event) => <span key={event.id}>{event.action} · {new Date(event.created_at).toLocaleString()}{event.note ? ` · ${event.note}` : ""}</span>)}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    {transfer.status === "requested" ? <>
+                      <Button size="sm" variant="outline" onClick={() => void transitionTransfer(transfer, "approve")}>Approve</Button>
+                      <Button size="sm" variant="outline" onClick={() => void transitionTransfer(transfer, "reject")}>Reject</Button>
+                    </> : null}
+                    {canDispatch ? <Button size="sm" variant="outline" onClick={() => openTransferAction(transfer, "dispatch")}>Dispatch {undispatched}</Button> : null}
+                    {canReceive ? <Button size="sm" variant="outline" onClick={() => openTransferAction(transfer, "receive")}>Record receipt</Button> : null}
+                    {canCancel ? <Button size="sm" variant="ghost" onClick={() => void transitionTransfer(transfer, "cancel")}>Cancel</Button> : null}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {!transferHistoryError && stockTransfers.length === 0 ? <p className="text-sm text-muted-foreground">No branch transfers yet.</p> : null}
+        </Card>
+      ) : null}
+
       {filtered.length === 0 ? (
         <EmptyState icon={Package} title="No products found" description={search ? "Try a different search term" : "Add your first product to get started"} actionLabel="Add Product" onAction={openAdd} />
       ) : (
@@ -914,7 +1040,7 @@ const Inventory = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Transfer stock between branches</DialogTitle>
-            <DialogDescription>Move available stock and its selected batch details to another branch.</DialogDescription>
+            <DialogDescription>Request a transfer. Stock stays at the source until the destination approves it and staff record dispatch.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div>
@@ -949,8 +1075,29 @@ const Inventory = () => {
                 <div><Label>Note (optional)</Label><Input maxLength={255} value={transferForm.note} onChange={(event) => setTransferForm({ ...transferForm, note: event.target.value })} /></div>
               </>
             ) : null}
-            <Button className="w-full" disabled={transferSaving || !transferSource} onClick={() => void handleTransfer()}>{transferSaving ? "Transferring..." : "Transfer stock"}</Button>
+            <Button className="w-full" disabled={transferSaving || !transferSource} onClick={() => void handleTransfer()}>{transferSaving ? "Submitting..." : "Submit transfer request"}</Button>
           </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!transferAction} onOpenChange={(open) => { if (!open) setTransferAction(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{transferAction?.type === "dispatch" ? "Dispatch stock" : "Record received stock"}</DialogTitle>
+            <DialogDescription>
+              {transferAction?.type === "dispatch"
+                ? "Dispatch stock to move it out of the source branch and into in-transit quantity."
+                : "Record delivered units and any missing or damaged quantity against this transfer."}
+            </DialogDescription>
+          </DialogHeader>
+          {transferAction ? <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">{transferAction.transfer.product_name}: {transferAction.type === "dispatch" ? `${transferAction.transfer.quantity - transferAction.transfer.quantity_dispatched} units remain to dispatch` : `${transferAction.transfer.quantity_in_transit} units in transit`}</p>
+            <div><Label>{transferAction.type === "dispatch" ? "Quantity dispatched" : "Quantity received"}</Label><Input type="number" min="0" step="1" max={transferAction.type === "dispatch" ? transferAction.transfer.quantity - transferAction.transfer.quantity_dispatched : transferAction.transfer.quantity_in_transit} value={transferActionForm.quantity} onChange={(event) => setTransferActionForm({ ...transferActionForm, quantity: event.target.value })} className="mt-1" /></div>
+            {transferAction.type === "receive" ? <>
+              <div><Label>Missing or damaged quantity</Label><Input type="number" min="0" step="1" max={transferAction.transfer.quantity_in_transit} value={transferActionForm.discrepantQuantity} onChange={(event) => setTransferActionForm({ ...transferActionForm, discrepantQuantity: event.target.value })} className="mt-1" /></div>
+              <div><Label>Receiving note</Label><Input maxLength={255} value={transferActionForm.note} onChange={(event) => setTransferActionForm({ ...transferActionForm, note: event.target.value })} className="mt-1" placeholder="Describe condition or discrepancy" /></div>
+            </> : <div><Label>Dispatch note (optional)</Label><Input maxLength={255} value={transferActionForm.note} onChange={(event) => setTransferActionForm({ ...transferActionForm, note: event.target.value })} className="mt-1" /></div>}
+            <Button className="w-full" disabled={transferActionSaving} onClick={() => void handleTransferAction()}>{transferActionSaving ? "Saving…" : transferAction.type === "dispatch" ? "Confirm dispatch" : "Confirm receipt"}</Button>
+          </div> : null}
         </DialogContent>
       </Dialog>
       <ConfirmationModal

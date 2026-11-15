@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Activity, BadgeCheck, Copy, Eye, EyeOff, Plus, Search, ShieldCheck, Trash2, UserCog } from "lucide-react";
 import { useStore, type StaffMember } from "@/lib/store";
 import { ROLE_DEFAULT_PERMISSIONS, useAuth } from "@/lib/auth-context";
-import { createStaffApi, deleteStaffApi, listStaffActivityLogsApi, updateStaffApi, type ApiStaff, type ApiStaffActivityLog } from "@/lib/api";
+import { createStaffApi, deleteStaffApi, getApprovalSettingsApi, listStaffActivityLogsApi, updateApprovalSettingsApi, updateStaffApi, type ApiApprovalSettings, type ApiStaff, type ApiStaffActivityLog } from "@/lib/api";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ConfirmationModal } from "@/components/ui/confirmation-modal";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -15,7 +15,7 @@ import { addToOfflineQueue, canQueueOfflineAction, hasQueuedLocalCreate, removeQ
 import { toast } from "sonner";
 import { LockedBadge, useFeatureAccess, useUpgradePrompt } from "@/lib/features";
 
-type StaffRole = "Cashier" | "Stock Manager" | "Manager";
+type StaffRole = Exclude<StaffMember["role"], "Owner">;
 
 const permissionOptions = [
   { id: "dashboard", label: "Dashboard" },
@@ -29,11 +29,29 @@ const permissionOptions = [
   { id: "staff", label: "Staff" },
   { id: "settings", label: "Settings" },
   { id: "billing", label: "Billing" },
+  { id: "financial", label: "Financial accounts" },
+];
+
+const sensitivePermissionOptions = [
+  { id: "sales.void", label: "Void completed sales" },
+  { id: "sales.discount_approve", label: "Approve large discounts" },
+  { id: "sales.refund", label: "Process refunds" },
+  { id: "inventory.adjust", label: "Adjust stock" },
+  { id: "suppliers.pay", label: "Record supplier payments" },
+  { id: "purchasing.approve", label: "Approve purchase orders" },
+  { id: "till.review", label: "Review till sessions" },
+  { id: "financial.adjust", label: "Post financial adjustments" },
 ];
 
 const roleDefaults = {
+  Administrator: ROLE_DEFAULT_PERMISSIONS.Administrator,
+  "Branch Manager": ROLE_DEFAULT_PERMISSIONS["Branch Manager"],
   Cashier: ROLE_DEFAULT_PERMISSIONS.Cashier,
+  Salesperson: ROLE_DEFAULT_PERMISSIONS.Salesperson,
   "Stock Manager": ROLE_DEFAULT_PERMISSIONS["Stock Manager"],
+  "Inventory Manager": ROLE_DEFAULT_PERMISSIONS["Inventory Manager"],
+  Accountant: ROLE_DEFAULT_PERMISSIONS.Accountant,
+  Custom: ROLE_DEFAULT_PERMISSIONS.Custom,
   Manager: ROLE_DEFAULT_PERMISSIONS.Manager,
 } satisfies Record<StaffRole, string[]>;
 
@@ -68,7 +86,7 @@ function fromApiStaff(staff: ApiStaff): StaffMember {
 
 const Staff = () => {
   const { staff, branches, addStaff, upsertStaff, updateStaff, deleteStaff } = useStore();
-  const { user } = useAuth();
+  const { user, isStaffSession } = useAuth();
   const { canUse } = useFeatureAccess();
   const promptUpgrade = useUpgradePrompt();
   const [addOpen, setAddOpen] = useState(false);
@@ -83,6 +101,12 @@ const Staff = () => {
   const [activityObject, setActivityObject] = useState("");
   const [activityFrom, setActivityFrom] = useState("");
   const [activityTo, setActivityTo] = useState("");
+  const [activitySearch, setActivitySearch] = useState("");
+  const [editingRole, setEditingRole] = useState<StaffRole>("Cashier");
+  const [editingPermissions, setEditingPermissions] = useState<string[]>([]);
+  const [approvalSettings, setApprovalSettings] = useState<ApiApprovalSettings | null>(null);
+  const [approvalSaving, setApprovalSaving] = useState(false);
+  const [approvalLoading, setApprovalLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -98,22 +122,31 @@ const Staff = () => {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    void getApprovalSettingsApi()
+      .then((settings) => { if (!cancelled) setApprovalSettings(settings); })
+      .catch(() => { if (!cancelled) setApprovalSettings(null); })
+      .finally(() => { if (!cancelled) setApprovalLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
   const filtered = staff.filter(s =>
     s.name.toLowerCase().includes(search.toLowerCase()) ||
     s.role.toLowerCase().includes(search.toLowerCase()) ||
     (s.username || "").toLowerCase().includes(search.toLowerCase())
   );
   const selectedStaff = staff.find((member) => member.id === detailsId) || null;
-  const selectedPermissions = selectedStaff
-    ? selectedStaff.permissions?.length
-      ? selectedStaff.permissions
-      : roleDefaults[selectedStaff.role as StaffRole] || []
-    : [];
   const businessCode = user?.business_code || "";
-  const filteredActivityLogs = activityLogs.filter(log => (!activityAction || log.action === activityAction) && (!activityObject || log.object_type === activityObject) && (!activityFrom || log.created_at.slice(0,10) >= activityFrom) && (!activityTo || log.created_at.slice(0,10) <= activityTo));
+  const filteredActivityLogs = activityLogs.filter(log => {
+    const actor = log.staff_actor_name || log.actor_name || log.actor_email || "system";
+    const term = activitySearch.trim().toLowerCase();
+    const matchesSearch = !term || `${actor} ${log.action} ${log.object_type} ${log.object_id} ${log.summary}`.toLowerCase().includes(term);
+    return matchesSearch && (!activityAction || log.action === activityAction) && (!activityObject || log.object_type === activityObject) && (!activityFrom || log.created_at.slice(0,10) >= activityFrom) && (!activityTo || log.created_at.slice(0,10) <= activityTo);
+  });
   const exportActivity = () => {
     if (!canUse("staff_activity_logs")) { promptUpgrade("staff_activity_logs", "Activity Logs"); return; }
-    const csv = ["Action,Object,ID,Summary,Actor,Date", ...filteredActivityLogs.map(log => [log.action,log.object_type,log.object_id,log.summary,log.actor_email || "system",log.created_at].map(value => `"${String(value ?? "").replace(/"/g,'""')}"`).join(","))].join("\n");
+    const csv = ["Action,Object,ID,Summary,Actor,Date", ...filteredActivityLogs.map(log => [log.action,log.object_type,log.object_id,log.summary,log.staff_actor_name || log.actor_name || log.actor_email || "system",log.created_at].map(value => `"${String(value ?? "").replace(/"/g,'""')}"`).join(","))].join("\n");
     const link = document.createElement("a"); link.href = URL.createObjectURL(new Blob([csv], {type:"text/csv;charset=utf-8"})); link.download = "staff-activity.csv"; link.click(); URL.revokeObjectURL(link.href);
   };
 
@@ -131,6 +164,55 @@ const Staff = () => {
 
   const handleRoleChange = (role: StaffRole) => {
     setForm({ ...form, role, permissions: [...roleDefaults[role]] });
+  };
+
+  const openStaffDetails = (member: StaffMember) => {
+    setDetailsId(member.id);
+    setShowStaffPassword(false);
+    setEditingRole((member.role === "Owner" ? "Manager" : member.role) as StaffRole);
+    setEditingPermissions([...(member.permissions?.length ? member.permissions : roleDefaults[member.role as StaffRole] || [])]);
+  };
+
+  const saveStaffAccess = async () => {
+    if (!selectedStaff) return;
+    if (!/^\d+$/.test(selectedStaff.id)) {
+      toast.error("Sync this staff member before changing access.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const saved = await updateStaffApi(selectedStaff.id, { role: editingRole, permissions: editingPermissions });
+      upsertStaff({ ...fromApiStaff(saved), tempPassword: selectedStaff.tempPassword });
+      toast.success("Staff role and permissions updated.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update staff access.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleEditingPermission = (permission: string) => {
+    if (!canUse("role_based_access")) {
+      promptUpgrade("role_based_access", "Custom role permissions");
+      return;
+    }
+    setEditingPermissions((current) => current.includes(permission)
+      ? current.filter((item) => item !== permission)
+      : [...current, permission]);
+  };
+
+  const saveApprovalSettings = async () => {
+    if (!approvalSettings) return;
+    setApprovalSaving(true);
+    try {
+      const saved = await updateApprovalSettingsApi(approvalSettings);
+      setApprovalSettings(saved);
+      toast.success("Approval thresholds updated.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update approval thresholds.");
+    } finally {
+      setApprovalSaving(false);
+    }
   };
 
   const togglePermission = (permission: string) => {
@@ -261,6 +343,26 @@ const Staff = () => {
         </CardContent>
       </Card>
 
+      {!isStaffSession && <Card className="shadow-soft">
+        <CardHeader>
+          <CardTitle className="font-display flex items-center gap-2 text-base"><ShieldCheck className="h-4 w-4 text-primary" /> Approval Thresholds</CardTitle>
+          <p className="text-xs text-muted-foreground">Above these limits, an authorized approver must perform the action. Amounts use {user?.currency || "your base currency"}. Leave a field blank to disable that threshold.</p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {approvalLoading ? <p className="text-sm text-muted-foreground">Loading approval settings…</p> : approvalSettings ? <>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <label className="grid gap-1 text-xs"><span>Discount rate (%)</span><Input type="number" min="0" max="100" step="0.01" value={approvalSettings.discount_percent_threshold ?? ""} onChange={(event) => setApprovalSettings({...approvalSettings, discount_percent_threshold: event.target.value === "" ? null : event.target.value})} /></label>
+              <label className="grid gap-1 text-xs"><span>Refund amount ({user?.currency || "base currency"})</span><Input type="number" min="0" step="0.01" value={approvalSettings.refund_amount_base_threshold ?? ""} onChange={(event) => setApprovalSettings({...approvalSettings, refund_amount_base_threshold: event.target.value === "" ? null : event.target.value})} /></label>
+              <label className="grid gap-1 text-xs"><span>Stock adjustment (units)</span><Input type="number" min="0" step="1" value={approvalSettings.stock_adjustment_units_threshold ?? ""} onChange={(event) => setApprovalSettings({...approvalSettings, stock_adjustment_units_threshold: event.target.value === "" ? null : Number(event.target.value)})} /></label>
+              <label className="grid gap-1 text-xs"><span>Supplier payment ({user?.currency || "base currency"})</span><Input type="number" min="0" step="0.01" value={approvalSettings.supplier_payment_amount_base_threshold ?? ""} onChange={(event) => setApprovalSettings({...approvalSettings, supplier_payment_amount_base_threshold: event.target.value === "" ? null : event.target.value})} /></label>
+              <label className="grid gap-1 text-xs"><span>Purchase order ({user?.currency || "base currency"})</span><Input type="number" min="0" step="0.01" value={approvalSettings.purchase_order_amount_base_threshold ?? ""} onChange={(event) => setApprovalSettings({...approvalSettings, purchase_order_amount_base_threshold: event.target.value === "" ? null : event.target.value})} /></label>
+            </div>
+            <p className="text-xs text-muted-foreground">Purchase orders still follow the submit and approve lifecycle. These settings determine when approval must come from an authorized manager.</p>
+            <Button onClick={() => void saveApprovalSettings()} disabled={approvalSaving}>{approvalSaving ? "Saving…" : "Save approval thresholds"}</Button>
+          </> : <p className="text-sm text-destructive">Approval settings could not be loaded. Refresh this page to try again.</p>}
+        </CardContent>
+      </Card>}
+
       <Card className="shadow-soft">
         <CardHeader>
           <CardTitle className="font-display flex items-center gap-2 text-base">
@@ -269,12 +371,13 @@ const Staff = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5"><select aria-label="Activity type" className="h-9 rounded-md border bg-background px-2 text-xs" value={activityAction} onChange={e=>setActivityAction(e.target.value)}><option value="">All actions</option>{[...new Set(activityLogs.map(log=>log.action))].map(action=><option key={action} value={action}>{action.replace(/_/g," ")}</option>)}</select><select aria-label="Object type" className="h-9 rounded-md border bg-background px-2 text-xs" value={activityObject} onChange={e=>setActivityObject(e.target.value)}><option value="">All objects</option>{[...new Set(activityLogs.map(log=>log.object_type).filter(Boolean))].map(object=><option key={object} value={object}>{object}</option>)}</select><Input aria-label="From date" type="date" value={activityFrom} onChange={e=>setActivityFrom(e.target.value)} /><Input aria-label="To date" type="date" value={activityTo} onChange={e=>setActivityTo(e.target.value)} /><Button variant="outline" onClick={exportActivity}>Export CSV</Button></div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6"><Input aria-label="Search activity logs" placeholder="Search actor or record" value={activitySearch} onChange={e=>setActivitySearch(e.target.value)} /><select aria-label="Activity type" className="h-9 rounded-md border bg-background px-2 text-xs" value={activityAction} onChange={e=>setActivityAction(e.target.value)}><option value="">All actions</option>{[...new Set(activityLogs.map(log=>log.action))].map(action=><option key={action} value={action}>{action.replace(/_/g," ")}</option>)}</select><select aria-label="Object type" className="h-9 rounded-md border bg-background px-2 text-xs" value={activityObject} onChange={e=>setActivityObject(e.target.value)}><option value="">All objects</option>{[...new Set(activityLogs.map(log=>log.object_type).filter(Boolean))].map(object=><option key={object} value={object}>{object}</option>)}</select><Input aria-label="From date" type="date" value={activityFrom} onChange={e=>setActivityFrom(e.target.value)} /><Input aria-label="To date" type="date" value={activityTo} onChange={e=>setActivityTo(e.target.value)} /><Button variant="outline" onClick={exportActivity}>Export CSV</Button></div>
           {filteredActivityLogs.length ? filteredActivityLogs.map((log) => (
             <div key={log.id} className="flex flex-col gap-1 rounded-lg border border-border px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-sm font-medium">{log.summary}</p>
-                <p className="text-xs text-muted-foreground">{log.action.replace(/_/g, " ")} · {log.actor_email || "system"}</p>
+                <p className="text-xs text-muted-foreground">{log.action.replace(/_/g, " ")} · {log.staff_actor_name || log.actor_name || log.actor_email || "system"}</p>
+                <details className="mt-1 text-[11px] text-muted-foreground"><summary className="cursor-pointer">Record details</summary><pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap">{JSON.stringify(log.metadata, null, 2)}</pre></details>
               </div>
               <p className="text-xs text-muted-foreground">{new Date(log.created_at).toLocaleString()}</p>
             </div>
@@ -303,12 +406,11 @@ const Staff = () => {
               key={s.id}
               role="button"
               tabIndex={0}
-              onClick={() => { setDetailsId(s.id); setShowStaffPassword(false); }}
+              onClick={() => openStaffDetails(s)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
-                  setDetailsId(s.id);
-                  setShowStaffPassword(false);
+                  openStaffDetails(s);
                 }
               }}
               className="shadow-soft group cursor-pointer transition-shadow hover:shadow-card"
@@ -358,8 +460,14 @@ const Staff = () => {
               <div>
                 <Label>Role</Label>
                 <select value={form.role} onChange={e => handleRoleChange(e.target.value as StaffRole)} className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm">
+                  <option value="Administrator">Administrator</option>
+                  <option value="Branch Manager">Branch Manager</option>
                   <option value="Cashier">Cashier</option>
+                  <option value="Salesperson">Salesperson</option>
                   <option value="Stock Manager">Stock Manager</option>
+                  <option value="Inventory Manager">Inventory Manager</option>
+                  <option value="Accountant">Accountant</option>
+                  <option value="Custom">Custom</option>
                   <option value="Manager">Manager</option>
                 </select>
               </div>
@@ -395,6 +503,17 @@ const Staff = () => {
                   </label>
                 ))}
               </div>
+              <div className="mt-4 border-t border-border pt-3">
+                <p className="mb-2 text-xs font-medium">Sensitive operations</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {sensitivePermissionOptions.map((permission) => (
+                    <label key={permission.id} className="flex items-center gap-2 rounded-md border border-border px-2 py-2 text-xs">
+                      <input type="checkbox" checked={form.permissions.includes(permission.id)} onChange={() => {if(!canUse("role_based_access")){promptUpgrade("role_based_access","Sensitive operation permissions");return;}togglePermission(permission.id);}} />
+                      <span>{permission.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <Button onClick={handleAdd} disabled={saving || !form.name.trim() || !form.username.trim() || form.tempPassword.length < 4} className="w-full bg-gradient-hero text-primary-foreground">
@@ -417,7 +536,7 @@ const Staff = () => {
                 </div>
                 <div className="min-w-0">
                   <p className="font-medium truncate">{selectedStaff.name}</p>
-                  <p className="text-sm text-muted-foreground">{selectedStaff.role}</p>
+                  <p className="text-sm text-muted-foreground">{editingRole}</p>
                 </div>
                 <Badge className={selectedStaff.status === "Active" ? "ml-auto bg-success/10 text-success" : "ml-auto bg-muted text-muted-foreground"}>
                   {selectedStaff.status}
@@ -425,6 +544,16 @@ const Staff = () => {
               </div>
 
               <div className="grid gap-3 rounded-lg border border-border p-3 text-sm">
+                {selectedStaff.role === "Owner" ? (
+                  <div className="flex items-center justify-between gap-3"><span className="text-muted-foreground">Role</span><span className="font-medium">Owner</span></div>
+                ) : (
+                  <label className="grid gap-1">
+                    <span className="text-muted-foreground">Role</span>
+                    <select value={editingRole} onChange={(event) => {const role=event.target.value as StaffRole;setEditingRole(role);setEditingPermissions([...roleDefaults[role]]);}} className="h-9 rounded-md border border-input bg-background px-3">
+                      {Object.keys(roleDefaults).map((role) => <option key={role} value={role}>{role}</option>)}
+                    </select>
+                  </label>
+                )}
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-muted-foreground">Username</span>
                   <span className="font-medium">{selectedStaff.username || "Not set"}</span>
@@ -473,18 +602,20 @@ const Staff = () => {
                   <ShieldCheck className="h-4 w-4 text-primary" />
                   Access
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {selectedPermissions.length ? selectedPermissions.map((permission) => (
-                    <Badge key={permission} variant="outline" className="capitalize">
-                      {permission}
-                    </Badge>
-                  )) : (
-                    <span className="text-sm text-muted-foreground">No access selected</span>
-                  )}
-                </div>
+                {selectedStaff.role === "Owner" ? <Badge variant="outline">All permissions</Badge> : (
+                  <div className="grid grid-cols-2 gap-2">
+                    {[...permissionOptions, ...sensitivePermissionOptions].map((permission) => (
+                      <label key={permission.id} className="flex items-center gap-2 rounded-md border border-border px-2 py-2 text-xs">
+                        <input type="checkbox" checked={editingPermissions.includes(permission.id)} onChange={() => toggleEditingPermission(permission.id)} />
+                        <span>{permission.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-2">
+                {selectedStaff.role !== "Owner" && <Button onClick={() => void saveStaffAccess()} disabled={saving}>{saving ? "Saving..." : "Save access"}</Button>}
                 <Button variant="outline" onClick={() => void toggleStatus(selectedStaff.id, selectedStaff.status)}>
                   {selectedStaff.status === "Active" ? "Disable Login" : "Enable Login"}
                 </Button>

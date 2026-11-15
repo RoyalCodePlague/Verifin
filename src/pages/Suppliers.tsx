@@ -1,6 +1,6 @@
 import { useAuth } from "@/lib/auth-context";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FileText, PackagePlus, Plus, ShoppingBag, Truck } from "lucide-react";
+import { Check, FileText, PackagePlus, Plus, RotateCcw, ShoppingBag, Truck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,20 +12,33 @@ import { Textarea } from "@/components/ui/textarea";
 import { SupplyInvoiceWorkspace } from "@/components/invoices/SupplyInvoiceWorkspace";
 import {
   createPurchaseOrderApi,
+  createGoodsReceivedNoteApi,
+  confirmGoodsReceivedNoteApi,
+  attachGoodsReceivedDocumentApi,
+  createSupplierReturnApi,
   createSupplierPaymentApi,
   createSupplierApi,
+  fetchSupplierHistoryApi,
+  fetchSupplierStatementApi,
   fetchPurchaseSuggestions,
   fetchSmartReorderApi,
   fetchSupplierScorecardsApi,
   listSupplierPaymentBalancesApi,
   listSupplierPaymentsApi,
+  listGoodsReceivedNotesApi,
+  listFinancialAccountsApi,
   listPurchaseOrdersApi,
   listSuppliersApi,
-  receivePurchaseOrderApi,
+  transitionPurchaseOrderApi,
   type ApiPurchaseOrder,
+  type ApiGoodsReceivedNote,
+  type ApiGoodsReceivedNoteItem,
   type ApiSupplierBalance,
+  type ApiSupplierOverdueInvoice,
   type ApiSupplierPayment,
+  type ApiFinancialAccount,
   type ApiSupplier,
+  type ApiSupplierStatement,
 } from "@/lib/api";
 import { useStore } from "@/lib/store";
 import { toast } from "sonner";
@@ -36,12 +49,34 @@ type Suggestion = Awaited<ReturnType<typeof fetchPurchaseSuggestions>>["items"][
 type SmartReorderItem = Awaited<ReturnType<typeof fetchSmartReorderApi>>["items"][number];
 type SupplierScorecard = Awaited<ReturnType<typeof fetchSupplierScorecardsApi>>["items"][number];
 
-const emptySupplier = { name: "", contact_name: "", phone: "", email: "", address: "", notes: "" };
+const emptySupplier = {
+  name: "",
+  contact_name: "",
+  phone: "",
+  email: "",
+  invoice_email: "",
+  address: "",
+  tax_number: "",
+  notes: "",
+  lead_time_days: 7,
+  payment_terms_days: 14,
+};
 const SUPPLIERS_CACHE_KEY = "sp_suppliers_cache";
 const PURCHASE_ORDERS_CACHE_KEY = "sp_purchase_orders_cache";
 const PURCHASE_SUGGESTIONS_CACHE_KEY = "sp_purchase_suggestions_cache";
 const SMART_REORDER_CACHE_KEY = "sp_smart_reorder_cache";
 const SUPPLIER_SCORECARDS_CACHE_KEY = "sp_supplier_scorecards_cache";
+
+type PurchaseOrderDraftLine = { product: string; quantity: string; unitCost: string };
+type ReceiptDraftLine = {
+  purchaseOrderItem: number;
+  quantity: string;
+  damaged: string;
+  missing: string;
+  unitCost: string;
+  batchNumber: string;
+  expiryDate: string;
+};
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -82,15 +117,19 @@ function writeCache(key: string, value: unknown) {
 const Suppliers = () => {
   const { refreshUser } = useAuth();
   const supplyRequestId = useRef(crypto.randomUUID());
+  const supplierPaymentRequestKey = useRef<string | null>(null);
   const [savingEntry, setSavingEntry] = useState(false);
   const { products, profile, supplyEntries, addSupplyEntry } = useStore();
   const [suppliers, setSuppliers] = useState<ApiSupplier[]>([]);
   const [orders, setOrders] = useState<ApiPurchaseOrder[]>([]);
+  const [goodsReceivedNotes, setGoodsReceivedNotes] = useState<ApiGoodsReceivedNote[]>([]);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [smartReorders, setSmartReorders] = useState<SmartReorderItem[]>([]);
   const [scorecards, setScorecards] = useState<SupplierScorecard[]>([]);
   const [supplierPayments, setSupplierPayments] = useState<ApiSupplierPayment[]>([]);
+  const [financialAccounts, setFinancialAccounts] = useState<ApiFinancialAccount[]>([]);
   const [supplierBalances, setSupplierBalances] = useState<ApiSupplierBalance[]>([]);
+  const [overdueInvoices, setOverdueInvoices] = useState<ApiSupplierOverdueInvoice[]>([]);
   const [savingPayment, setSavingPayment] = useState(false);
   const [paymentForm, setPaymentForm] = useState({
     purchaseOrder: "",
@@ -98,14 +137,31 @@ const Suppliers = () => {
     currency: profile.currency,
     paymentDate: todayIso(),
     method: "bank" as ApiSupplierPayment["method"],
+    financialAccountId: "",
     reference: "",
     notes: "",
   });
   const [supplierOpen, setSupplierOpen] = useState(false);
   const [orderOpen, setOrderOpen] = useState(false);
   const [receivingOrder, setReceivingOrder] = useState<ApiPurchaseOrder | null>(null);
-  const [receiveBatchForm, setReceiveBatchForm] = useState({ batchNumber: "", expiryDate: "" });
+  const [receiptLines, setReceiptLines] = useState<ReceiptDraftLine[]>([]);
+  const [receiptDate, setReceiptDate] = useState(todayIso());
+  const [receiptNotes, setReceiptNotes] = useState("");
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptDraftId, setReceiptDraftId] = useState<number | null>(null);
+  const [receiptIdempotencyKey, setReceiptIdempotencyKey] = useState("");
+  const [receiptDocumentAttached, setReceiptDocumentAttached] = useState(false);
   const [receiving, setReceiving] = useState(false);
+  const [supplierHistory, setSupplierHistory] = useState<Awaited<ReturnType<typeof fetchSupplierHistoryApi>> | null>(null);
+  const [supplierHistoryOpen, setSupplierHistoryOpen] = useState(false);
+  const [supplierStatement, setSupplierStatement] = useState<ApiSupplierStatement | null>(null);
+  const [supplierStatementOpen, setSupplierStatementOpen] = useState(false);
+  const [loadingSupplierStatement, setLoadingSupplierStatement] = useState(false);
+  const [returnNote, setReturnNote] = useState<ApiGoodsReceivedNote | null>(null);
+  const [returnReason, setReturnReason] = useState<"damaged" | "incorrect" | "expired" | "excess" | "other">("damaged");
+  const [returnQuantities, setReturnQuantities] = useState<Record<number, { accepted: string; damaged: string }>>({});
+  const [returnIdempotencyKey, setReturnIdempotencyKey] = useState("");
+  const [savingReturn, setSavingReturn] = useState(false);
   const [activeTab, setActiveTab] = useState("log");
   const [supplierForm, setSupplierForm] = useState(emptySupplier);
   const [entryForm, setEntryForm] = useState({
@@ -125,30 +181,44 @@ const Suppliers = () => {
   });
   const [orderForm, setOrderForm] = useState({
     supplier: "",
-    product: "",
-    quantity: "1",
-    unitCost: "",
+    items: [{ product: "", quantity: "1", unitCost: "" }] as PurchaseOrderDraftLine[],
     currency: profile.currency,
     fxRate: "",
     expectedDate: "",
+    supplierInvoiceNumber: "",
+    invoiceDate: "",
+    dueDate: "",
+    discountAmount: "0",
+    additionalCharges: "0",
   });
   const sym = profile.currencySymbol || "R";
   const enabledCurrencies = profile.enabledCurrencies?.length ? profile.enabledCurrencies : [profile.currency];
+  const eligiblePaymentAccounts = financialAccounts.filter((account) => account.is_active
+    && account.currency.toUpperCase() === paymentForm.currency.toUpperCase()
+    && account.opening_date <= paymentForm.paymentDate);
+
+  useEffect(() => {
+    listFinancialAccountsApi().then((accounts) => setFinancialAccounts(accounts.filter((account) => account.is_active)))
+      .catch(() => setFinancialAccounts([]));
+  }, []);
 
   const loadData = async () => {
     if (!navigator.onLine) {
       setSuppliers(readCache<ApiSupplier[]>(SUPPLIERS_CACHE_KEY, []));
       setOrders(readCache<ApiPurchaseOrder[]>(PURCHASE_ORDERS_CACHE_KEY, []));
+      setGoodsReceivedNotes([]);
       setSuggestions(readCache<Suggestion[]>(PURCHASE_SUGGESTIONS_CACHE_KEY, []));
       setSmartReorders(readCache<SmartReorderItem[]>(SMART_REORDER_CACHE_KEY, []));
       setScorecards(readCache<SupplierScorecard[]>(SUPPLIER_SCORECARDS_CACHE_KEY, []));
       setSupplierPayments([]);
       setSupplierBalances([]);
+      setOverdueInvoices([]);
       return;
     }
-    const [nextSuppliers, nextOrders, nextSuggestions, nextSmartReorders, nextScorecards, nextSupplierPayments, nextSupplierBalances] = await Promise.all([
+    const [nextSuppliers, nextOrders, nextNotes, nextSuggestions, nextSmartReorders, nextScorecards, nextSupplierPayments, nextSupplierBalances] = await Promise.all([
       listSuppliersApi(),
       listPurchaseOrdersApi(),
+      listGoodsReceivedNotesApi(),
       fetchPurchaseSuggestions(7),
       fetchSmartReorderApi().catch(() => ({ items: [] })),
       fetchSupplierScorecardsApi().catch(() => ({ items: [] })),
@@ -157,11 +227,13 @@ const Suppliers = () => {
     ]);
     setSuppliers(nextSuppliers);
     setOrders(nextOrders);
+    setGoodsReceivedNotes(nextNotes);
     setSuggestions(nextSuggestions.items);
     setSmartReorders(nextSmartReorders.items);
     setScorecards(nextScorecards.items);
     setSupplierPayments(nextSupplierPayments);
     setSupplierBalances(nextSupplierBalances.items);
+    setOverdueInvoices(nextSupplierBalances.overdue_invoices || []);
     writeCache(SUPPLIERS_CACHE_KEY, nextSuppliers);
     writeCache(PURCHASE_ORDERS_CACHE_KEY, nextOrders);
     writeCache(PURCHASE_SUGGESTIONS_CACHE_KEY, nextSuggestions.items);
@@ -173,11 +245,13 @@ const Suppliers = () => {
     loadData().catch(() => {
       setSuppliers(readCache<ApiSupplier[]>(SUPPLIERS_CACHE_KEY, []));
       setOrders(readCache<ApiPurchaseOrder[]>(PURCHASE_ORDERS_CACHE_KEY, []));
+      setGoodsReceivedNotes([]);
       setSuggestions(readCache<Suggestion[]>(PURCHASE_SUGGESTIONS_CACHE_KEY, []));
       setSmartReorders(readCache<SmartReorderItem[]>(SMART_REORDER_CACHE_KEY, []));
       setScorecards(readCache<SupplierScorecard[]>(SUPPLIER_SCORECARDS_CACHE_KEY, []));
       setSupplierPayments([]);
       setSupplierBalances([]);
+      setOverdueInvoices([]);
     });
   }, []);
 
@@ -200,11 +274,16 @@ const Suppliers = () => {
         purchase_order: order.id,
         amount,
         currency: paymentForm.currency || profile.currency,
+        financial_account: paymentForm.financialAccountId && eligiblePaymentAccounts.some((account) => String(account.id) === paymentForm.financialAccountId)
+          ? Number(paymentForm.financialAccountId)
+          : null,
         payment_date: paymentForm.paymentDate,
         method: paymentForm.method,
         reference: paymentForm.reference.trim(),
         notes: paymentForm.notes.trim(),
+        idempotency_key: supplierPaymentRequestKey.current || (supplierPaymentRequestKey.current = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`),
       });
+      supplierPaymentRequestKey.current = null;
       setSupplierPayments((current) => [payment, ...current]);
       setPaymentForm((current) => ({ ...current, amount: "", reference: "", notes: "" }));
       await loadData();
@@ -227,10 +306,6 @@ const Suppliers = () => {
   const selectedProduct = useMemo(
     () => products.find((product) => product.id === entryForm.productId),
     [entryForm.productId, products]
-  );
-  const selectedOrderProduct = useMemo(
-    () => products.find((product) => product.id === orderForm.product),
-    [orderForm.product, products]
   );
   const inboundEntries = supplyEntries.filter((entry) => entry.direction === "incoming");
   const outboundEntries = supplyEntries.filter((entry) => entry.direction === "outgoing");
@@ -337,7 +412,22 @@ const Suppliers = () => {
   };
 
   const createOrder = async () => {
-    if (!orderForm.supplier || !orderForm.product) return;
+    const items = orderForm.items.filter((item) => item.product);
+    if (!orderForm.supplier || !items.length) return;
+    const normalizedItems = items.map((item) => ({
+      product: Number(item.product),
+      quantity: Number(item.quantity),
+      unitCost: item.unitCost.trim()
+        ? Number(item.unitCost)
+        : products.find((product) => product.id === item.product)?.costPrice || 0,
+    }));
+    if (normalizedItems.some((item) =>
+      !Number.isInteger(item.quantity) || item.quantity <= 0
+      || !Number.isFinite(item.unitCost) || item.unitCost < 0
+    )) {
+      toast.error("Enter a positive whole quantity and a valid non-negative unit cost for each product.");
+      return;
+    }
     try {
       const created = await createPurchaseOrderApi({
         supplier: Number(orderForm.supplier),
@@ -345,17 +435,32 @@ const Suppliers = () => {
         currency: orderForm.currency,
         fx_rate_to_base: orderForm.currency === profile.currency ? undefined : (Number(orderForm.fxRate) || profile.exchangeRates?.[orderForm.currency] || undefined),
         expected_date: orderForm.expectedDate || null,
-        status: "ordered",
-        items: [{
-          product: Number(orderForm.product),
-          quantity_ordered: Number(orderForm.quantity) || 1,
-          quantity_received: 0,
-          unit_cost: (Number(orderForm.unitCost) || selectedOrderProduct?.costPrice || 0).toFixed(2),
-        }],
+        supplier_invoice_number: orderForm.supplierInvoiceNumber.trim(),
+        invoice_date: orderForm.invoiceDate || null,
+        due_date: orderForm.dueDate || null,
+        discount_amount: orderForm.discountAmount,
+        additional_charges: orderForm.additionalCharges,
+        items: normalizedItems.map((item) => ({
+          product: item.product,
+          quantity_ordered: item.quantity,
+          unit_cost: item.unitCost.toFixed(2),
+        })),
       });
       setOrders((prev) => [created, ...prev]);
       setOrderOpen(false);
-      toast.success("Purchase order created");
+      setOrderForm({
+        supplier: "",
+        items: [{ product: "", quantity: "1", unitCost: "" }],
+        currency: profile.currency,
+        fxRate: "",
+        expectedDate: "",
+        supplierInvoiceNumber: "",
+        invoiceDate: "",
+        dueDate: "",
+        discountAmount: "0",
+        additionalCharges: "0",
+      });
+      toast.success("Draft purchase order created; no stock was changed");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not create purchase order");
     }
@@ -363,28 +468,84 @@ const Suppliers = () => {
 
   const openReceiveOrder = (order: ApiPurchaseOrder) => {
     setReceivingOrder(order);
-    setReceiveBatchForm({ batchNumber: "", expiryDate: "" });
+    setReceiptLines(order.items.filter((item): item is typeof item & { id: number } => item.id !== undefined).map((item) => ({
+      purchaseOrderItem: item.id,
+      quantity: String(Math.max(item.quantity_ordered - (item.quantity_received || 0), 0)),
+      damaged: "0",
+      missing: "0",
+      unitCost: item.unit_cost,
+      batchNumber: "",
+      expiryDate: "",
+    })));
+    setReceiptDate(todayIso());
+    setReceiptNotes("");
+    setReceiptFile(null);
+    setReceiptDraftId(null);
+    setReceiptIdempotencyKey(crypto.randomUUID());
+    setReceiptDocumentAttached(false);
+  };
+
+  const resumeReceipt = (order: ApiPurchaseOrder, note: ApiGoodsReceivedNote) => {
+    setReceivingOrder(order);
+    setReceiptDraftId(note.id);
+    setReceiptIdempotencyKey("");
+    setReceiptDate(note.delivery_date);
+    setReceiptNotes(note.notes);
+    setReceiptFile(null);
+    setReceiptDocumentAttached(note.attachments.length > 0);
+    setReceiptLines(order.items
+      .filter((item): item is typeof item & { id: number } => item.id !== undefined)
+      .map((item) => {
+        const saved = note.items.find((line) => line.purchase_order_item === item.id);
+        return {
+          purchaseOrderItem: item.id,
+          quantity: String(saved?.quantity_delivered || 0),
+          damaged: String(saved?.quantity_damaged || 0),
+          missing: String(saved?.quantity_missing || 0),
+          unitCost: saved?.unit_cost || item.unit_cost,
+          batchNumber: saved?.batch_number || "",
+          expiryDate: saved?.expiry_date || "",
+        };
+      }));
   };
 
   const receiveOrder = async () => {
     if (!receivingOrder || receiving) return;
     setReceiving(true);
     try {
-      const batch = receiveBatchForm.batchNumber.trim()
-        ? {
-          itemIds: receivingOrder.items
-            .filter((item) => item.quantity_ordered > (item.quantity_received || 0))
-            .map((item) => item.id)
-            .filter((id): id is number => id != null),
-          batch_number: receiveBatchForm.batchNumber.trim(),
-          expiry_date: receiveBatchForm.expiryDate || null,
-        }
-        : undefined;
-      const updated = await receivePurchaseOrderApi(receivingOrder.id, batch);
-      setOrders((prev) => prev.map((item) => item.id === updated.id ? updated : item));
+      let noteId = receiptDraftId;
+      if (noteId == null) {
+        const draft = await createGoodsReceivedNoteApi(receivingOrder.id, {
+          delivery_date: receiptDate,
+          idempotency_key: receiptIdempotencyKey,
+          notes: receiptNotes.trim(),
+          items: receiptLines
+            .filter((line) => Number(line.quantity) > 0 || Number(line.missing) > 0)
+            .map((line) => ({
+              purchase_order_item: line.purchaseOrderItem,
+              quantity_delivered: Number(line.quantity) || 0,
+              quantity_damaged: Number(line.damaged) || 0,
+              quantity_missing: Number(line.missing) || 0,
+              unit_cost: Number(line.unitCost).toFixed(2),
+              batch_number: line.batchNumber.trim(),
+              expiry_date: line.expiryDate || null,
+            })),
+        });
+        noteId = draft.id;
+        setReceiptDraftId(noteId);
+      }
+      if (receiptFile && !receiptDocumentAttached) {
+        await attachGoodsReceivedDocumentApi(noteId, receiptFile);
+        setReceiptDocumentAttached(true);
+      }
+      await confirmGoodsReceivedNoteApi(noteId);
+      await loadData();
       await refreshUser();
       setReceivingOrder(null);
-      toast.success(batch ? "Stock and batch details received successfully" : "Stock received and inventory updated");
+      setReceiptDraftId(null);
+      setReceiptIdempotencyKey("");
+      setReceiptDocumentAttached(false);
+      toast.success("Goods receipt confirmed; accepted quantities and stock movements recorded");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not receive order");
     } finally {
@@ -395,12 +556,19 @@ const Suppliers = () => {
   const startSuggestionOrder = (item: Suggestion) => {
     setOrderForm({
       supplier: item.supplier ? String(item.supplier.id) : "",
-      product: String(item.product.id),
-      quantity: String(item.suggested_quantity || 1),
-      unitCost: item.product.cost_price || "0",
+      items: [{
+        product: String(item.product.id),
+        quantity: String(item.suggested_quantity || 1),
+        unitCost: item.product.cost_price || "0",
+      }],
       currency: profile.currency,
       fxRate: "",
       expectedDate: "",
+      supplierInvoiceNumber: "",
+      invoiceDate: "",
+      dueDate: "",
+      discountAmount: "0",
+      additionalCharges: "0",
     });
     setOrderOpen(true);
   };
@@ -412,14 +580,110 @@ const Suppliers = () => {
     }
     setOrderForm({
       supplier: String(item.supplier.id),
-      product: String(item.product.id),
-      quantity: String(item.suggested_quantity || 1),
-      unitCost: String(item.product.cost_price || ""),
+      items: [{
+        product: String(item.product.id),
+        quantity: String(item.suggested_quantity || 1),
+        unitCost: String(item.product.cost_price || ""),
+      }],
       currency: profile.currency,
       fxRate: "",
       expectedDate: "",
+      supplierInvoiceNumber: "",
+      invoiceDate: "",
+      dueDate: "",
+      discountAmount: "0",
+      additionalCharges: "0",
     });
     setOrderOpen(true);
+  };
+
+  const transitionOrder = async (order: ApiPurchaseOrder, action: "submit" | "approve" | "cancel" | "complete") => {
+    try {
+      await transitionPurchaseOrderApi(order.id, action);
+      await loadData();
+      toast.success(`Purchase order ${action === "submit" ? "submitted" : action === "approve" ? "approved" : action === "complete" ? "completed" : "cancelled"}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update purchase order");
+    }
+  };
+
+  const openSupplierHistory = async (supplier: ApiSupplier) => {
+    try {
+      const history = await fetchSupplierHistoryApi(supplier.id);
+      setSupplierHistory(history);
+      setSupplierHistoryOpen(true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not load supplier history");
+    }
+  };
+
+  const openSupplierStatement = async (supplier: ApiSupplier) => {
+    setLoadingSupplierStatement(true);
+    try {
+      const statement = await fetchSupplierStatementApi(supplier.id);
+      setSupplierStatement(statement);
+      setSupplierStatementOpen(true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not load supplier statement");
+    } finally {
+      setLoadingSupplierStatement(false);
+    }
+  };
+
+  const printSupplierStatement = () => {
+    if (!supplierStatement) return;
+    const escapeHtml = (value: unknown) => String(value ?? "").replace(/[&<>\"']/g, (character) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;",
+    })[character] || character);
+    const printWindow = window.open("", "_blank", "width=900,height=700");
+    if (!printWindow) {
+      toast.error("Allow pop-ups to print this statement");
+      return;
+    }
+    const currency = escapeHtml(supplierStatement.currency);
+    const invoiceRows = supplierStatement.invoices.map((invoice) => `<tr><td>${escapeHtml(invoice.invoice_number)}</td><td>${escapeHtml(prettyDate(invoice.invoice_date))}</td><td>${escapeHtml(invoice.due_date ? prettyDate(invoice.due_date) : "—")}</td><td>${currency} ${Number(invoice.received_total_base).toFixed(2)}</td><td>${currency} ${Number(invoice.paid_total_base).toFixed(2)}</td><td>${currency} ${Number(invoice.returned_total_base).toFixed(2)}</td><td>${currency} ${Number(invoice.outstanding_base).toFixed(2)}</td><td>${escapeHtml(invoice.status)}</td></tr>`).join("");
+    const activityRows = supplierStatement.activity.map((row) => `<tr><td>${escapeHtml(prettyDate(row.date))}</td><td>${escapeHtml(row.type)}</td><td>${escapeHtml(row.reference)}</td><td>${escapeHtml(row.description)}</td><td>${currency} ${Number(row.amount_base).toFixed(2)}</td><td>${currency} ${Number(row.balance_base).toFixed(2)}</td></tr>`).join("");
+    printWindow.document.write(`<!doctype html><html><head><title>Supplier statement</title><style>body{font:14px Arial,sans-serif;margin:32px;color:#222}h1{margin-bottom:4px}p{color:#555}table{border-collapse:collapse;width:100%;margin:18px 0}th,td{border:1px solid #ccc;padding:7px;text-align:left;font-size:12px}th{background:#f2f2f2}.total{font-size:18px;font-weight:bold}</style></head><body><h1>${escapeHtml(supplierStatement.supplier.name)} — Statement</h1><p>As of ${escapeHtml(prettyDate(supplierStatement.as_of))}</p><p class="total">Outstanding: ${currency} ${Number(supplierStatement.totals.outstanding_base).toFixed(2)}</p><h2>Invoices</h2><table><thead><tr><th>Invoice</th><th>Date</th><th>Due</th><th>Received</th><th>Paid</th><th>Returns</th><th>Outstanding</th><th>Status</th></tr></thead><tbody>${invoiceRows || "<tr><td colspan=8>No invoices</td></tr>"}</tbody></table><h2>Activity</h2><table><thead><tr><th>Date</th><th>Type</th><th>Reference</th><th>Description</th><th>Debit / credit</th><th>Balance</th></tr></thead><tbody>${activityRows || "<tr><td colspan=6>No activity</td></tr>"}</tbody></table><script>window.onload=()=>window.print()</script></body></html>`);
+    printWindow.document.close();
+  };
+
+  const openReturn = (note: ApiGoodsReceivedNote) => {
+    setReturnNote(note);
+    setReturnQuantities(Object.fromEntries(note.items.map((item) => [item.id, { accepted: "0", damaged: "0" }])));
+    setReturnReason("damaged");
+    setReturnIdempotencyKey(crypto.randomUUID());
+  };
+
+  const submitSupplierReturn = async () => {
+    if (!returnNote || savingReturn) return;
+    const items = returnNote.items
+      .map((item) => ({
+        goods_received_note_item: item.id,
+        quantity: Number(returnQuantities[item.id]?.accepted) || 0,
+        quantity_damaged: Number(returnQuantities[item.id]?.damaged) || 0,
+      }))
+      .filter((item) => item.quantity > 0 || item.quantity_damaged > 0);
+    if (!items.length) {
+      toast.error("Enter a quantity to return.");
+      return;
+    }
+    setSavingReturn(true);
+    try {
+      await createSupplierReturnApi({
+        purchase_order: returnNote.purchase_order,
+        reason: returnReason,
+        idempotency_key: returnIdempotencyKey,
+        items,
+      });
+      await loadData();
+      await refreshUser();
+      setReturnNote(null);
+      toast.success("Supplier return recorded and stock movements updated");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not record supplier return");
+    } finally {
+      setSavingReturn(false);
+    }
   };
 
   return (
@@ -806,8 +1070,19 @@ const Suppliers = () => {
               <CardContent className="space-y-3">
                 {suppliers.map((supplier) => (
                   <div key={supplier.id} className="rounded-lg border border-border p-3">
-                    <p className="text-sm font-medium">{supplier.name}</p>
-                    <p className="text-xs text-muted-foreground">{[supplier.contact_name, supplier.phone, supplier.email].filter(Boolean).join(" - ") || "No contact details"}</p>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-medium">{supplier.name}</p>
+                        <p className="text-xs text-muted-foreground">{[supplier.contact_name, supplier.phone, supplier.email].filter(Boolean).join(" - ") || "No contact details"}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Terms {supplier.payment_terms_days ?? 14} days · lead time {supplier.lead_time_days ?? 7} days
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 gap-1">
+                        <Button size="sm" variant="outline" onClick={() => void openSupplierHistory(supplier)}>History</Button>
+                        <Button size="sm" variant="outline" disabled={loadingSupplierStatement} onClick={() => void openSupplierStatement(supplier)}>Statement</Button>
+                      </div>
+                    </div>
                   </div>
                 ))}
                 {suppliers.length === 0 && <p className="text-sm text-muted-foreground">Add suppliers to connect purchase orders to real vendors.</p>}
@@ -831,9 +1106,34 @@ const Suppliers = () => {
                       </div>
                       <Badge>{order.status}</Badge>
                     </div>
-                    {order.status !== "received" && order.status !== "cancelled" && (
-                      <Button size="sm" variant="outline" className="mt-3" onClick={() => openReceiveOrder(order)}>Receive Stock</Button>
-                    )}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {order.status === "draft" && <Button size="sm" variant="outline" onClick={() => void transitionOrder(order, "submit")}>Submit</Button>}
+                      {order.status === "submitted" && <Button size="sm" variant="outline" onClick={() => void transitionOrder(order, "approve")}>Approve</Button>}
+                      {["approved", "partially_received"].includes(order.status) && <Button size="sm" variant="outline" onClick={() => openReceiveOrder(order)}>Record delivery</Button>}
+                      {order.status === "fully_received" && <Button size="sm" variant="outline" onClick={() => void transitionOrder(order, "complete")}>Complete</Button>}
+                      {["draft", "submitted", "approved", "partially_received"].includes(order.status) && <Button size="sm" variant="ghost" onClick={() => void transitionOrder(order, "cancel")}>Cancel</Button>}
+                    </div>
+                    {goodsReceivedNotes.filter((note) => note.purchase_order === order.id).map((note) => (
+                      <div key={note.id} className="mt-3 rounded-md bg-muted/40 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-medium">{note.grn_number} · {prettyDate(note.delivery_date)}</p>
+                          <Badge variant={note.status === "confirmed" ? "default" : "outline"}>{note.status}</Badge>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {note.items.reduce((sum, item) => sum + item.quantity_accepted, 0)} accepted · {note.items.reduce((sum, item) => sum + item.quantity_damaged, 0)} damaged · {note.items.reduce((sum, item) => sum + item.quantity_missing, 0)} missing
+                        </p>
+                        {note.status === "confirmed" && (
+                          <Button size="sm" variant="ghost" className="mt-1" onClick={() => openReturn(note)}>
+                            <RotateCcw className="mr-1 h-3.5 w-3.5" /> Supplier return
+                          </Button>
+                        )}
+                        {note.status === "draft" && (
+                          <Button size="sm" variant="ghost" className="mt-1" onClick={() => resumeReceipt(order, note)}>
+                            Resume draft receipt
+                          </Button>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 ))}
                 {orders.length === 0 && <p className="text-sm text-muted-foreground">No purchase orders yet.</p>}
@@ -866,6 +1166,23 @@ const Suppliers = () => {
             )}
           </div>
 
+          {overdueInvoices.length > 0 && (
+            <Card className="border-destructive/40 shadow-soft">
+              <CardHeader><CardTitle className="text-base font-display">Overdue supplier invoices</CardTitle></CardHeader>
+              <CardContent className="space-y-2">
+                {overdueInvoices.map((invoice) => (
+                  <div key={invoice.purchase_order} className="flex flex-col gap-1 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-medium">{invoice.supplier_name} · {invoice.invoice_number || invoice.order_number}</p>
+                      <p className="text-xs text-muted-foreground">{invoice.order_number} · due {prettyDate(invoice.due_date)}</p>
+                    </div>
+                    <p className="text-sm font-semibold text-destructive">{sym}{Number(invoice.outstanding_base).toFixed(2)} outstanding</p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
           <Card className="shadow-soft">
             <CardHeader><CardTitle className="text-base font-display">Record supplier payment</CardTitle></CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -877,7 +1194,7 @@ const Suppliers = () => {
                   className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
                   <option value="">Choose purchase order</option>
-                  {orders.filter((order) => ["partially_received", "received"].includes(order.status)).map((order) => (
+                  {orders.filter((order) => ["partially_received", "fully_received", "completed", "received"].includes(order.status)).map((order) => (
                     <option key={order.id} value={order.id}>{order.order_number} · {order.supplier_name} · {order.status}</option>
                   ))}
                 </select>
@@ -888,7 +1205,7 @@ const Suppliers = () => {
               </div>
               <div>
                 <Label>Paid in</Label>
-                <select value={paymentForm.currency} onChange={(event) => setPaymentForm({ ...paymentForm, currency: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+        <select value={paymentForm.currency} onChange={(event) => setPaymentForm({ ...paymentForm, currency: event.target.value, financialAccountId: "" })} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
                   {Array.from(new Set([profile.currency, ...enabledCurrencies])).map((currency) => <option key={currency} value={currency}>{currency}</option>)}
                 </select>
               </div>
@@ -901,6 +1218,13 @@ const Suppliers = () => {
                   <option value="mobile_money">Mobile money</option>
                   <option value="card">Card</option>
                   <option value="other">Other</option>
+                </select>
+              </div>
+              <div>
+                <Label>Financial account (optional)</Label>
+                <select value={eligiblePaymentAccounts.some((account) => String(account.id) === paymentForm.financialAccountId) ? paymentForm.financialAccountId : ""} onChange={(event) => setPaymentForm({ ...paymentForm, financialAccountId: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                  <option value="">Do not post to an account ledger</option>
+                  {eligiblePaymentAccounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {account.currency}</option>)}
                 </select>
               </div>
               <div><Label>Reference (optional)</Label><Input className="mt-1" value={paymentForm.reference} onChange={(event) => setPaymentForm({ ...paymentForm, reference: event.target.value })} /></div>
@@ -940,6 +1264,16 @@ const Suppliers = () => {
               <div><Label>Phone</Label><Input value={supplierForm.phone} onChange={(e) => setSupplierForm({ ...supplierForm, phone: e.target.value })} className="mt-1" /></div>
               <div><Label>Email</Label><Input value={supplierForm.email} onChange={(e) => setSupplierForm({ ...supplierForm, email: e.target.value })} className="mt-1" /></div>
             </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div><Label>Invoice email</Label><Input type="email" value={supplierForm.invoice_email} onChange={(e) => setSupplierForm({ ...supplierForm, invoice_email: e.target.value })} className="mt-1" /></div>
+              <div><Label>Tax number</Label><Input value={supplierForm.tax_number} onChange={(e) => setSupplierForm({ ...supplierForm, tax_number: e.target.value })} className="mt-1" /></div>
+            </div>
+            <div><Label>Address</Label><Input value={supplierForm.address} onChange={(e) => setSupplierForm({ ...supplierForm, address: e.target.value })} className="mt-1" /></div>
+            <div className="grid grid-cols-2 gap-2">
+              <div><Label>Payment terms (days)</Label><Input type="number" min="0" value={supplierForm.payment_terms_days} onChange={(e) => setSupplierForm({ ...supplierForm, payment_terms_days: Number(e.target.value) || 0 })} className="mt-1" /></div>
+              <div><Label>Lead time (days)</Label><Input type="number" min="0" value={supplierForm.lead_time_days} onChange={(e) => setSupplierForm({ ...supplierForm, lead_time_days: Number(e.target.value) || 0 })} className="mt-1" /></div>
+            </div>
+            <div><Label>Notes</Label><Textarea value={supplierForm.notes} onChange={(e) => setSupplierForm({ ...supplierForm, notes: e.target.value })} className="mt-1" /></div>
             <Button onClick={saveSupplier} disabled={!supplierForm.name.trim()} className="w-full">Save Supplier</Button>
           </div>
         </DialogContent>
@@ -949,11 +1283,37 @@ const Suppliers = () => {
         <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
           <DialogHeader>
             <DialogTitle className="font-display">Create Purchase Order</DialogTitle>
-            <DialogDescription>Create a purchase order for a saved supplier and track its expected stock delivery.</DialogDescription>
+            <DialogDescription>Create a draft order. Stock only changes after an approved order has a confirmed goods-received note.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <div><Label>Supplier</Label><select value={orderForm.supplier} onChange={(e) => setOrderForm({ ...orderForm, supplier: e.target.value })} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="">Select supplier</option>{suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
-            <div><Label>Product</Label><select value={orderForm.product} onChange={(e) => { const product = products.find((p) => p.id === e.target.value); setOrderForm({ ...orderForm, product: e.target.value, unitCost: String(product?.costPrice || "") }); }} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="">Select product</option>{products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+            {orderForm.items.map((line, index) => (
+              <div key={index} className="grid grid-cols-[minmax(0,1fr)_90px_110px_auto] items-end gap-2">
+                <div>
+                  <Label>Product</Label>
+                  <select
+                    value={line.product}
+                    onChange={(event) => {
+                      const product = products.find((item) => item.id === event.target.value);
+                      setOrderForm((current) => ({
+                        ...current,
+                        items: current.items.map((row, rowIndex) => rowIndex === index
+                          ? { ...row, product: event.target.value, unitCost: String(product?.costPrice || "") }
+                          : row),
+                      }));
+                    }}
+                    className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="">Select product</option>
+                    {products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
+                  </select>
+                </div>
+                <div><Label>Qty</Label><Input type="number" min="1" value={line.quantity} onChange={(event) => setOrderForm((current) => ({ ...current, items: current.items.map((row, rowIndex) => rowIndex === index ? { ...row, quantity: event.target.value } : row) }))} className="mt-1" /></div>
+                <div><Label>Unit cost</Label><Input type="number" min="0" step="0.01" value={line.unitCost} onChange={(event) => setOrderForm((current) => ({ ...current, items: current.items.map((row, rowIndex) => rowIndex === index ? { ...row, unitCost: event.target.value } : row) }))} className="mt-1" /></div>
+                <Button type="button" variant="ghost" size="icon" disabled={orderForm.items.length === 1} aria-label="Remove product line" onClick={() => setOrderForm((current) => ({ ...current, items: current.items.filter((_, rowIndex) => rowIndex !== index) }))}>×</Button>
+              </div>
+            ))}
+            <Button type="button" variant="outline" size="sm" onClick={() => setOrderForm((current) => ({ ...current, items: [...current.items, { product: "", quantity: "1", unitCost: "" }] }))}>Add product</Button>
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <Label>Currency</Label>
@@ -966,29 +1326,200 @@ const Suppliers = () => {
                 <Input type="number" value={orderForm.currency === profile.currency ? "1" : (orderForm.fxRate || String(profile.exchangeRates?.[orderForm.currency] ?? ""))} onChange={(e) => setOrderForm({ ...orderForm, fxRate: e.target.value })} className="mt-1" disabled={orderForm.currency === profile.currency} />
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-2">
-              <div><Label>Quantity</Label><Input type="number" value={orderForm.quantity} onChange={(e) => setOrderForm({ ...orderForm, quantity: e.target.value })} className="mt-1" /></div>
-              <div><Label>Unit Cost ({symbolForCurrency(orderForm.currency)})</Label><Input type="number" value={orderForm.unitCost} onChange={(e) => setOrderForm({ ...orderForm, unitCost: e.target.value })} className="mt-1" /></div>
-              <div><Label>Expected</Label><Input type="date" value={orderForm.expectedDate} onChange={(e) => setOrderForm({ ...orderForm, expectedDate: e.target.value })} className="mt-1" /></div>
+            <div className="grid grid-cols-2 gap-2">
+              <div><Label>Expected delivery</Label><Input type="date" value={orderForm.expectedDate} onChange={(e) => setOrderForm({ ...orderForm, expectedDate: e.target.value })} className="mt-1" /></div>
+              <div><Label>Supplier invoice #</Label><Input value={orderForm.supplierInvoiceNumber} onChange={(e) => setOrderForm({ ...orderForm, supplierInvoiceNumber: e.target.value })} className="mt-1" /></div>
+              <div><Label>Invoice date</Label><Input type="date" value={orderForm.invoiceDate} onChange={(e) => setOrderForm({ ...orderForm, invoiceDate: e.target.value })} className="mt-1" /></div>
+              <div><Label>Due date</Label><Input type="date" value={orderForm.dueDate} onChange={(e) => setOrderForm({ ...orderForm, dueDate: e.target.value })} className="mt-1" /></div>
+              <div><Label>Discount</Label><Input type="number" min="0" step="0.01" value={orderForm.discountAmount} onChange={(e) => setOrderForm({ ...orderForm, discountAmount: e.target.value })} className="mt-1" /></div>
+              <div><Label>Additional charges</Label><Input type="number" min="0" step="0.01" value={orderForm.additionalCharges} onChange={(e) => setOrderForm({ ...orderForm, additionalCharges: e.target.value })} className="mt-1" /></div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Base estimate: {sym}{((Number(orderForm.quantity) || 0) * (Number(orderForm.unitCost) || 0) * (orderForm.currency === profile.currency ? 1 : (Number(orderForm.fxRate) || profile.exchangeRates?.[orderForm.currency] || 0))).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              Base estimate: {sym}{(
+                orderForm.items.reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.unitCost) || 0), 0)
+                * (orderForm.currency === profile.currency ? 1 : (Number(orderForm.fxRate) || profile.exchangeRates?.[orderForm.currency] || 0))
+              ).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
-            <Button onClick={createOrder} disabled={!orderForm.supplier || !orderForm.product} className="w-full">Create Order</Button>
+            <Button onClick={createOrder} disabled={!orderForm.supplier || !orderForm.items.some((item) => item.product)} className="w-full">Save Draft Order</Button>
           </div>
         </DialogContent>
       </Dialog>
       <Dialog open={!!receivingOrder} onOpenChange={(open) => { if (!open && !receiving) setReceivingOrder(null); }}>
         <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
           <DialogHeader>
-            <DialogTitle>Receive {receivingOrder?.order_number}</DialogTitle>
-            <DialogDescription>Record a batch number and optional expiry to enable expiry-aware stock rotation. Leave the batch blank to receive legacy untracked stock.</DialogDescription>
+            <DialogTitle>Record delivery for {receivingOrder?.order_number}</DialogTitle>
+            <DialogDescription>Enter delivered, damaged, and missing quantities for each order line. Only accepted goods enter stock.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            <div><Label>Batch / lot number (optional)</Label><Input className="mt-1" value={receiveBatchForm.batchNumber} onChange={(event) => setReceiveBatchForm({ ...receiveBatchForm, batchNumber: event.target.value })} /></div>
-            <div><Label>Expiry date (optional)</Label><Input type="date" className="mt-1" value={receiveBatchForm.expiryDate} onChange={(event) => setReceiveBatchForm({ ...receiveBatchForm, expiryDate: event.target.value })} /></div>
-            <Button className="w-full" disabled={receiving} onClick={() => void receiveOrder()}>{receiving ? "Receiving…" : "Confirm receipt"}</Button>
+            {receiptDraftId != null && <p className="rounded-md bg-muted p-2 text-xs text-muted-foreground">A draft GRN exists. Its delivery quantities are locked; you can add or retry the document upload and confirmation.</p>}
+            <div><Label>Delivery date</Label><Input type="date" disabled={receiptDraftId != null} className="mt-1" value={receiptDate} onChange={(event) => setReceiptDate(event.target.value)} /></div>
+            {receivingOrder?.items.map((item) => {
+              const line = receiptLines.find((row) => row.purchaseOrderItem === item.id);
+              if (!line) return null;
+              const remaining = item.quantity_ordered - (item.quantity_received || 0);
+              return (
+                <div key={item.id} className="space-y-2 rounded-lg border p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div><p className="text-sm font-medium">{item.product_name}</p><p className="text-xs text-muted-foreground">{remaining} remaining to deliver</p></div>
+                    <span className="text-xs text-muted-foreground">{item.sku}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div><Label>Delivered</Label><Input type="number" min="0" max={remaining} disabled={receiptDraftId != null} value={line.quantity} onChange={(event) => setReceiptLines((current) => current.map((row) => row.purchaseOrderItem === line.purchaseOrderItem ? { ...row, quantity: event.target.value } : row))} className="mt-1" /></div>
+                    <div><Label>Damaged</Label><Input type="number" min="0" disabled={receiptDraftId != null} value={line.damaged} onChange={(event) => setReceiptLines((current) => current.map((row) => row.purchaseOrderItem === line.purchaseOrderItem ? { ...row, damaged: event.target.value } : row))} className="mt-1" /></div>
+                    <div><Label>Missing</Label><Input type="number" min="0" max={remaining} disabled={receiptDraftId != null} value={line.missing} onChange={(event) => setReceiptLines((current) => current.map((row) => row.purchaseOrderItem === line.purchaseOrderItem ? { ...row, missing: event.target.value } : row))} className="mt-1" /></div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div><Label>Actual unit cost</Label><Input type="number" min="0" step="0.01" disabled={receiptDraftId != null} value={line.unitCost} onChange={(event) => setReceiptLines((current) => current.map((row) => row.purchaseOrderItem === line.purchaseOrderItem ? { ...row, unitCost: event.target.value } : row))} className="mt-1" /></div>
+                    <div><Label>Batch / lot</Label><Input disabled={receiptDraftId != null} value={line.batchNumber} onChange={(event) => setReceiptLines((current) => current.map((row) => row.purchaseOrderItem === line.purchaseOrderItem ? { ...row, batchNumber: event.target.value } : row))} className="mt-1" /></div>
+                    <div><Label>Expiry</Label><Input type="date" disabled={receiptDraftId != null} value={line.expiryDate} onChange={(event) => setReceiptLines((current) => current.map((row) => row.purchaseOrderItem === line.purchaseOrderItem ? { ...row, expiryDate: event.target.value } : row))} className="mt-1" /></div>
+                  </div>
+                </div>
+              );
+            })}
+            <div><Label>Delivery documents (PDF/JPG/PNG, up to 10 MB)</Label><Input type="file" accept=".pdf,.jpg,.jpeg,.png" className="mt-1" onChange={(event) => setReceiptFile(event.target.files?.[0] || null)} /></div>
+            <div><Label>Notes</Label><Textarea disabled={receiptDraftId != null} value={receiptNotes} onChange={(event) => setReceiptNotes(event.target.value)} className="mt-1" /></div>
+            <Button className="w-full" disabled={receiving} onClick={() => void receiveOrder()}><Check className="mr-2 h-4 w-4" />{receiving ? "Confirming…" : "Save and confirm delivery"}</Button>
           </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!returnNote} onOpenChange={(open) => { if (!open && !savingReturn) setReturnNote(null); }}>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Return goods to supplier</DialogTitle>
+            <DialogDescription>Accepted stock is removed and credited; goods already rejected as damaged are logged without changing stock again.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Reason</Label>
+              <select value={returnReason} onChange={(event) => setReturnReason(event.target.value as typeof returnReason)} className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
+                <option value="damaged">Damaged</option><option value="incorrect">Incorrect delivery</option><option value="expired">Expired</option><option value="excess">Excess</option><option value="other">Other</option>
+              </select>
+            </div>
+            {returnNote?.items.filter((item) => item.quantity_accepted > 0 || item.quantity_damaged > 0).map((item) => (
+              <div key={item.id} className="flex items-center justify-between gap-3 rounded border p-3">
+                <div className="min-w-0"><p className="text-sm font-medium">{item.product_name}</p><p className="text-xs text-muted-foreground">{returnNote.grn_number} · accepted {item.quantity_accepted}, damaged {item.quantity_damaged}</p></div>
+                <div className="grid w-40 grid-cols-2 gap-2">
+                  <div><Label className="text-xs">Accepted</Label><Input aria-label={`Accepted return quantity for ${item.product_name}`} type="number" min="0" max={item.quantity_accepted} value={returnQuantities[item.id]?.accepted || "0"} onChange={(event) => setReturnQuantities((current) => ({ ...current, [item.id]: { accepted: event.target.value, damaged: current[item.id]?.damaged || "0" } }))} /></div>
+                  <div><Label className="text-xs">Damaged</Label><Input aria-label={`Damaged return quantity for ${item.product_name}`} type="number" min="0" max={item.quantity_damaged} value={returnQuantities[item.id]?.damaged || "0"} onChange={(event) => setReturnQuantities((current) => ({ ...current, [item.id]: { accepted: current[item.id]?.accepted || "0", damaged: event.target.value } }))} /></div>
+                </div>
+              </div>
+            ))}
+            <Button className="w-full" disabled={savingReturn} onClick={() => void submitSupplierReturn()}>{savingReturn ? "Saving…" : "Record supplier return"}</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={supplierHistoryOpen} onOpenChange={setSupplierHistoryOpen}>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{supplierHistory?.supplier.name || "Supplier"} history</DialogTitle>
+            <DialogDescription>Preferred products, purchase orders, settlements, and returns.</DialogDescription>
+          </DialogHeader>
+          {supplierHistory && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <p>Invoices: {supplierHistory.purchase_orders.filter((order) => order.supplier_invoice_number).length}</p>
+                <p>Payments: {supplierHistory.payments.length}</p>
+                <p>Orders: {supplierHistory.purchase_orders.length}</p>
+                <p>Returns: {supplierHistory.returns.length}</p>
+              </div>
+              <div>
+                <p className="mb-2 text-sm font-medium">Preferred products</p>
+                {supplierHistory.products.map((product) => <p key={product.id} className="border-b py-2 text-sm">{product.name} · {product.stock} in stock · {product.sku}</p>)}
+                {!supplierHistory.products.length && <p className="text-sm text-muted-foreground">No preferred products assigned.</p>}
+              </div>
+              <div>
+                <p className="mb-2 text-sm font-medium">Purchase history</p>
+                {supplierHistory.purchase_orders.map((order) => <p key={order.id} className="border-b py-2 text-sm">{order.order_number} · {order.status} · {order.supplier_invoice_number || "No supplier invoice"}</p>)}
+              </div>
+              <div>
+                <p className="mb-2 text-sm font-medium">Supplier-specific cost history</p>
+                {supplierHistory.purchase_cost_history.map((record) => (
+                  <p key={record.id} className="border-b py-2 text-sm">
+                    {record.product_name} · {record.currency} {Number(record.unit_cost).toFixed(2)} / unit
+                    {" · "}{sym}{Number(record.unit_cost_base).toFixed(2)} base
+                    {" · "}{record.grn_number} · {prettyDateTime(record.created_at)}
+                  </p>
+                ))}
+                {!supplierHistory.purchase_cost_history.length && <p className="text-sm text-muted-foreground">No confirmed purchase costs recorded yet.</p>}
+              </div>
+              <div>
+                <p className="mb-2 text-sm font-medium">Payment history</p>
+                {supplierHistory.payments.map((payment) => (
+                  <p key={payment.id} className="border-b py-2 text-sm">
+                    {payment.order_number} · {prettyDate(payment.payment_date)} · {payment.currency} {Number(payment.amount).toFixed(2)}
+                  </p>
+                ))}
+                {!supplierHistory.payments.length && <p className="text-sm text-muted-foreground">No supplier payments recorded.</p>}
+              </div>
+              <div>
+                <p className="mb-2 text-sm font-medium">Returns</p>
+                {supplierHistory.returns.map((record) => (
+                  <p key={record.id} className="border-b py-2 text-sm">
+                    {record.reason} · {prettyDate(record.return_date)} · {sym}{Number(record.total_amount_base).toFixed(2)} credit
+                  </p>
+                ))}
+                {!supplierHistory.returns.length && <p className="text-sm text-muted-foreground">No supplier returns recorded.</p>}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+      <Dialog open={supplierStatementOpen} onOpenChange={setSupplierStatementOpen}>
+        <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-5xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{supplierStatement?.supplier.name || "Supplier"} statement</DialogTitle>
+            <DialogDescription>Received invoices, supplier returns, payments, and the remaining balance as of {supplierStatement ? prettyDate(supplierStatement.as_of) : "today"}.</DialogDescription>
+          </DialogHeader>
+          {supplierStatement ? (
+            <div className="space-y-5">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  ["Received", supplierStatement.totals.received_total_base],
+                  ["Returns", supplierStatement.totals.returned_total_base],
+                  ["Paid", supplierStatement.totals.paid_total_base],
+                  ["Outstanding", supplierStatement.totals.outstanding_base],
+                ].map(([label, amount]) => (
+                  <div key={label} className="rounded-lg border p-3">
+                    <p className="text-xs text-muted-foreground">{label}</p>
+                    <p className="mt-1 text-base font-semibold">{symbolForCurrency(supplierStatement.currency)}{Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                  </div>
+                ))}
+              </div>
+
+              <section className="space-y-2">
+                <h3 className="text-sm font-semibold">Invoice balances</h3>
+                <div className="overflow-x-auto rounded-lg border">
+                  <table className="w-full min-w-[760px] text-left text-xs">
+                    <thead className="bg-muted/50"><tr>{["Invoice", "Date", "Due", "Received", "Paid", "Returns", "Outstanding", "Status"].map((heading) => <th key={heading} className="px-3 py-2 font-medium">{heading}</th>)}</tr></thead>
+                    <tbody>
+                      {supplierStatement.invoices.map((invoice) => (
+                        <tr key={invoice.purchase_order} className="border-t">
+                          <td className="px-3 py-2">{invoice.invoice_number}</td><td className="px-3 py-2">{prettyDate(invoice.invoice_date)}</td><td className="px-3 py-2">{invoice.due_date ? prettyDate(invoice.due_date) : "—"}</td>
+                          <td className="px-3 py-2">{Number(invoice.received_total_base).toFixed(2)}</td><td className="px-3 py-2">{Number(invoice.paid_total_base).toFixed(2)}</td><td className="px-3 py-2">{Number(invoice.returned_total_base).toFixed(2)}</td><td className="px-3 py-2 font-medium">{Number(invoice.outstanding_base).toFixed(2)}</td><td className="px-3 py-2"><Badge variant={invoice.status === "overdue" ? "destructive" : invoice.status === "settled" ? "secondary" : "outline"}>{invoice.status}</Badge></td>
+                        </tr>
+                      ))}
+                      {!supplierStatement.invoices.length && <tr><td colSpan={8} className="px-3 py-5 text-center text-muted-foreground">No received invoices to show.</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section className="space-y-2">
+                <h3 className="text-sm font-semibold">Statement activity</h3>
+                <div className="space-y-2">
+                  {supplierStatement.activity.map((row, index) => (
+                    <div key={`${row.type}-${row.order_id}-${row.reference}-${index}`} className="grid gap-1 rounded-lg border p-3 text-xs sm:grid-cols-[90px_90px_1fr_130px_130px] sm:items-center">
+                      <span>{prettyDate(row.date)}</span><Badge variant="outline" className="w-fit">{row.type}</Badge><span>{row.description} · {row.reference}</span>
+                      <span className={Number(row.amount_base) < 0 ? "text-emerald-700" : ""}>{Number(row.amount_base) < 0 ? "−" : "+"}{symbolForCurrency(supplierStatement.currency)}{Math.abs(Number(row.amount_base)).toFixed(2)}</span>
+                      <span>Balance {symbolForCurrency(supplierStatement.currency)}{Number(row.balance_base).toFixed(2)}</span>
+                    </div>
+                  ))}
+                  {!supplierStatement.activity.length && <p className="rounded-lg border p-4 text-sm text-muted-foreground">No supplier activity yet.</p>}
+                </div>
+              </section>
+              <div className="flex justify-end"><Button variant="outline" onClick={printSupplierStatement}><FileText className="mr-2 h-4 w-4" />Print statement</Button></div>
+            </div>
+          ) : <p className="text-sm text-muted-foreground">Loading supplier statement…</p>}
         </DialogContent>
       </Dialog>
     </div>

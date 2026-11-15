@@ -46,13 +46,35 @@ def normalize_allocations(user, allocations, default_amount, default_currency, d
         amount = as_decimal(row.get("amount", 0), field_name)
         if amount <= 0:
             raise serializers.ValidationError({field_name: f"Allocation {idx + 1} amount must be greater than zero."})
+        if amount.as_tuple().exponent < -2:
+            raise serializers.ValidationError({field_name: f"Allocation {idx + 1} amount can have at most two decimal places."})
         rate = get_rate_to_base(user, currency, row.get("fx_rate_to_base"), field_name)
         amount_base = (amount * rate).quantize(Decimal("0.01"))
-        normalized.append({
+        normalized_row = {
             "currency": currency,
             "amount": str(amount.quantize(Decimal('0.01'))),
             "fx_rate_to_base": str(rate.quantize(Decimal('0.000001'))),
             "amount_base": str(amount_base),
-        })
+        }
+        account_id = row.get("account")
+        if account_id not in [None, ""]:
+            from reports.models import BankAccount
+
+            try:
+                account_id = int(account_id)
+            except (TypeError, ValueError) as exc:
+                raise serializers.ValidationError({field_name: f"Allocation {idx + 1} has an invalid financial account."}) from exc
+            account = BankAccount.objects.filter(
+                pk=account_id,
+                user=user,
+                is_deleted=False,
+                is_active=True,
+            ).first()
+            if account is None:
+                raise serializers.ValidationError({field_name: f"Allocation {idx + 1} financial account is unavailable."})
+            if account.currency.upper() != currency:
+                raise serializers.ValidationError({field_name: f"Allocation {idx + 1} currency must match its financial account."})
+            normalized_row["account"] = account.pk
+        normalized.append(normalized_row)
         total_base += amount_base
     return normalized, total_base.quantize(Decimal("0.01"))

@@ -2,7 +2,8 @@ from decimal import Decimal
 from datetime import timedelta
 
 from django.db import models
-from django.db.models import Sum
+from django.db.models import Count, Sum
+from django.db.models.functions import TruncDay, TruncMonth, TruncYear
 from django.utils import timezone
 
 from expenses.models import Expense
@@ -17,7 +18,7 @@ def advanced_analytics(user):
     month_start = today.replace(day=1)
     previous_start = (month_start - timedelta(days=1)).replace(day=1)
     sales = Sale.objects.filter(created_by=user, is_deleted=False)
-    expenses = Expense.objects.filter(created_by=user, is_deleted=False)
+    expenses = Expense.objects.filter(created_by=user, is_deleted=False, approval_status="approved")
     month_sales = sales.filter(date__gte=month_start)
     previous_sales = sales.filter(date__gte=previous_start, date__lt=month_start)
     revenue = month_sales.aggregate(total=Sum("total"))["total"] or 0
@@ -103,8 +104,10 @@ def automation_alerts(user):
     return {"alerts": alerts, "evaluated_at": timezone.now()}
 
 
-def supply_totals(user, start=None, end=None):
+def supply_totals(user, start=None, end=None, branch_ids=None):
     entries = SupplyEntry.objects.filter(user=user, is_deleted=False, direction="outgoing", payment_status="paid")
+    if branch_ids is not None:
+        entries = entries.filter(product__branch_id__in=branch_ids)
     if start:
         entries = entries.filter(movement_date__gte=start)
     if end:
@@ -112,3 +115,65 @@ def supply_totals(user, start=None, end=None):
     revenue = sum((entry.quantity * entry.unit_price * entry.fx_rate_to_base for entry in entries), Decimal("0"))
     cost = sum((entry.quantity * entry.unit_cost * entry.fx_rate_to_base for entry in entries), Decimal("0"))
     return revenue.quantize(Decimal("0.01")), cost.quantize(Decimal("0.01"))
+
+
+def run_custom_report(user, report, request=None):
+    """Execute a saved custom report on the server with business and branch scoping."""
+    from rest_framework.exceptions import PermissionDenied
+    from accounts.branch_access import get_staff_member, require_staff_branch
+
+    sales = Sale.objects.filter(created_by=user, is_deleted=False)
+    staff = get_staff_member(request) if request is not None else None
+    if staff:
+        if not staff.branch_id:
+            return []
+        sales = sales.filter(branch_id=staff.branch_id)
+        if report.branch_filter == "branch":
+            require_staff_branch(request, report.branch_id)
+        elif report.branch_filter == "unassigned":
+            return []
+
+    if report.branch_filter == "unassigned":
+        sales = sales.filter(branch__isnull=True)
+    elif report.branch_filter == "branch":
+        if not report.branch_id:
+            raise PermissionDenied("This report no longer has an available branch filter.")
+        sales = sales.filter(branch_id=report.branch_id)
+    if report.start_date:
+        sales = sales.filter(date__gte=report.start_date)
+    if report.end_date:
+        sales = sales.filter(date__lte=report.end_date)
+
+    period_function = {"day": TruncDay, "month": TruncMonth, "year": TruncYear}[report.group_by]
+    metric_expressions = {
+        "sales": Sum("total"),
+        "profit": Sum("gross_profit"),
+        "transactions": Count("id"),
+    }
+    selected_metrics = report.metrics or [report.metric]
+    sort_order = "-period" if report.sort_order == "desc" else "period"
+    groups = sales.annotate(period=period_function("date")).values("period").annotate(
+        **{name: metric_expressions[name] for name in selected_metrics}
+    ).order_by(sort_order)
+    rows = []
+    for group in groups:
+        period = group["period"]
+        if report.group_by == "year":
+            label = period.strftime("%Y")
+        elif report.group_by == "month":
+            label = period.strftime("%Y-%m")
+        else:
+            label = period.isoformat()
+        values = {}
+        for metric_name in selected_metrics:
+            value = group[metric_name] or 0
+            if metric_name == "transactions":
+                value = int(value)
+            else:
+                value = str(Decimal(str(value)).quantize(Decimal("0.01")))
+            values[metric_name] = value
+        row = {"period": label, "value": values[selected_metrics[0]]}
+        if len(selected_metrics) > 1:
+            row["values"] = values
+        rows.append(row)
+    return rows

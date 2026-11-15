@@ -34,12 +34,18 @@ const endpoints = [
   { group: "Customers", method: "GET", path: "/api/v1/customers/", desc: "List customers with loyalty, credit, and purchase data.", auth: true },
   { group: "Customers", method: "POST", path: "/api/v1/customers/", desc: "Create or sync a customer from an external POS.", auth: true },
   { group: "Reports", method: "GET", path: "/api/v1/reports/daily-sales/", desc: "Daily sales summary for dashboards and close-of-day reports.", auth: true },
+  { group: "Reports", method: "GET", path: "/api/v1/reports/custom-reports/{id}/run/", desc: "Run an owned saved report with its selected fields, date range, grouping, sort order, and branch filters.", auth: true },
+  { group: "Reports", method: "GET", path: "/api/v1/reports/custom-reports/{id}/export/?export_format=csv|xlsx|pdf", desc: "Export an owned custom report; Excel exports require the Excel entitlement.", auth: true },
+  { group: "Accounts", method: "GET", path: "/api/v1/accounts/api-key-usage/", desc: "View the latest 100 API-key request statuses and response times as the business owner or settings-authorised staff.", auth: true },
+  { group: "Accounts", method: "GET", path: "/api/v1/accounts/approval-requests/?status=pending", desc: "Review business approval requests. JWT owners see all branches; staff see their own requests and requests they can review in their branch. API keys are not accepted.", auth: true },
+  { group: "Accounts", method: "POST", path: "/api/v1/accounts/approval-requests/{id}/approve/", desc: "Approve a pending staff request. The requester must retry the exact same method, path, query, and body within 30 minutes.", auth: true },
+  { group: "Accounts", method: "POST", path: "/api/v1/accounts/approval-requests/{id}/reject/", desc: "Reject a pending staff request; the optional JSON body may include a decision_note.", auth: true },
   { group: "Sync", method: "POST", path: "/api/v1/sync/push/", desc: "Push queued offline changes and return IDs for actions the server processed, plus any conflicts or errors.", auth: true },
   { group: "Sync", method: "GET", path: "/api/v1/sync/pull/", desc: "Pull server changes for offline-capable POS or stock devices.", auth: true },
 ];
 
 const posSteps = [
-  { icon: Key, title: "Authenticate", desc: "Use an existing scoped API key as X-API-Key. Self-service key management is temporarily unavailable." },
+  { icon: Key, title: "Authenticate", desc: "Create a scoped API key in Settings and send it as X-API-Key on each request." },
   { icon: Boxes, title: "Sync Products", desc: "Pull products and barcode data before opening the till or when the POS comes online." },
   { icon: ShoppingCart, title: "Post Sales", desc: "Send each completed receipt to Verifin so inventory, customers, and reports stay current." },
   { icon: ReceiptText, title: "Print Receipts", desc: "Use the receipt endpoint to reprint or render a receipt in another POS application." },
@@ -334,7 +340,7 @@ const ApiDocs = () => (
         <Card className="shadow-soft mb-8">
           <CardContent className="p-5">
             <p className="text-sm text-muted-foreground">
-              Send your scoped API key in X-API-Key on every request and grant Inventory and Sales for catalog lookup, checkout, and tills. Keep it in secure device storage, not source code. Send a stable unique integration_id with each completed receipt so retries never deduct stock twice. Self-service API key management is temporarily unavailable.
+              Create a scoped API key in Settings and send it in X-API-Key on every request. Grant Inventory and Sales for catalog lookup, checkout, and tills. Keep the key in secure device storage, not source code. Send a stable unique integration_id with each completed receipt so retries never deduct stock twice.
             </p>
             <p className="mt-3 text-sm text-muted-foreground">
               Keep your full API key secure. Use separate keys for separate terminals so one can be revoked without interrupting the others.
@@ -408,6 +414,17 @@ const ApiDocs = () => (
             </div>
           </CardContent>
         </Card>
+
+        <div className="mt-6 grid gap-6 lg:grid-cols-2">
+          <Card className="shadow-soft"><CardContent className="p-5">
+            <h3 className="font-display font-semibold mb-2">API-key limits and logs</h3>
+            <p className="text-sm text-muted-foreground">Each key is limited to 1,000 requests per hour by default. The backend setting <code>API_KEY_REQUESTS_PER_HOUR</code> can lower or raise the cap. Settings shows the latest 10 requests; the read-only endpoint returns up to 100, including status and response time. Request bodies, query strings, and credentials are not stored in the request log.</p>
+          </CardContent></Card>
+          <Card className="shadow-soft"><CardContent className="p-5">
+            <h3 className="font-display font-semibold mb-2">Automation schedule</h3>
+            <p className="text-sm text-muted-foreground">Committed expense, purchase-order, and till events run immediately. Stock and overdue-customer rules need a scheduled backend worker: run <code>python manage.py run_automations</code> every 5–15 minutes to evaluate them and recover timed-out executions.</p>
+          </CardContent></Card>
+        </div>
 
         <div className="mt-10 text-center p-8 rounded-2xl bg-muted/50">
           <h3 className="font-display font-semibold text-lg mb-2">Using an existing API integration?</h3>

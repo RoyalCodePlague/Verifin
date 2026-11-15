@@ -1,4 +1,6 @@
 from rest_framework import serializers
+from accounts.branch_access import get_staff_member, require_staff_branch
+from inventory.models import Branch
 from .models import Audit, AuditSchedule, Discrepancy, StockCount
 
 
@@ -16,11 +18,24 @@ class AuditSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("Completed audit results cannot be edited.")
         request = self.context.get("request")
         user = getattr(request, "user", None)
+        branch = attrs.get("branch", getattr(self.instance, "branch", None))
+        staff = get_staff_member(request)
+        if staff:
+            if not staff.branch_id:
+                raise serializers.ValidationError({"branch": "This staff account must be assigned to a branch."})
+            if branch is None:
+                branch = Branch.objects.get(pk=staff.branch_id, user=user, is_deleted=False)
+                attrs["branch"] = branch
+            require_staff_branch(request, branch.id)
+        if branch and branch.user_id != user.id:
+            raise serializers.ValidationError({"branch": "Branch does not belong to this account."})
         if user and user.is_authenticated:
             for count in attrs.get("stock_counts", []):
                 product = count.get("product")
                 if product and product.user_id != user.id:
                     raise serializers.ValidationError({"product": "Product does not belong to this account."})
+                if product and branch and product.branch_id != branch.id:
+                    raise serializers.ValidationError({"product": "Product belongs to a different branch."})
         return attrs
 
 
@@ -63,6 +78,10 @@ class DiscrepancySerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"audit": "Audit does not belong to this account."})
             if product and product.user_id != user.id:
                 raise serializers.ValidationError({"product": "Product does not belong to this account."})
+            if audit and product and audit.branch_id != product.branch_id:
+                raise serializers.ValidationError({"product": "Product belongs to a different branch than this audit."})
+            if audit:
+                require_staff_branch(request, audit.branch_id)
         return attrs
 
 
@@ -87,4 +106,8 @@ class StockCountSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"audit": "Audit does not belong to this account."})
             if product and product.user_id != user.id:
                 raise serializers.ValidationError({"product": "Product does not belong to this account."})
+            if audit and product and audit.branch_id != product.branch_id:
+                raise serializers.ValidationError({"product": "Product belongs to a different branch than this audit."})
+            if audit:
+                require_staff_branch(request, audit.branch_id)
         return attrs

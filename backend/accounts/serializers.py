@@ -2,9 +2,10 @@ from django.contrib.auth import authenticate, get_user_model, password_validatio
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
+from .branch_access import get_staff_member, require_staff_branch
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from billing.services import enforce_feature
-from .models import ApiKey, Profile, Staff, StaffActivityLog, WebhookDelivery, WebhookEndpoint
+from .models import ApprovalRequest, ApprovalSettings, ApiKey, ApiKeyRequestLog, Profile, Staff, StaffActivityLog, WebhookDelivery, WebhookEndpoint
 
 User = get_user_model()
 
@@ -179,6 +180,11 @@ class ProfileSerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = ["user", "created_at", "updated_at"]
 
+    def validate_avatar(self, value):
+        if value and value.size > 5 * 1024 * 1024:
+            raise serializers.ValidationError("Profile images must be 5 MB or smaller.")
+        return value
+
 
 class StaffSerializer(serializers.ModelSerializer):
     branch_name = serializers.CharField(source="branch.name", read_only=True, allow_null=True)
@@ -208,11 +214,20 @@ class StaffSerializer(serializers.ModelSerializer):
         return [str(item).strip() for item in value if str(item).strip()]
 
     def validate_branch(self, branch):
-        user = self.context["request"].user
+        request = self.context["request"]
+        user = request.user
         if branch and branch.user_id != user.id:
             raise serializers.ValidationError("Branch does not belong to this account.")
         if branch:
             enforce_feature(user, "multi_branch")
+        staff_member = get_staff_member(request)
+        if staff_member:
+            if not staff_member.branch_id:
+                raise serializers.ValidationError("This staff account must be assigned to a branch.")
+            if branch is None:
+                from inventory.models import Branch
+                branch = Branch.objects.get(pk=staff_member.branch_id, user=user, is_deleted=False)
+            require_staff_branch(request, branch.id)
         return branch
 
     def validate(self, attrs):
@@ -275,15 +290,57 @@ class StaffLoginSerializer(serializers.Serializer):
 
 class StaffActivityLogSerializer(serializers.ModelSerializer):
     actor_email = serializers.EmailField(source="actor.email", read_only=True, allow_null=True)
+    staff_actor_name = serializers.CharField(source="staff_actor.name", read_only=True, allow_null=True)
 
     class Meta:
         model = StaffActivityLog
-        fields = ["id", "actor", "actor_email", "action", "object_type", "object_id", "summary", "metadata", "created_at"]
+        fields = [
+            "id", "actor", "actor_email", "staff_actor", "staff_actor_name", "actor_name",
+            "action", "object_type", "object_id", "summary", "metadata", "created_at",
+        ]
+        read_only_fields = fields
+
+
+class ApprovalSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ApprovalSettings
+        fields = [
+            "discount_percent_threshold",
+            "refund_amount_base_threshold",
+            "stock_adjustment_units_threshold",
+            "supplier_payment_amount_base_threshold",
+            "purchase_order_amount_base_threshold",
+            "updated_at",
+        ]
+        read_only_fields = ["updated_at"]
+        extra_kwargs = {
+            "discount_percent_threshold": {"min_value": 0, "max_value": 100},
+            "refund_amount_base_threshold": {"min_value": 0},
+            "stock_adjustment_units_threshold": {"min_value": 0},
+            "supplier_payment_amount_base_threshold": {"min_value": 0},
+            "purchase_order_amount_base_threshold": {"min_value": 0},
+        }
+
+
+class ApprovalRequestSerializer(serializers.ModelSerializer):
+    action_label = serializers.CharField(source="get_action_display", read_only=True)
+    requester_name = serializers.CharField(source="requested_by_staff.name", read_only=True)
+    branch_name = serializers.CharField(source="branch.name", read_only=True, allow_null=True)
+    decided_by_staff_name = serializers.CharField(source="decided_by_staff.name", read_only=True, allow_null=True)
+
+    class Meta:
+        model = ApprovalRequest
+        fields = [
+            "id", "action", "action_label", "summary", "payload", "status", "requested_by_staff",
+            "requester_name", "branch", "branch_name", "decided_by", "decided_by_staff",
+            "decided_by_staff_name", "decision_note", "created_at", "expires_at", "decided_at", "consumed_at",
+        ]
         read_only_fields = fields
 
 
 class ApiKeySerializer(serializers.ModelSerializer):
     raw_key = serializers.CharField(read_only=True)
+    rate_limit_per_hour = serializers.SerializerMethodField()
 
     class Meta:
         model = ApiKey
@@ -294,11 +351,17 @@ class ApiKeySerializer(serializers.ModelSerializer):
             "permissions",
             "status",
             "last_used_at",
+            "rate_limit_per_hour",
             "expires_at",
             "created_at",
             "raw_key",
         ]
         read_only_fields = ["key_prefix", "status", "last_used_at", "created_at", "raw_key"]
+
+    def get_rate_limit_per_hour(self, obj):
+        from django.conf import settings
+
+        return settings.API_KEY_REQUESTS_PER_HOUR
 
     def validate_name(self, value):
         value = value.strip()
@@ -325,6 +388,15 @@ class ApiKeySerializer(serializers.ModelSerializer):
         if value is not None and value <= timezone.now():
             raise serializers.ValidationError("Expiration must be in the future.")
         return value
+
+
+class ApiKeyRequestLogSerializer(serializers.ModelSerializer):
+    api_key_name = serializers.CharField(source="api_key.name", read_only=True)
+
+    class Meta:
+        model = ApiKeyRequestLog
+        fields = ["id", "api_key", "api_key_name", "method", "path", "status_code", "response_time_ms", "created_at"]
+        read_only_fields = fields
 
 
 class WebhookEndpointSerializer(serializers.ModelSerializer):

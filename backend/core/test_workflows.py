@@ -1,13 +1,16 @@
 from decimal import Decimal
 from django.test import TestCase
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
-from inventory.models import Product, ProductBatch, SupplyEntry, Supplier, PurchaseOrder, PurchaseOrderItem
+from inventory.models import Branch, Product, ProductBatch, SupplyEntry, Supplier, PurchaseOrder, PurchaseOrderItem
 from sales.models import Sale
 from customers.models import Customer
 from accounts.models import Staff
 from audits.models import Audit
+from expenses.models import Expense, ExpenseCategory
+from reports.models import AccountTransaction
 
 
 class ConnectedWorkflowTests(TestCase):
@@ -33,7 +36,7 @@ class ConnectedWorkflowTests(TestCase):
         return {"payment_method": "Cash", "customer": self.customer.id, "sale_items": [{"product": self.product.id, "quantity": 3, "unit_price": "10.00"}], **changes}
 
     def supply_payload(self, **changes):
-        return {"requestId": "supply-1", "productId": str(self.product.id), "direction": "incoming", "paymentStatus": "paid", "partnerName": "Supplier", "partnerCategory": "supplier", "quantity": 5, "unitPrice": 10, "unitCost": 40, "currency": "ZAR", "fxRateToBase": "0.05", "movementDate": "2026-09-15", "movementTime": "12:30", **changes}
+        return {"requestId": "supply-1", "productId": str(self.product.id), "direction": "incoming", "paymentStatus": "paid", "partnerName": "Supplier", "partnerCategory": "supplier", "quantity": 5, "unitPrice": 10, "unitCost": 40, "currency": "ZAR", "fxRateToBase": "0.05", "movementDate": timezone.localdate().isoformat(), "movementTime": "12:30", **changes}
 
     def staff_client(self, permissions):
         staff = Staff.objects.create(user=self.owner, name="Cashier", username="cashier", role="Cashier", permissions=permissions, login_enabled=True)
@@ -76,7 +79,7 @@ class ConnectedWorkflowTests(TestCase):
         self.assertEqual(sum(Decimal(r["amount_base"]) for r in response.data["payment_allocations"]), Decimal("30"))
 
     def test_invalid_payment_rolls_back_stock_and_sale(self):
-        response = self.client.post("/api/v1/sales/", self.sale_payload(payment_allocations=[{"currency": "USD", "amount": "1"}]), format="json")
+        response = self.client.post("/api/v1/sales/", self.sale_payload(payment_allocations=[{"currency": "USD", "amount": "40"}]), format="json")
         self.assertEqual(response.status_code, 400)
         self.product.refresh_from_db()
         self.assertEqual(self.product.stock, 100)
@@ -97,8 +100,13 @@ class ConnectedWorkflowTests(TestCase):
         self.assertEqual(self.client.get("/api/v1/sales/").status_code, 403)
 
     def test_authorized_offline_sale_is_applied_once(self):
-        self.staff_client(["sales"])
-        payload = {"actions": [{"id": "offline-sale", "type": "sale", "payload": self.sale_payload(payment_currency="ZAR")}]}
+        staff = self.staff_client(["sales"])
+        branch = Branch.objects.create(user=self.owner, name="Main Branch", code="MAIN")
+        staff.branch = branch
+        staff.save(update_fields=["branch"])
+        self.product.branch = branch
+        self.product.save(update_fields=["branch"])
+        payload = {"actions": [{"id": "offline-sale", "type": "sale", "payload": self.sale_payload(payment_currency="ZAR", branch=branch.id)}]}
         first = self.client.post("/api/v1/sync/push/", payload, format="json")
         self.assertEqual(first.status_code, 200, first.data)
         self.assertEqual(first.data["processed"], 1, first.data)
@@ -239,6 +247,46 @@ class ConnectedWorkflowTests(TestCase):
         self.assertEqual(self.product.stock, 104)
         self.assertEqual(ProductBatch.objects.filter(product=self.product).count(), 1)
 
+    def test_offline_expense_subcategory_and_account_posting_are_idempotent(self):
+        today = timezone.localdate().isoformat()
+        account = self.client.post("/api/v1/reports/accounts/", {
+            "name": "Offline till",
+            "account_type": "cash",
+            "currency": "USD",
+            "opening_balance": "100.00",
+            "opening_date": today,
+        }, format="json")
+        self.assertEqual(account.status_code, 201, account.data)
+        action = {
+            "id": "offline-expense-with-category",
+            "type": "expense",
+            "payload": {
+                "description": "Internet bundle",
+                "amount": "12.00",
+                "currency": "USD",
+                "date": today,
+                "categoryName": "Utilities",
+                "subcategoryName": "Internet",
+                "expenseType": "operating",
+                "expense_type": "operating",
+                "payment_allocations": [{"currency": "USD", "amount": "12.00", "account": account.data["id"]}],
+            },
+        }
+        payload = {"actions": [action]}
+
+        first = self.client.post("/api/v1/sync/push/", payload, format="json")
+        replay = self.client.post("/api/v1/sync/push/", payload, format="json")
+
+        expense = Expense.objects.get()
+        self.assertEqual(first.status_code, 200, first.data)
+        self.assertEqual(replay.status_code, 200, replay.data)
+        self.assertEqual(first.data["processed"], 1)
+        self.assertEqual(replay.data["processed"], 0)
+        self.assertEqual(expense.approval_status, "approved")
+        self.assertEqual(expense.category.name, "Internet")
+        self.assertEqual(expense.category.parent.name, "Utilities")
+        self.assertEqual(AccountTransaction.objects.filter(entry_type="expense_payment").count(), 1)
+
     def test_supply_persists_updates_stock_and_is_idempotent(self):
         response = self.client.post("/api/v1/inventory/supply-entries/", self.supply_payload(), format="json")
         self.assertEqual(response.status_code, 201, response.data)
@@ -300,11 +348,13 @@ class ConnectedWorkflowTests(TestCase):
 
     def test_purchase_order_receiving_updates_stock_once(self):
         supplier = Supplier.objects.create(user=self.owner, name="Vendor")
-        order = PurchaseOrder.objects.create(user=self.owner, supplier=supplier)
+        order = PurchaseOrder.objects.create(user=self.owner, supplier=supplier, status=PurchaseOrder.STATUS_APPROVED)
         PurchaseOrderItem.objects.create(purchase_order=order, product=self.product, quantity_ordered=5, unit_cost=2, unit_cost_base=2)
         url = f"/api/v1/inventory/purchase-orders/{order.id}/receive/"
-        self.assertEqual(self.client.post(url, {}, format="json").status_code, 200)
-        self.assertEqual(self.client.post(url, {}, format="json").status_code, 200)
+        first_receipt = self.client.post(url, {}, format="json")
+        repeated_receipt = self.client.post(url, {}, format="json")
+        self.assertEqual(first_receipt.status_code, 200, first_receipt.data)
+        self.assertEqual(repeated_receipt.status_code, 400, repeated_receipt.data)
         self.product.refresh_from_db(); self.assertEqual(self.product.stock, 105)
 
     def test_reversed_sales_are_excluded_from_profit_reports(self):
@@ -312,16 +362,16 @@ class ConnectedWorkflowTests(TestCase):
         self.client.delete(f"/api/v1/sales/{response.data['id']}/")
         report = self.client.get("/api/v1/reports/profit-loss/")
         self.assertEqual(report.status_code, 200, report.data)
-        self.assertEqual(report.data["sales"], 0)
-        self.assertEqual(report.data["gross_profit"], 0)
+        self.assertEqual(report.data["current"]["gross_sales"], 0)
+        self.assertEqual(report.data["current"]["gross_profit"], 0)
 
     def test_paid_supply_invoices_include_cost_in_profit_report(self):
         response = self.client.post("/api/v1/inventory/supply-entries/", self.supply_payload(direction="outgoing", currency="USD", fxRateToBase=1, unitPrice=10, unitCost=4), format="json")
         self.assertEqual(response.status_code, 201, response.data)
         report = self.client.get("/api/v1/reports/profit-loss/")
-        self.assertEqual(report.data["sales"], Decimal("50"))
-        self.assertEqual(report.data["cost_of_goods"], Decimal("20"))
-        self.assertEqual(report.data["gross_profit"], Decimal("30"))
+        self.assertEqual(report.data["current"]["gross_sales"], Decimal("50"))
+        self.assertEqual(report.data["current"]["cost_of_goods_sold"], Decimal("20"))
+        self.assertEqual(report.data["current"]["gross_profit"], Decimal("30"))
 
     def test_stale_offline_stock_edit_creates_conflict(self):
         payload = {"actions": [{"id": "stale-stock", "type": "product_update", "payload": {"id": self.product.id, "stock": 110, "expected_stock": 90}}]}
