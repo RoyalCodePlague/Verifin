@@ -27,11 +27,12 @@ const Navbar = () => {
           <button onClick={() => navigate("/features")} className="hover:text-foreground transition-colors">Features</button>
           <button onClick={() => navigate("/pricing")} className="hover:text-foreground transition-colors">Pricing</button>
           <button onClick={() => navigate("/about")} className="hover:text-foreground transition-colors">About</button>
+          <button onClick={() => navigate("/security")} className="hover:text-foreground transition-colors">Security</button>
           <button onClick={() => navigate("/demo")} className="hover:text-foreground transition-colors">Live preview</button>
         </nav>
 
         <div className="hidden md:flex items-center gap-3">
-          <button onClick={toggleDark} className="p-2 rounded-lg hover:bg-muted transition-colors">
+          <button type="button" aria-label={profile.darkMode ? "Switch to light mode" : "Switch to dark mode"} onClick={toggleDark} className="p-2 rounded-lg hover:bg-muted transition-colors">
             {profile.darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </button>
           {!isAuthenticated && <Button variant="ghost" size="sm" onClick={() => navigate("/login")}>Log in</Button>}
@@ -41,21 +42,24 @@ const Navbar = () => {
         </div>
 
         <div className="flex items-center gap-2 md:hidden">
-          <button onClick={toggleDark} className="p-2 rounded-lg hover:bg-muted transition-colors">
+          <button type="button" aria-label={profile.darkMode ? "Switch to light mode" : "Switch to dark mode"} onClick={toggleDark} className="p-2 rounded-lg hover:bg-muted transition-colors">
             {profile.darkMode ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </button>
-          <button onClick={() => setOpen(!open)}>
+          <button type="button" aria-label={open ? "Close navigation menu" : "Open navigation menu"} aria-expanded={open} aria-controls="mobile-navigation" onClick={() => setOpen(!open)}>
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
         </div>
       </div>
 
       {open && (
-        <div className="md:hidden border-t border-border bg-background p-4 space-y-3">
+        <div id="mobile-navigation" className="md:hidden border-t border-border bg-background p-4 space-y-3">
           <button onClick={() => { navigate("/features"); setOpen(false); }} className="block text-sm py-2 w-full text-left">Features</button>
           <button onClick={() => { navigate("/pricing"); setOpen(false); }} className="block text-sm py-2 w-full text-left">Pricing</button>
           <button onClick={() => { navigate("/about"); setOpen(false); }} className="block text-sm py-2 w-full text-left">About</button>
+          <button onClick={() => { navigate("/security"); setOpen(false); }} className="block text-sm py-2 w-full text-left">Security</button>
           <button onClick={() => { navigate("/demo"); setOpen(false); }} className="block text-sm py-2 w-full text-left">Live preview</button>
+          <button onClick={() => { navigate("/contact"); setOpen(false); }} className="block text-sm py-2 w-full text-left">Contact</button>
+          <button onClick={() => { navigate("/help"); setOpen(false); }} className="block text-sm py-2 w-full text-left">Help Center</button>
           <Button className="w-full bg-gradient-hero text-primary-foreground" onClick={() => { navigate(primaryPath); setOpen(false); }}>
             {isAuthenticated ? "Dashboard" : "Get Started"}
           </Button>

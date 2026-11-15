@@ -1,39 +1,38 @@
-import { motion } from "framer-motion";
-import { ShieldCheck, Clock, Wifi, Lock } from "lucide-react";
+import { ArrowRight, ClipboardCheck, Database, Headphones, Scale } from "lucide-react";
+import { Link } from "react-router-dom";
 
 const items = [
-  { icon: ShieldCheck, title: "Security You Can Trust", desc: "Your data is protected with secure authentication, HTTPS in production, and access-controlled infrastructure. We are continuing to strengthen encryption, backup, and compliance controls." },
-  { icon: Clock, title: "Built for reliable daily work", desc: "Use clear sync status, offline-ready workflows, and recoverable changes to keep business moving." },
-  { icon: Wifi, title: "Works Offline", desc: "Record sales and stock counts without internet. Everything syncs automatically when you're back online." },
-  { icon: Lock, title: "Your Data, Your Control", desc: "Export your data anytime. We never sell or share your business information with third parties." },
+  { icon: ClipboardCheck, title: "Access is scoped", desc: "Owners can give staff specific roles. Server-side checks enforce access to business and branch records." },
+  { icon: Database, title: "Clear about data", desc: "Learn what the app verifies today and what still depends on hosting and operations." },
+  { icon: Scale, title: "Straightforward plans", desc: "See regional prices, included features, promotion terms, and checkout availability before choosing." },
+  { icon: Headphones, title: "Support is reachable", desc: "Contact Verifin by email or WhatsApp for product, privacy, or security questions." },
 ];
 
 const TrustSection = () => (
-  <section className="py-16 bg-muted/30">
+  <section className="bg-muted/30 py-16" id="trust">
     <div className="container">
-      <div className="text-center mb-12">
-        <h2 className="font-display font-bold text-2xl sm:text-3xl mb-3">
-          Built for <span className="text-gradient-hero">Trust</span> & Reliability
+      <div className="mb-10 max-w-2xl">
+        <p className="text-sm font-semibold uppercase tracking-[0.16em] text-primary">Trust and transparency</p>
+        <h2 className="mt-3 mb-3 font-display text-2xl font-bold sm:text-3xl">
+          Know how Verifin works before you trust it with your records
         </h2>
-        <p className="text-muted-foreground max-w-md mx-auto text-sm">Your business data deserves enterprise-grade protection, even at SME-friendly prices.</p>
+        <p className="text-sm leading-relaxed text-muted-foreground">We explain the access controls in the app, the data you enter, and the operational safeguards that still need confirmation.</p>
       </div>
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {items.map((item, i) => (
-          <motion.div
-            key={item.title}
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ delay: i * 0.1 }}
-            className="text-center p-6 rounded-2xl bg-card border border-border shadow-soft"
-          >
-            <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
-              <item.icon className="h-6 w-6 text-primary" />
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {items.map((item) => (
+          <article key={item.title} className="rounded-xl border border-border bg-card p-5 shadow-soft">
+            <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+              <item.icon className="h-5 w-5 text-primary" aria-hidden="true" />
             </div>
-            <h3 className="font-display font-semibold text-sm mb-2">{item.title}</h3>
-            <p className="text-xs text-muted-foreground">{item.desc}</p>
-          </motion.div>
+            <h3 className="mb-2 font-display text-sm font-semibold">{item.title}</h3>
+            <p className="text-sm leading-relaxed text-muted-foreground">{item.desc}</p>
+          </article>
         ))}
+      </div>
+      <div className="mt-7 flex flex-wrap gap-x-6 gap-y-3 text-sm font-semibold">
+        <Link to="/security" className="inline-flex items-center gap-1 text-primary underline-offset-4 hover:underline">Read the Security Center <ArrowRight className="h-4 w-4" aria-hidden="true" /></Link>
+        <Link to="/privacy" className="text-primary underline-offset-4 hover:underline">Read the Privacy Policy</Link>
+        <Link to="/contact" className="text-primary underline-offset-4 hover:underline">Contact support</Link>
       </div>
     </div>
   </section>

@@ -7,7 +7,7 @@ const Footer = () => {
   return (
     <footer className="bg-sidebar text-sidebar-foreground py-16">
       <div className="container">
-        <div className="grid md:grid-cols-4 gap-10 mb-12">
+        <div className="mb-12 grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
           <div className="md:col-span-1">
             <button onClick={() => navigate("/")} className="mb-4 flex items-center text-sidebar-foreground" aria-label="Go to Verifin home">
               <Logo className="h-11 w-auto" />
@@ -38,9 +38,11 @@ const Footer = () => {
           <div>
             <h4 className="font-display font-semibold text-sm mb-4">Support</h4>
             <ul className="space-y-2.5 text-sm text-sidebar-foreground/60">
-              <li><a href="https://wa.me/263775252409" target="_blank" rel="noreferrer" className="hover:text-sidebar-foreground transition-colors">Chat with us on WhatsApp</a></li>
+              <li><button onClick={() => navigate("/contact")} className="hover:text-sidebar-foreground transition-colors">Email or WhatsApp support</button></li>
               <li><button onClick={() => navigate("/help")} className="hover:text-sidebar-foreground transition-colors">Help Center</button></li>
+              <li><button onClick={() => navigate("/security")} className="hover:text-sidebar-foreground transition-colors">Security Center</button></li>
               <li><button onClick={() => navigate("/privacy")} className="hover:text-sidebar-foreground transition-colors">Privacy Policy</button></li>
+              <li><button onClick={() => window.dispatchEvent(new Event("verifin:manage-analytics-consent"))} className="hover:text-sidebar-foreground transition-colors">Privacy settings</button></li>
               <li><button onClick={() => navigate("/terms")} className="hover:text-sidebar-foreground transition-colors">Terms of Service</button></li>
             </ul>
           </div>

@@ -23,6 +23,14 @@ const routes = [
     cta: "Contact the team if you have questions about these terms.",
   },
   {
+    path: "/security",
+    title: "Security Center | Verifin",
+    description: "See the account and access controls verified in Verifin, plus the hosting and recovery practices that still need confirmation.",
+    heading: "Security Center",
+    body: "Learn how Verifin handles sign-in, account permissions, and business records, and which hosting, backup, and account-deletion practices still need confirmation.",
+    cta: "Report a security concern to verifin2026@gmail.com.",
+  },
+  {
     path: "/",
     title: "Stock, Sales and Expenses for Zimbabwe Shops | Verifin",
     description: "Know what you sold, what is in stock, and where your money went. Verifin helps Zimbabwe shops track sales, stock and expenses, even with unreliable internet.",
@@ -34,9 +42,9 @@ const routes = [
   {
     path: "/pricing",
     title: "Verifin Pricing | Plans for Zimbabwe Shops",
-    description: "Compare Verifin Starter, Growth and Business plans. Review regional prices and Paynow checkout options in Billing.",
+    description: "Compare Verifin Starter, Growth and Business plans, preset regional prices, payment availability, promotion terms and billing periods.",
     heading: "Verifin Pricing",
-    body: "Simple plans for grocery shops, hardware stores, boutiques, tuckshops and bakeries. Review regional prices and Paynow checkout availability in Billing.",
+    body: "Compare plans and limits. Prices are preset by region rather than converted at a daily exchange rate; Zimbabwe paid plans are listed in USD. Paynow checkout supports paid USD plans when configured.",
     keywords: ["Verifin pricing", "inventory software pricing", "SME business software plans"],
     cta: "Start free and review Paynow checkout options from Billing.",
   },
@@ -52,7 +60,7 @@ const routes = [
   {
     path: "/demo",
     title: "Verifin Demo - See Inventory, Sales, Audits and Reports",
-    description: "Try the Verifin product tour and see how sales, stock, expenses, audits, customer loyalty, and reports work together.",
+    description: "Try the Verifin product tour with illustrative sample data for sales, stock, expenses, dashboard summaries and reports.",
     heading: "Interactive Verifin Product Tour",
     body: "See how Verifin records sales, updates stock, tracks expenses, runs audits, supports customer loyalty, and turns business activity into reports.",
     keywords: ["inventory app demo", "sales tracking demo", "stock audit demo"],
@@ -61,7 +69,7 @@ const routes = [
   {
     path: "/about",
     title: "About Verifin - Business Software Built for African SMEs",
-    description: "Learn how Verifin helps African SMEs reduce stock loss, automate admin, and get clearer visibility into their business.",
+    description: "Learn what Verifin is, why it is being built, the business problems it aims to solve, and who it is designed to serve.",
     heading: "About Verifin",
     body: "Verifin is built for the realities of African SMEs: mobile-first workflows, offline reliability, inventory visibility, admin automation, and smarter daily decisions.",
     keywords: ["African SME software", "business software Africa", "offline inventory app"],
@@ -74,7 +82,7 @@ const routes = [
     heading: "Contact Verifin",
     body: "Talk to the Verifin team about inventory management, sales tracking, admin automation, pricing, support, and integrations for your business.",
     keywords: ["contact Verifin", "Verifin support", "inventory software support"],
-    cta: "Send a message and the team will respond.",
+    cta: "Email the team or open WhatsApp to ask for help.",
   },
   {
     path: "/help",
@@ -135,24 +143,27 @@ function staticMarkup(route) {
           <p>Record sales and expenses, then use clear summaries to understand how your shop is doing.</p>
           <h2>Explore Verifin</h2>
           <p>Try a sample sale, stock update and business summary in the interactive demo. No account needed.</p>
-          <nav aria-label="Explore Verifin"><a href="/features">Features</a> | <a href="/pricing">Pricing</a> | <a href="/demo">Product demo</a> | <a href="/contact">Contact</a></nav>
+          <h2>Trust and transparency</h2>
+          <p>Read how account permissions work in the application, what remains to be verified about hosting and recovery, and how regional plan prices are set.</p>
+          <nav aria-label="Explore Verifin"><a href="/features">Features</a> | <a href="/pricing">Pricing</a> | <a href="/demo">Product demo</a> | <a href="/about">About</a> | <a href="/contact">Contact</a> | <a href="/help">Help Center</a> | <a href="/security">Security</a> | <a href="/privacy">Privacy</a> | <a href="/terms">Terms</a></nav>
         </section>
       </main>
     `;
   }
   if (route.path === "/pricing") {
     const plans = [
-      { name: "Starter", price: "Free", period: "forever", detail: "For solo shop owners getting started", features: ["1 user", "50 products", "Basic sales", "Daily summaries"] },
-      { name: "Growth", price: "$12 USD", period: "per month", detail: "For shops that need more room to grow", features: ["3 users", "Unlimited products", "Sales and expense tracking", "Low-stock alerts", "Stock counts and reports"] },
-      { name: "Business", price: "$24 USD", period: "per month", detail: "For established teams", features: ["Unlimited users", "Sales and expense tracking", "Staff access controls", "Advanced reports", "Excel exports"] },
+      { name: "Starter", price: "Free", period: "forever", detail: "For solo shop owners getting started", features: ["1 user", "Up to 50 products", "Up to 100 customers", "Basic sales and expenses", "Daily summaries"] },
+      { name: "Growth", price: "$12 USD", period: "per month", detail: "For growing shops", features: ["Up to 3 users", "Unlimited products and customers", "Inventory audits and low-stock alerts", "Advanced reports and insights"] },
+      { name: "Business", price: "$24 USD", period: "per month", detail: "For established teams", features: ["Unlimited users", "Everything in Growth", "Staff roles and branch controls", "Custom reports and Excel exports", "API access and automation tools"] },
     ];
     return `
       <main class="seo-prerender" aria-label="Verifin pricing">
         <section><p>Pricing · Zimbabwe (USD)</p><h1>Start free. Upgrade when your shop is ready.</h1><p>For grocery shops, hardware stores, boutiques, tuckshops and bakeries. Review your plan and Paynow checkout options in Billing.</p></section>
+        <p>Regional prices are preset, not converted using a daily exchange rate. Zimbabwe paid plans are listed in USD; a ZiG equivalent is not automatically calculated. Paynow checkout must be enabled and configured and currently accepts paid USD plans only.</p>
         <section aria-label="Plans" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px">
           ${plans.map((plan) => `<article><h2>${plan.name}</h2><p>${plan.detail}</p><p><strong>${plan.price}</strong> ${plan.period}</p><ul>${plan.features.map((feature) => `<li>${feature}</li>`).join("")}</ul>${plan.name === "Starter" ? '<a href="/login?signup=1">Start free</a>' : '<a href="/login?signup=1">Create account to choose</a>'}</article>`).join("")}
         </section>
-        <p>Sign in to Billing to review Paynow checkout availability for your selected region.</p>
+        <p>Yearly Growth is $120 USD and Business is $240 USD (10 monthly payments). When enabled, new accounts receive 30 days of Business without payment details, then return to free Starter with no charge. Paid checkout is a one-time payment; automatic renewal is not set up. Paid features have a 7-day grace period after expiry, and account records are not automatically deleted when a plan expires.</p>
       </main>
     `;
   }

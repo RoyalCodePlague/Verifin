@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronRight, ChevronLeft, ShoppingCart, Package, Receipt, ClipboardCheck, BarChart3, Sparkles, Check, QrCode } from "lucide-react";
+import { ChevronRight, ChevronLeft, ShoppingCart, Package, Receipt, ClipboardCheck, BarChart3, Sparkles, Check, QrCode, LayoutDashboard } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,6 +49,12 @@ const tourSteps = [
     desc: "Get actionable business intelligence like low stock warnings, sales trend analysis, and restocking suggestions.",
     icon: Sparkles,
     action: "insights",
+  },
+  {
+    title: "See your day at a glance",
+    desc: "Review example sales, stock, and expense summaries from a sample workspace.",
+    icon: LayoutDashboard,
+    action: "dashboard",
   },
   {
     title: "Export Reports",
@@ -162,6 +168,63 @@ function InsightsDemo() {
   );
 }
 
+function DashboardDemo() {
+  return (
+    <div className="space-y-4" aria-label="Illustrative sample dashboard">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[
+          ["Sales today", formatRegionalSampleAmount(2486, countryCode)],
+          ["Transactions", "38"],
+          ["Products", "128"],
+          ["Low stock", "3 items"],
+        ].map(([label, value]) => (
+          <div key={label} className="rounded-lg border border-border bg-card p-3">
+            <p className="text-xs text-muted-foreground">{label}</p>
+            <p className="mt-1 font-display text-base font-bold sm:text-lg">{value}</p>
+          </div>
+        ))}
+      </div>
+      <div className="rounded-lg border border-border bg-card p-4">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold">Sales this week</h3>
+          <span className="text-xs text-muted-foreground">Sample totals</span>
+        </div>
+        <div className="flex h-28 items-end gap-2" aria-label="Sample weekly sales chart">
+          {[42, 65, 50, 82, 60, 95, 72].map((height, index) => (
+            <div key={index} className="flex h-full flex-1 items-end rounded-t bg-primary/10">
+              <div className="w-full rounded-t bg-primary" style={{ height: `${height}%` }} />
+            </div>
+          ))}
+        </div>
+        <div className="mt-2 flex justify-between text-[10px] text-muted-foreground"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>
+      </div>
+    </div>
+  );
+}
+
+function ReportsDemo() {
+  const rows = [
+    ["Today", "38", formatRegionalSampleAmount(2486, countryCode)],
+    ["Yesterday", "31", formatRegionalSampleAmount(1994, countryCode)],
+    ["This week", "214", formatRegionalSampleAmount(12430, countryCode)],
+  ];
+  return (
+    <div className="overflow-hidden rounded-lg border border-border bg-card">
+      <div className="border-b border-border p-4">
+        <h3 className="font-semibold">Sales summary</h3>
+        <p className="mt-1 text-xs text-muted-foreground">Illustrative sample figures</p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[420px] text-left text-sm">
+          <thead className="bg-muted/50 text-xs text-muted-foreground"><tr><th className="p-3 font-medium">Period</th><th className="p-3 font-medium">Transactions</th><th className="p-3 font-medium">Sales total</th></tr></thead>
+          <tbody>{rows.map((row) => <tr key={row[0]} className="border-t border-border"><td className="p-3 font-medium">{row[0]}</td><td className="p-3">{row[1]}</td><td className="p-3">{row[2]}</td></tr>)}</tbody>
+        </table>
+      </div>
+      <div className="p-4 text-xs text-muted-foreground">Choose a date range and export reports in the workspace.</div>
+    </div>
+  );
+}
+
 const demoComponents: Record<string, React.FC> = {
   sale: SaleDemo,
   inventory: InventoryDemo,
@@ -169,11 +232,21 @@ const demoComponents: Record<string, React.FC> = {
   audit: InventoryDemo,
   qr: QRDemo,
   insights: InsightsDemo,
-  reports: InsightsDemo,
+  dashboard: DashboardDemo,
+  reports: ReportsDemo,
 };
 
 const Demo = () => {
-  const [currentStep, setCurrentStep] = useState(0);
+  const [currentStep, setCurrentStep] = useState(() => {
+    const requestedStep = typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("step");
+    const index = tourSteps.findIndex((tourStep) => tourStep.action === requestedStep);
+    return index >= 0 ? index : 0;
+  });
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.set("step", tourSteps[currentStep].action);
+    window.history.replaceState({}, "", url);
+  }, [currentStep]);
   const step = tourSteps[currentStep];
   const DemoComp = demoComponents[step.action];
 
@@ -181,18 +254,21 @@ const Demo = () => {
     <div className="min-h-screen bg-background">
       <Navbar />
       <section className="py-16 px-4">
-        <div className="container max-w-3xl">
+        <div className="container max-w-4xl">
           <div className="text-center mb-10">
             <h1 className="font-display font-bold text-3xl mb-2">
               <span className="text-gradient-hero">Interactive</span> Product Tour
             </h1>
-            <p className="text-muted-foreground">See how Verifin works in {tourSteps.length} simple steps</p>
+            <p className="text-muted-foreground">Explore sales, stock, expenses, the dashboard and reports in {tourSteps.length} steps.</p>
+            <p className="mx-auto mt-3 max-w-2xl text-xs text-muted-foreground">This walkthrough uses illustrative sample data. It is not connected to a business account.</p>
           </div>
 
           <div className="flex gap-2 mb-8 justify-center">
             {tourSteps.map((_, i) => (
               <button
                 key={i}
+                aria-label={`Show ${tourSteps[i].title}`}
+                aria-pressed={i === currentStep}
                 onClick={() => setCurrentStep(i)}
                 className={`h-2 rounded-full transition-all ${i === currentStep ? "w-8 bg-primary" : i < currentStep ? "w-3 bg-primary/40" : "w-2 bg-muted hover:bg-muted-foreground/30"}`}
               />
@@ -207,7 +283,7 @@ const Demo = () => {
               exit={{ opacity: 0, x: -30 }}
               transition={{ duration: 0.3, ease: "easeInOut" }}
             >
-              <Card className="shadow-elevated">
+              <Card className="shadow-elevated" data-product-demo-card>
                 <CardContent className="p-6 sm:p-8">
                   <div className="flex items-center gap-3 mb-2">
                     <motion.div 

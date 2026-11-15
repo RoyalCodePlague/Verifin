@@ -247,9 +247,9 @@ const FinancialAccounts = () => {
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       <div>
-        <h2 className="font-display text-2xl font-bold">Financial accounts</h2>
+        <h2 className="font-display text-2xl font-bold">Cash &amp; balances</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Track balances, receipts, payments, transfers and reconciliation. Exchange rates are saved with each posted transaction.
+          Keep a record of business money held in your till, bank and mobile-money wallets. Log money in or out, record transfers, and compare your totals with a cash count or statement. Verifin records this activity; it does not connect to your bank or move money.
         </p>
       </div>
 

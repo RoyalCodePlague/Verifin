@@ -7,7 +7,7 @@ const highlights = [
   "Use Verifin only for lawful business purposes.",
   "You are responsible for users, staff permissions, and data entered under your account.",
   "You own your business data; Verifin owns the platform, software, brand, and product design.",
-  "The launch promotion ends automatically without a charge; paid upgrades are not currently available until payment processing is enabled.",
+  "The launch promotion ends without a charge. Paid checkout is available only when Paynow is configured and for supported USD plans.",
 ];
 
 const sections = [
@@ -41,8 +41,9 @@ const sections = [
       "Some features are free; others require a paid plan or trial.",
       "Trial access may be limited, changed, or ended if abused or if you are not eligible.",
       "Subscription fees, included features, limits, taxes, and billing cycles are shown during checkout or in the app.",
-      "The launch promotion provides Business for 30 days from signup, followed by free Starter. There are no automatic charges.",
-      "You can switch to Starter before the promotion ends. Paid upgrades are unavailable until payment setup is complete.",
+      "When enabled, the launch promotion provides Business for 30 days from signup, then the account returns to free Starter with no charge.",
+      "Paid plans are charged once for the selected 30-day or 365-day period and do not renew automatically. Paynow checkout must be enabled and configured and currently supports paid USD plans only.",
+      "Regional prices are preset amounts; a daily exchange rate is not used to convert one country's price into another currency.",
       "We may change prices or plan features with reasonable notice where required.",
       "Refunds are provided only where required by law, stated in the app, or approved by Verifin in writing.",
     ],

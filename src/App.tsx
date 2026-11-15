@@ -12,6 +12,7 @@ import { PWAInstallButton } from "./components/PWAInstallButton";
 import { PWAUpdatePrompt } from "./components/PWAUpdatePrompt";
 import { PageSkeleton } from "@/components/ui/page-skeleton";
 import { RouteSEO } from "@/components/RouteSEO";
+import AnalyticsConsentBanner from "@/components/AnalyticsConsentBanner";
 
 const Index = lazy(() => import("./pages/Index"));
 const Features = lazy(() => import("./pages/Features"));
@@ -34,6 +35,7 @@ const Onboarding = lazy(() => import("./pages/Onboarding"));
 const Pricing = lazy(() => import("./pages/Pricing"));
 const Billing = lazy(() => import("./pages/Billing"));
 const About = lazy(() => import("./pages/About"));
+const Security = lazy(() => import("./pages/Security"));
 const Demo = lazy(() => import("./pages/Demo"));
 const Login = lazy(() => import("./pages/Login"));
 const VerifyEmail = lazy(() => import("./pages/VerifyEmail"));
@@ -80,6 +82,7 @@ const App = () => (
           <BrowserRouter>
             <ScrollToTop />
             <RouteSEO />
+            <AnalyticsConsentBanner />
             <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/" element={<Index />} />
@@ -87,6 +90,7 @@ const App = () => (
                 <Route path="/onboarding" element={<OnboardingRoute><Onboarding /></OnboardingRoute>} />
                 <Route path="/pricing" element={<Pricing />} />
                 <Route path="/about" element={<About />} />
+                <Route path="/security" element={<Security />} />
                 <Route path="/demo" element={<Demo />} />
                 <Route path="/login" element={<GuestRoute><Login /></GuestRoute>} />
                 <Route path="/verify-email" element={<VerifyEmail />} />

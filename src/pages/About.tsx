@@ -1,25 +1,15 @@
-import { motion } from "framer-motion";
-import { Target, Users, Globe, Lightbulb, ArrowRight } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { ArrowRight, Boxes, ClipboardList, Store, WifiOff } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { useNavigate } from "react-router-dom";
+import { Card, CardContent } from "@/components/ui/card";
 import Navbar from "@/components/landing/Navbar";
 import Footer from "@/components/landing/Footer";
 
-const values = [
-  { icon: Target, title: "Built for Africa", desc: "Designed for the realities of SME operations across South Africa, Zimbabwe, Kenya, Nigeria, and beyond." },
-  { icon: Users, title: "Human-Centered", desc: "Every feature starts with a real business owner's pain point. We build what matters, not what's trendy." },
-  { icon: Globe, title: "Offline-First", desc: "Your business doesn't stop when the internet does. Verifin works offline and syncs when you're back online." },
-  { icon: Lightbulb, title: "Built for Business", desc: "Smart automation that handles admin so you can focus on growing your business." },
+const focusAreas = [
+  { icon: Boxes, title: "Stock that is easier to follow", description: "Keep product quantities, stock movements, suppliers and purchase activity together." },
+  { icon: ClipboardList, title: "Daily records in one workspace", description: "Record sales and expenses, then review the activity in business summaries and reports." },
+  { icon: WifiOff, title: "Work through patchy connections", description: "Selected sales, stock and expense actions can be queued on your device and synced when you reconnect." },
 ];
-
-// Temporarily hidden with the "Our Team" section below.
-// const team = [
-//   { name: "Thabo M.", role: "Founder & CEO", initials: "TM" },
-//   { name: "Amara K.", role: "Head of Product", initials: "AK" },
-//   { name: "Sipho N.", role: "Lead Engineer", initials: "SN" },
-//   { name: "Grace C.", role: "Customer Success", initials: "GC" },
-// ];
 
 const About = () => {
   const navigate = useNavigate();
@@ -27,59 +17,68 @@ const About = () => {
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
-      <section className="py-20 px-4">
-        <div className="container max-w-4xl">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-16">
-            <h1 className="font-display font-bold text-3xl sm:text-4xl mb-4">
-              Empowering <span className="text-gradient-hero">African SMEs</span> to Thrive
-            </h1>
-            <p className="text-muted-foreground max-w-2xl mx-auto text-lg">
-              Verifin was born from a simple observation: millions of small businesses across Africa lose money every day due to manual admin, stock shrinkage, and lack of visibility. We're here to change that.
+      <main>
+        <section className="border-b border-border bg-gradient-to-b from-primary/10 to-background px-4 py-16 sm:py-20">
+          <div className="container max-w-4xl">
+            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-primary">About Verifin</p>
+            <h1 className="mt-4 max-w-3xl font-display text-3xl font-bold tracking-tight sm:text-5xl">Practical business tools for the work behind every sale</h1>
+            <p className="mt-5 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+              Verifin is a business management platform being built to help African small businesses keep stock, sales, expenses and day-to-day records easier to manage.
             </p>
-          </motion.div>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <Button onClick={() => navigate("/demo")} className="min-h-11 bg-gradient-hero text-primary-foreground">Explore the product tour <ArrowRight className="ml-2 h-4 w-4" /></Button>
+              <Button variant="outline" onClick={() => navigate("/pricing")} className="min-h-11">View plans</Button>
+            </div>
+          </div>
+        </section>
 
-          <div className="grid sm:grid-cols-2 gap-6 mb-16">
-            {values.map((v, i) => (
-              <motion.div key={v.title} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.1 }}>
-                <Card className="shadow-soft h-full">
-                  <CardContent className="p-6">
-                    <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center mb-3">
-                      <v.icon className="h-5 w-5 text-primary" />
-                    </div>
-                    <h3 className="font-display font-semibold mb-1">{v.title}</h3>
-                    <p className="text-sm text-muted-foreground">{v.desc}</p>
+        <section className="px-4 py-14 sm:py-16">
+          <div className="container max-w-5xl">
+            <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr]">
+              <div>
+                <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-accent/15 text-accent-foreground"><Store className="h-5 w-5" aria-hidden="true" /></div>
+                <h2 className="font-display text-2xl font-bold sm:text-3xl">Why we are building it</h2>
+              </div>
+              <div className="space-y-4 text-sm leading-relaxed text-muted-foreground sm:text-base">
+                <p>Many owners manage product counts, daily sales and spending across notebooks, spreadsheets and separate apps. That makes it harder to spot missing stock, understand the day’s results or find a record when it is needed.</p>
+                <p>Verifin brings those routine jobs into one workspace, with tools for inventory, sales, expenses, customers, suppliers, staff and reporting. The aim is to make business administration clearer without asking owners to become accountants or IT specialists.</p>
+                <p>We focus on independent retailers and service-led small businesses, including grocery shops, hardware stores, boutiques, tuckshops and bakeries. The product is designed around practical mobile use and the connectivity conditions businesses may face across African markets.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-muted/30 px-4 py-14 sm:py-16">
+          <div className="container max-w-5xl">
+            <div className="max-w-2xl">
+              <h2 className="font-display text-2xl font-bold sm:text-3xl">What Verifin helps bring together</h2>
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">The product is centered on clear records and useful daily workflows.</p>
+            </div>
+            <div className="mt-7 grid gap-4 md:grid-cols-3">
+              {focusAreas.map((area) => (
+                <Card key={area.title} className="h-full shadow-soft">
+                  <CardContent className="p-5">
+                    <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10"><area.icon className="h-5 w-5 text-primary" aria-hidden="true" /></div>
+                    <h3 className="font-display font-semibold">{area.title}</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{area.description}</p>
                   </CardContent>
                 </Card>
-              </motion.div>
-            ))}
-          </div>
-
-          {/* Temporarily hidden: Our Team
-          <div className="mb-16">
-            <h2 className="font-display font-bold text-2xl text-center mb-8">Our Team</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              {team.map((t, i) => (
-                <motion.div key={t.name} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 + i * 0.1 }} className="text-center">
-                  <div className="h-16 w-16 rounded-full bg-gradient-hero flex items-center justify-center text-primary-foreground font-display font-bold text-lg mx-auto mb-3">
-                    {t.initials}
-                  </div>
-                  <p className="font-display font-semibold text-sm">{t.name}</p>
-                  <p className="text-xs text-muted-foreground">{t.role}</p>
-                </motion.div>
               ))}
             </div>
           </div>
-          */}
+        </section>
 
-          <div className="text-center bg-gradient-hero rounded-2xl p-10 text-primary-foreground">
-            <h2 className="font-display font-bold text-2xl mb-2">Ready to take control?</h2>
-            <p className="text-primary-foreground/80 mb-6">Bring sales, stock, expenses, and daily decisions into one workspace.</p>
-            <Button onClick={() => navigate("/pricing")} className="bg-card text-foreground hover:bg-card/90">
-              View Pricing <ArrowRight className="h-4 w-4 ml-2" />
-            </Button>
+        <section className="px-4 py-14 sm:py-16">
+          <div className="container max-w-5xl rounded-2xl bg-gradient-hero p-7 text-primary-foreground sm:p-10">
+            <h2 className="font-display text-2xl font-bold sm:text-3xl">Our mission</h2>
+            <p className="mt-3 max-w-3xl leading-relaxed text-primary-foreground/85">Simplify business management for African businesses with tools that help owners understand their operations and spend more time serving customers.</p>
+            <div className="mt-6 flex flex-wrap gap-5 text-sm font-semibold">
+              <Link to="/security" className="underline underline-offset-4">How we handle security</Link>
+              <Link to="/contact" className="underline underline-offset-4">Get in touch</Link>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </main>
       <Footer />
     </div>
   );

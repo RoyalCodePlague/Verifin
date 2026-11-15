@@ -52,10 +52,9 @@ const categories = [
     { title: "Dark mode toggle", content: "Click the sun/moon icon in the navbar or toggle dark mode in Settings. The entire app switches between light and dark themes with consistent colors." },
   ]},
   { icon: Shield, label: "Security & Privacy", articles: [
-    { title: "Data protection standards", content: "Your data is protected with secure authentication, HTTPS in production, and access-controlled infrastructure. We are continuing to strengthen encryption, backup, and compliance controls." },
-    { title: "Two-factor authentication", content: "Two-factor authentication (2FA) adds an extra layer of security to your account. When enabled, you'll need to enter a verification code from your phone in addition to your password." },
-    { title: "Data export and deletion", content: "You can export all your data at any time from the Reports tab. To delete your account, contact support. All data is permanently removed within 30 days of account deletion." },
-    { title: "POPIA compliance", content: "Verifin complies with the Protection of Personal Information Act (POPIA). We collect only necessary data, store it securely, never sell it, and give you full control over your information." },
+    { title: "How Verifin protects access", content: "The Security Center describes account sign-in, token and staff permission controls verified in the application, as well as infrastructure and account-deletion practices that still need confirmation." },
+    { title: "Exporting or requesting account data", content: "Some business reports can be exported from the Reports area. There is no self-service account deletion flow or published deletion timeline. Contact support to ask about access, correction, export or deletion of account information." },
+    { title: "Privacy requests", content: "For a privacy or account-data request, email verifin2026@gmail.com with the account email and the request. Do not include your password or a one-time code." },
   ]},
   { icon: Smartphone, label: "Mobile & Offline", articles: [
     { title: "Installing as a PWA", content: "On your phone browser, tap 'Add to Home Screen' (Android) or the share button then 'Add to Home Screen' (iOS). Verifin installs as an app icon on your phone and works like a native app." },
@@ -68,8 +67,8 @@ const categories = [
 const baseFaqs = [
   { q: "Can I use Verifin without internet?", a: "Yes. Verifin works offline-first. You can record sales, update stock, and log expenses without internet. Data is stored locally and will sync automatically when you reconnect." },
   { q: "How do I scan barcodes?", a: "Go to the Inventory tab and click the 'Scan' button. Grant camera access and point your device at a barcode. The system will recognize known products or let you save new ones with full product details." },
-  { q: "Can I export my data?", a: "Yes. Go to the Reports tab and click 'Export' on any report type. Reports are downloaded as CSV files that open directly in Excel or Google Sheets with proper formatting." },
-  { q: "Is my data secure?", a: "Your data is protected with secure authentication, HTTPS in production, and access-controlled infrastructure. We are continuing to strengthen encryption, backup, and compliance controls. Your business data is never sold." },
+  { q: "Can I export my data?", a: "Some business reports support export from the Reports area. If you need a copy of other account information, contact support and describe what you need." },
+  { q: "How does Verifin protect my account?", a: "The Security Center explains the sign-in and server-side access controls verified in the application, and identifies hosting, backup and account-deletion practices that still need confirmation." },
 ];
 
 function monthlyPrice(price?: RegionalPlanPrice) {

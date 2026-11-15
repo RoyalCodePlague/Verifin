@@ -5,7 +5,7 @@ import {
   BarChart3, Users, UserCog, Settings, Menu, X, LogOut,
   Moon, Sun, Clock, Truck, CreditCard, MessageCircle,
   Lock, WalletCards, TrendingUp,
-  Sparkles, ShieldCheck,
+  Sparkles, ShieldCheck, ChevronDown,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth-context";
@@ -27,24 +27,31 @@ import { Logo } from "@/components/Logo";
 
 const navItems = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard", permission: "dashboard" },
-  { to: "/inventory/intelligence", icon: TrendingUp, label: "Inventory intelligence", permission: "inventory" },
-  { to: "/insights", icon: Sparkles, label: "VERIFIN INSIGHTS", permission: "reports", feature: "rule_insights" },
   { to: "/inventory", icon: Package, label: "Inventory", permission: "inventory" },
   { to: "/sales", icon: ShoppingCart, label: "Sales", permission: "sales" },
   { to: "/expenses", icon: Receipt, label: "Expenses", permission: "expenses" },
-  { to: "/audits", icon: ClipboardCheck, label: "Audits", permission: "audits", feature: "audits" },
   { to: "/reports", icon: BarChart3, label: "Reports", permission: "reports" },
-  { to: "/accounts", icon: WalletCards, label: "Financial accounts", permission: "reports" },
   { to: "/customers", icon: Users, label: "Customers", permission: "customers" },
   { to: "/suppliers", icon: Truck, label: "Suppliers", permission: "suppliers" },
+  { to: "/audits", icon: ClipboardCheck, label: "Audits", permission: "audits", feature: "audits" },
+  { to: "/inventory/intelligence", icon: TrendingUp, label: "Inventory intelligence", permission: "inventory" },
+  { to: "/insights", icon: Sparkles, label: "VERIFIN INSIGHTS", permission: "reports", feature: "rule_insights" },
+  { to: "/accounts", icon: WalletCards, label: "Cash & balances", permission: "reports" },
   { to: "/staff", icon: UserCog, label: "Staff", permission: "staff" },
   { to: "/approvals", icon: ShieldCheck, label: "Approvals", permission: "dashboard" },
   { to: "/billing", icon: CreditCard, label: "Billing", permission: "billing" },
   { to: "/settings", icon: Settings, label: "Settings", permission: "settings" },
 ];
 
+const navGroups = [
+  { key: "daily-work", label: "Daily work", itemPaths: ["/inventory", "/sales", "/expenses", "/reports"] },
+  { key: "more-tools", label: "More tools", itemPaths: ["/customers", "/suppliers", "/audits", "/inventory/intelligence", "/insights", "/accounts"] },
+  { key: "workspace", label: "Workspace", itemPaths: ["/staff", "/approvals", "/billing", "/settings"] },
+];
+
 const AppLayout = ({ children }: { children: React.ReactNode }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [expandedNavGroups, setExpandedNavGroups] = useState<Record<string, boolean>>({ "daily-work": true });
   const location = useLocation();
   const navigate = useNavigate();
   const { profile, setProfile } = useStore();
@@ -144,7 +151,24 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
     ? profile.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)
     : "U";
   const visibleNavItems = navItems.filter((item) => canAccess(item.permission));
-  const activeNavLabel = visibleNavItems.find((i) => location.pathname.startsWith(i.to))?.label || "Dashboard";
+  const activeNavLabel = [...visibleNavItems]
+    .sort((a, b) => b.to.length - a.to.length)
+    .find((item) => location.pathname === item.to || location.pathname.startsWith(`${item.to}/`))?.label || "Dashboard";
+  const activeNavGroupKey = navGroups
+    .flatMap((group) => group.itemPaths.map((path) => ({ key: group.key, path })))
+    .sort((a, b) => b.path.length - a.path.length)
+    .find(({ path }) => location.pathname === path || location.pathname.startsWith(`${path}/`))?.key;
+  const visibleNavGroups = navGroups
+    .map((group) => ({ ...group, items: group.itemPaths
+      .map((path) => visibleNavItems.find((item) => item.to === path))
+      .filter((item): item is (typeof navItems)[number] => Boolean(item)) }))
+    .filter((group) => group.items.length > 0);
+
+  useEffect(() => {
+    if (activeNavGroupKey) {
+      setExpandedNavGroups((groups) => ({ ...groups, [activeNavGroupKey]: true }));
+    }
+  }, [activeNavGroupKey]);
   const accountName = isStaffSession && staffSession ? staffSession.name : profile.name;
   const accountInitials = accountName
     ? accountName.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2)
@@ -157,7 +181,7 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
       )}
 
       <aside
-        className={`fixed lg:sticky top-0 left-0 z-50 h-screen w-64 bg-sidebar flex flex-col transition-transform lg:translate-x-0 ${
+        className={`fixed lg:sticky top-0 left-0 z-50 h-screen min-h-0 w-64 overflow-hidden bg-sidebar flex flex-col transition-transform lg:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -177,21 +201,15 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
             <X className="h-5 w-5" />
           </button>
         </div>
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {visibleNavItems.map((item) => (
+        <nav className="verifin-sidebar-scroll flex-1 min-h-0 px-3 py-3 overflow-y-auto overscroll-contain">
+          {visibleNavItems.filter((item) => item.to === "/dashboard").map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
-              onClick={(event) => {
-                if (item.feature && !canUse(item.feature)) {
-                  event.preventDefault();
-                  promptUpgrade(item.feature, item.label);
-                  return;
-                }
-                setSidebarOpen(false);
-              }}
+              end
+              onClick={() => setSidebarOpen(false)}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                `mb-3 flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                   isActive
                     ? "bg-sidebar-accent text-sidebar-primary"
                     : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
@@ -200,9 +218,55 @@ const AppLayout = ({ children }: { children: React.ReactNode }) => {
             >
               <item.icon className="h-4.5 w-4.5" />
               {item.label}
-              {item.feature && !canUse(item.feature) && <Lock className="ml-auto h-3.5 w-3.5 opacity-60" />}
             </NavLink>
           ))}
+          <div className="space-y-2">
+            {visibleNavGroups.map((group) => {
+              const isExpanded = Boolean(expandedNavGroups[group.key]);
+              return (
+                <section key={group.key}>
+                  <button
+                    type="button"
+                    aria-expanded={isExpanded}
+                    aria-controls={`sidebar-group-${group.key}`}
+                    onClick={() => setExpandedNavGroups((groups) => ({ ...groups, [group.key]: !groups[group.key] }))}
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-sidebar-foreground/50 hover:text-sidebar-foreground/80 transition-colors"
+                  >
+                    {group.label}
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                  </button>
+                  <div id={`sidebar-group-${group.key}`} hidden={!isExpanded} className="space-y-1">
+                    {group.items.map((item) => (
+                      <NavLink
+                        key={item.to}
+                        to={item.to}
+                        end={item.to === "/inventory"}
+                        onClick={(event) => {
+                          if (item.feature && !canUse(item.feature)) {
+                            event.preventDefault();
+                            promptUpgrade(item.feature, item.label);
+                            return;
+                          }
+                          setSidebarOpen(false);
+                        }}
+                        className={({ isActive }) =>
+                          `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                            isActive
+                              ? "bg-sidebar-accent text-sidebar-primary"
+                              : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+                          }`
+                        }
+                      >
+                        <item.icon className="h-4.5 w-4.5" />
+                        {item.label}
+                        {item.feature && !canUse(item.feature) && <Lock className="ml-auto h-3.5 w-3.5 opacity-60" />}
+                      </NavLink>
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
           <FeedbackSidebar
             onTriggerClick={() => setSidebarOpen(false)}
             triggerClassName="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-sidebar-foreground/70 transition-colors hover:text-sidebar-foreground hover:bg-sidebar-accent/50"

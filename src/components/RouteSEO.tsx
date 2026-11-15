@@ -16,11 +16,19 @@ const routeMeta: Record<string, { title: string; description: string; noindex?: 
   },
   "/demo": {
     title: "Verifin Demo - See Inventory, Sales, Audits and Reports",
-    description: "Try the Verifin product tour and see how sales, stock, expenses, audits, customer loyalty, and reports work together.",
+    description: "Try the Verifin product tour with illustrative sample data for sales, stock, expenses, dashboard summaries and reports.",
   },
   "/about": {
     title: "About Verifin - Business Software Built for African SMEs",
-    description: "Learn how Verifin helps African SMEs reduce stock loss, automate admin, and get clearer visibility into their business.",
+    description: "Learn what Verifin is, why it is being built, the business problems it aims to solve, and who it is designed to serve.",
+  },
+  "/security": {
+    title: "Security Center | Verifin",
+    description: "See how Verifin handles account access and business records, what is verified in the app, and which operational safeguards still need confirmation.",
+  },
+  "/help": {
+    title: "Verifin Help Center - Inventory and Admin Support",
+    description: "Find help for Verifin inventory, sales, expenses, reports, offline mode, accounts, and support requests.",
   },
   "/contact": {
     title: "Contact Verifin - Talk to Our SME Software Team",
@@ -29,10 +37,6 @@ const routeMeta: Record<string, { title: string; description: string; noindex?: 
   "/api": {
     title: "Verifin API - Business Data Integrations",
     description: "Explore Verifin API access for inventory, sales, expenses, customers, audits, reports, and business integrations.",
-  },
-  "/help": {
-    title: "Verifin Help Center - Inventory and Admin Support",
-    description: "Find Verifin support articles for inventory, sales, expenses, audits, reports, offline mode, and app installation.",
   },
   "/careers": {
     title: "Verifin Careers - Build Software for African SMEs",

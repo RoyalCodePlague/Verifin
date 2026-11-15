@@ -44,6 +44,7 @@ const Login = () => {
   const [referralCode, setReferralCode] = useState("");
   const [staffForm, setStaffForm] = useState({ businessCode: "", username: "", password: "" });
   const [loading, setLoading] = useState(false);
+  const [formError, setFormError] = useState("");
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -63,6 +64,7 @@ const Login = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError("");
     const isStaffLogin = loginMode === "staff" && !isSignUp;
     if (isStaffLogin && (!staffForm.businessCode || !staffForm.username || !staffForm.password)) return;
     if (!isStaffLogin && (!form.email || !form.password)) return;
@@ -89,7 +91,7 @@ const Login = () => {
         navigate("/dashboard");
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Something went wrong");
+      setFormError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -102,7 +104,7 @@ const Login = () => {
       toast.success(created ? "Account created. Welcome!" : "Welcome back!");
       navigate("/dashboard");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Google sign-in failed. Please try again.");
+      setFormError(error instanceof Error ? error.message : "Google sign-in failed. Please try again.");
     } finally { setLoading(false); }
   };
 
@@ -125,9 +127,11 @@ const Login = () => {
             {isSignUp ? "Create your account" : loginMode === "staff" ? "Staff sign in" : "Welcome back"}
           </h1>
           <p className="text-sm text-muted-foreground">
-            {isSignUp ? "Start managing your business smarter" : loginMode === "staff" ? "Use the details created by the owner" : "Sign in to your dashboard"}
+            {isSignUp ? "Create an account with your email and a password" : loginMode === "staff" ? "Use the details created by the owner" : "Sign in to your dashboard"}
           </p>
-          {verificationNotice && <p role="status" className="mt-4 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary">{verificationNotice}</p>}
+          {isSignUp && <p className="mx-auto mt-3 max-w-sm text-xs leading-5 text-muted-foreground">We use your email for sign-in and account confirmation. Business name is optional and labels your workspace; a phone number is not required.</p>}
+          {verificationNotice && <p role="status" aria-live="polite" className="mt-4 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary">{verificationNotice}</p>}
+          {formError && <p role="alert" aria-live="assertive" className="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-left text-sm text-destructive">{formError}</p>}
         </div>
 
         <Card className="shadow-elevated backdrop-blur-sm bg-card/95">
@@ -180,25 +184,25 @@ const Login = () => {
               {loginMode === "staff" && !isSignUp ? (
                 <>
                   <div>
-                    <Label>Business Code</Label>
+                    <Label htmlFor="staff-business-code">Business Code</Label>
                     <div className="relative mt-1.5">
                       <BadgeCheck className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input placeholder="VF-3g4hj0" value={staffForm.businessCode} onChange={e => setStaffForm({ ...staffForm, businessCode: e.target.value })} className="pl-9" required />
+                      <Input id="staff-business-code" autoComplete="organization" placeholder="VF-3g4hj0" value={staffForm.businessCode} onChange={e => setStaffForm({ ...staffForm, businessCode: e.target.value })} className="pl-9" required />
                     </div>
                   </div>
                   <div>
-                    <Label>Username</Label>
+                    <Label htmlFor="staff-username">Username</Label>
                     <div className="relative mt-1.5">
                       <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input placeholder="cashier01" value={staffForm.username} onChange={e => setStaffForm({ ...staffForm, username: e.target.value })} className="pl-9" required />
+                      <Input id="staff-username" autoComplete="username" placeholder="cashier01" value={staffForm.username} onChange={e => setStaffForm({ ...staffForm, username: e.target.value })} className="pl-9" required />
                     </div>
                   </div>
                   <div>
-                    <Label>Password</Label>
+                    <Label htmlFor="staff-password">Password</Label>
                     <div className="relative mt-1.5">
                       <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input type={showPassword ? "text" : "password"} placeholder="Password" value={staffForm.password} onChange={e => setStaffForm({ ...staffForm, password: e.target.value })} className="pl-9 pr-10" required minLength={4} />
-                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <Input id="staff-password" autoComplete="current-password" type={showPassword ? "text" : "password"} placeholder="Password" value={staffForm.password} onChange={e => setStaffForm({ ...staffForm, password: e.target.value })} className="pl-9 pr-10" required minLength={4} />
+                      <button type="button" aria-label={showPassword ? "Hide password" : "Show password"} aria-pressed={showPassword} onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2">
                         {showPassword ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-muted-foreground" />}
                       </button>
                     </div>
@@ -209,10 +213,10 @@ const Login = () => {
                   {isSignUp && (
                     <>
                       <div>
-                        <Label>Full Name</Label>
+                        <Label htmlFor="business-name">Business name (optional)</Label>
                         <div className="relative mt-1.5">
                           <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                          <Input placeholder="John Doe" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="pl-9" />
+                          <Input id="business-name" autoComplete="organization" placeholder="Your business" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="pl-9" />
                         </div>
                       </div>
                       {referralCode && (
@@ -224,18 +228,18 @@ const Login = () => {
                     </>
                   )}
                   <div>
-                    <Label>Email</Label>
+                    <Label htmlFor="account-email">Email address</Label>
                     <div className="relative mt-1.5">
                       <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input type="email" placeholder="you@business.com" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="pl-9" required />
+                      <Input id="account-email" autoComplete="email" type="email" placeholder="you@business.com" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} className="pl-9" required />
                     </div>
                   </div>
                   <div>
-                    <Label>Password</Label>
+                    <Label htmlFor="account-password">Password</Label>
                     <div className="relative mt-1.5">
                       <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input type={showPassword ? "text" : "password"} placeholder="Password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} className="pl-9 pr-10" required minLength={8} />
-                      <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <Input id="account-password" autoComplete={isSignUp ? "new-password" : "current-password"} type={showPassword ? "text" : "password"} placeholder={isSignUp ? "At least 8 characters" : "Password"} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} className="pl-9 pr-10" required minLength={8} />
+                      <button type="button" aria-label={showPassword ? "Hide password" : "Show password"} aria-pressed={showPassword} onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2">
                         {showPassword ? <EyeOff className="h-4 w-4 text-muted-foreground" /> : <Eye className="h-4 w-4 text-muted-foreground" />}
                       </button>
                     </div>
@@ -247,6 +251,8 @@ const Login = () => {
                 {loading ? "Please wait..." : isSignUp ? "Create Account" : loginMode === "staff" ? "Sign In as Staff" : "Sign In"}
               </Button>
             </form>
+
+            {isSignUp && <div className="mt-4 space-y-2 text-xs leading-5 text-muted-foreground"><p>After signup, check your inbox for an email confirmation link before signing in. You can request another confirmation email from the sign-in page.</p><p>By creating an account, you agree to the <a className="font-medium text-primary underline underline-offset-2" href="/terms">Terms of Service</a> and acknowledge the <a className="font-medium text-primary underline underline-offset-2" href="/privacy">Privacy Policy</a>.</p></div>}
 
             {(loginMode === "owner" || isSignUp) && (
               <div className="mt-6 text-center text-sm">

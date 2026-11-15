@@ -117,6 +117,15 @@
 }
 
 @layer utilities {
+  .verifin-sidebar-scroll {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .verifin-sidebar-scroll::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
   .text-gradient-hero {
     background: var(--gradient-hero);
     -webkit-background-clip: text;

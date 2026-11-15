@@ -221,9 +221,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const register = useCallback(
-    (email: string, password: string, name?: string, referralCode?: string) => registerRequest({
-      email, password, business_name: name || "", referral_code: referralCode || "",
-    }), []
+    (email: string, password: string, name?: string, referralCode?: string) => {
+      const payload: { email: string; password: string; business_name?: string; referral_code?: string } = { email, password };
+      if (name?.trim()) payload.business_name = name.trim();
+      if (referralCode?.trim()) payload.referral_code = referralCode.trim();
+      return registerRequest(payload);
+    }, []
   );
 
   const logout = useCallback(async () => {

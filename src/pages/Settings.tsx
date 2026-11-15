@@ -1249,7 +1249,7 @@ const SettingsPage = () => {
             <div>
               <p className="text-sm font-medium">Share basic product milestones</p>
               <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-                Optional, future first-party milestones such as your first product, sale, or expense. Events use a random pseudonymous ID, contain no business records, and are deleted after 12 months. Turning this off deletes your existing events.
+                Optional first-party milestones such as your first product, sale, or expense. Events use a random pseudonymous ID and contain no business records. A backend purge command targets events older than 365 days, but its production schedule has not been confirmed. Turning this off deletes events currently linked to your identifier.
               </p>
             </div>
             <Switch checked={analyticsEnabled} disabled={analyticsSaving} onCheckedChange={(checked) => void updateAnalyticsConsent(checked)} />

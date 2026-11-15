@@ -7,7 +7,7 @@ const summary = [
   "We use your data to run Verifin, secure accounts, sync records, provide support, and improve the product.",
   "You own the business data you add to Verifin, including inventory, sales, expenses, customers, audits, and staff records.",
   "We do not sell your personal or business data.",
-  "You can ask to access, correct, export, or delete your personal information.",
+  "You can contact support about access, correction, export, or deletion requests. There is no self-service account deletion flow or published handling timeline yet.",
 ];
 
 const sections = [
@@ -23,7 +23,7 @@ const sections = [
     subsections: [
       {
         subtitle: "Account and contact information",
-        items: ["Name, email address, phone number, business name, country, currency, and login details.", "Staff account details, roles, permissions, and activity logs if you invite staff users."],
+        items: ["Email address and password for email registration, plus optional business name and account or billing settings.", "Staff account details, roles, permissions, and activity logs if you invite staff users."],
       },
       {
         subtitle: "Business data you enter",
@@ -31,11 +31,11 @@ const sections = [
       },
       {
         subtitle: "Usage and technical data",
-        items: ["Security and operational data such as IP address, browser information, logs, and security events needed to protect and operate the service.", "If you opt in, subsequent first-party milestones such as first product creation, first sale recording, and first expense recording. These events use a random pseudonymous identifier, exclude business records and financial details, remain in Verifin's database, and are deleted after 12 months. Turning off consent deletes events associated with that identifier.", "Offline queue and sync metadata needed to keep your records consistent across sessions."],
+        items: ["Technical and operational data generated when you use the service, such as request logs and device or browser details, where collected by the application or its hosting providers.", "The website loads Google Analytics only after you choose Allow analytics in the consent notice. You can change your choice using Privacy settings in the footer. Google may process website usage information under its own privacy terms.", "If you opt in through Settings, first-party product milestones such as first product creation, sale recording, and expense recording are stored by Verifin. These events use a random pseudonymous identifier and do not include the business record itself. A backend command exists to purge events older than 365 days, but the production schedule for that command has not been verified. Turning off this product analytics consent deletes events currently associated with that identifier.", "Offline queue and sync metadata needed to keep your records consistent across sessions."],
       },
       {
         subtitle: "Billing data",
-        items: ["Plan, subscription status, invoices, payment status, and payment provider references. Card or payment instrument details are processed by payment providers and are not stored directly by Verifin unless clearly stated."],
+        items: ["Plan, subscription status, payment status, and payment provider references. The current Paynow flow redirects to or initiates checkout with Paynow; Verifin records the payment reference and status and does not request card details in its own checkout form."],
       },
     ],
   },
@@ -57,7 +57,7 @@ const sections = [
     title: "4. When We Share Information",
     content: "We do not sell your data. We only share information where needed to provide the service, comply with law, or protect Verifin and its users.",
     items: [
-      "Service providers that help with hosting, database infrastructure, email delivery, support, logging, and security. We do not use third-party advertising trackers in the app.",
+      "Service providers that help with hosting, database infrastructure, email delivery, support, and security. If you allow website analytics, Google Analytics receives website usage information; Verifin's current site code no longer loads the separate Tag Manager container.",
       "Your authorized staff users, based on the permissions you configure.",
       "Law enforcement, regulators, courts, or other parties where legally required or necessary to protect rights, safety, and security.",
       "A successor organization if Verifin is involved in a merger, acquisition, restructuring, financing, or sale of assets, subject to appropriate confidentiality safeguards.",
@@ -67,20 +67,18 @@ const sections = [
     icon: Lock,
     title: "5. Security",
     content:
-      "We use administrative, technical, and organizational safeguards designed to protect your information. No online service can guarantee perfect security, but we work to reduce risk and respond quickly to issues.",
+      "Verifin's backend verifies email before email/password sign-in, hashes passwords, rate-limits authentication attempts, expires and rotates API tokens, and checks account and staff permissions on protected requests. Browser tokens are currently stored in local storage. The deployed database, file-storage encryption, production network edge, and hosting access configuration have not been independently verified.",
     items: [
-      "Authenticated access to protected areas.",
-      "HTTPS for production connections.",
-      "Role-based access controls for staff accounts.",
-      "Soft-delete and audit patterns for selected business records.",
-      "Ongoing improvements to backup, encryption, monitoring, and incident response controls.",
+      "When Django debug mode is disabled, its configuration enables secure session and CSRF cookies, HSTS, and browser security headers. This is application configuration; the live deployment has not been checked.",
+      "Server-side checks scope protected business records and staff actions to the relevant account, role, and branch permissions.",
+      "The codebase does not establish a database or file encryption-at-rest configuration, backup schedule, restore-test record, or recovery target. These operational controls need confirmation from the hosting environment.",
     ],
   },
   {
     icon: FileText,
     title: "6. Data Retention",
     content:
-      "We keep information for as long as needed to provide Verifin, meet legal obligations, resolve disputes, prevent abuse, and enforce agreements. Opt-in pseudonymous product events are retained for no more than 12 months and are deleted sooner when you withdraw consent or close your account. Other account data may be retained for a reasonable period unless deletion is required sooner or retention is required by law, security, backups, accounting, or legitimate business needs. You should export important records before deleting your account.",
+      "A complete retention schedule for account and business records is not currently published. A backend command can delete opted-in pseudonymous product events older than 365 days, but its production schedule has not been confirmed. Turning off analytics consent deletes the events associated with that identifier. Verifin does not currently provide a self-service account deletion flow or a published deletion timeline. Contact support about an account or data request and export available business reports before you lose access to a paid feature.",
   },
   {
     icon: UserCheck,
@@ -93,7 +91,8 @@ const sections = [
       "Request correction, destruction, or deletion of inaccurate, irrelevant, excessive, outdated, incomplete, misleading, or unlawfully obtained information.",
       "Object to certain processing on reasonable grounds.",
       "Object to direct marketing.",
-      "Request export of your business data where technically available.",
+      "Request an export of business information where technically available. Some report exports are available in the app.",
+      "Request deletion or correction by contacting support. Requests are handled subject to applicable law and records that must be retained; there is no published processing timeline yet.",
       "Complain to the Information Regulator or another competent authority.",
     ],
   },
@@ -101,7 +100,7 @@ const sections = [
     icon: Cookie,
     title: "8. Cookies and Similar Technologies",
     content:
-      "We use essential storage and cookies for authentication, security, preferences, offline workflows, and session continuity. Opt-in product activation milestones are stored in Verifin's own database rather than sent to a third-party advertising tracker. You can control browser cookies through your browser settings, but disabling essential cookies or local storage may affect login, offline mode, and app functionality.",
+      "Essential browser storage supports authentication, preferences, offline workflows, and session continuity. Website analytics remains off until you choose Allow analytics. Use Privacy settings in the footer to change that choice; choosing Essential only stops future analytics measurement, removes the script from the current page and clears accessible Google Analytics cookies. If you previously allowed analytics, the script may already have loaded for that page view; the saved Essential only choice prevents it loading on later visits. The separate product-milestone setting is in account Settings. Disabling essential cookies or local storage may affect login, offline mode, and app functionality.",
   },
   {
     icon: Globe,
