@@ -74,6 +74,8 @@ type ApiSale = {
   amount_paid_base?: string;
   balance_due?: string;
   due_date?: string | null;
+  invoice_number?: string;
+  customer?: number | null;
   branch?: number | null;
   date: string;
   time: string;
@@ -302,6 +304,8 @@ export async function loadServerData(user: {
     amountPaidBase: parseFloat(String(s.amount_paid_base ?? (s as ApiSale & Partial<Sale>).amountPaidBase ?? "0")),
     balanceDue: parseFloat(String(s.balance_due ?? (s as ApiSale & Partial<Sale>).balanceDue ?? "0")),
     dueDate: s.due_date || (s as ApiSale & Partial<Sale>).dueDate,
+    invoiceNumber: s.invoice_number || (s as ApiSale & Partial<Sale>).invoiceNumber,
+    invoiceDate: s.date || (s as ApiSale & Partial<Sale>).invoiceDate,
     time: saleTime(s.time, s.created_at) || (s as ApiSale & Partial<Sale>).time || "",
     date: saleDisplayDate(s.date, s.created_at) || (s as ApiSale & Partial<Sale>).date || "",
     method: s.payment_method || (s as ApiSale & Partial<Sale>).method || "Cash",
@@ -313,7 +317,7 @@ export async function loadServerData(user: {
       account: row.account,
     })),
     branchId: s.branch ? String(s.branch) : undefined,
-    customerId: (s as ApiSale & { customer?: number }).customer ? String((s as ApiSale & { customer?: number }).customer) : undefined,
+    customerId: s.customer ? String(s.customer) : undefined,
     saleItems: (Array.isArray(s.items) ? s.items : s.line_items || [])
       .map(item => ({
         ...(item.id != null ? { id: String(item.id) } : {}),

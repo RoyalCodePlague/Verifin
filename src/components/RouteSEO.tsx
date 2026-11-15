@@ -61,9 +61,14 @@ const routeMeta: Record<string, { title: string; description: string; noindex?: 
     description: "Your private Verifin dashboard.",
     noindex: true,
   },
+  "/invoices": {
+    title: "Invoices | Verifin",
+    description: "Create customer invoices, track balances due, and print or share invoice details.",
+    noindex: true,
+  },
 };
 
-const privatePrefixes = ["/inventory", "/sales", "/expenses", "/audits", "/reports", "/customers", "/suppliers", "/staff", "/settings", "/billing", "/onboarding"];
+const privatePrefixes = ["/inventory", "/sales", "/invoices", "/expenses", "/audits", "/reports", "/customers", "/suppliers", "/staff", "/settings", "/billing", "/onboarding"];
 
 export function RouteSEO() {
   const { pathname: rawPath } = useLocation();

@@ -1546,9 +1546,11 @@ type ApiSaleItem = {
   subtotal?: string;
 };
 
-type ApiSale = {
+export type ApiSale = {
   id: number;
+  invoice_number?: string;
   items: string | ApiSaleItem[];
+  line_items?: ApiSaleItem[];
   total: string;
   total_cost?: string;
   gross_profit?: string;
@@ -1580,6 +1582,10 @@ export async function createSaleApi(payload: {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export async function listSalesApi() {
+  return fetchAllPages<ApiSale>("/api/v1/sales/");
 }
 
 export async function addCustomerDebtApi(
@@ -1753,8 +1759,11 @@ export async function fetchReceiptApi(id: string) {
     time: string;
     payment_method: string;
     payment_currency?: string;
+    amount_paid_base: string;
+    balance_due: string;
+    due_date: string | null;
     payment_allocations?: Array<{ currency: string; amount: string; fx_rate_to_base?: string; amount_base?: string; account?: number }>;
-    items: Array<{ id: number; product: number; product_name?: string; quantity: number; unit_price: string; subtotal: string }>;
+    items: Array<{ id: number; product: number; product_name?: string; quantity: number; unit_price: string; discount_amount?: string; subtotal: string }>;
     subtotal: string;
     total: string;
     customer: string;

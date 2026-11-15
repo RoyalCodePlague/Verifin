@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -22,6 +22,7 @@ const Inventory = lazy(() => import("./pages/Inventory"));
 const InventoryIntelligence = lazy(() => import("./pages/InventoryIntelligence"));
 const Insights = lazy(() => import("./pages/Insights"));
 const Sales = lazy(() => import("./pages/Sales"));
+const Invoices = lazy(() => import("./pages/Invoices"));
 const Expenses = lazy(() => import("./pages/Expenses"));
 const Audits = lazy(() => import("./pages/Audits"));
 const Reports = lazy(() => import("./pages/Reports"));
@@ -103,12 +104,12 @@ const App = () => (
                 <Route path="/inventory/intelligence" element={<ProtectedRoute permission="inventory"><AppRoute><InventoryIntelligence /></AppRoute></ProtectedRoute>} />
                 <Route path="/insights" element={<ProtectedRoute permission="reports"><AppRoute><Insights /></AppRoute></ProtectedRoute>} />
                 <Route path="/sales" element={<ProtectedRoute permission="sales"><AppRoute><Sales /></AppRoute></ProtectedRoute>} />
+                <Route path="/invoices" element={<ProtectedRoute permission="sales"><AppRoute><Invoices /></AppRoute></ProtectedRoute>} />
                 <Route path="/expenses" element={<ProtectedRoute permission="expenses"><AppRoute><Expenses /></AppRoute></ProtectedRoute>} />
                 <Route path="/audits" element={<ProtectedRoute permission="audits"><AppRoute><Audits /></AppRoute></ProtectedRoute>} />
                 <Route path="/reports" element={<ProtectedRoute permission="reports"><AppRoute><Reports /></AppRoute></ProtectedRoute>} />
                 <Route path="/accounts" element={<ProtectedRoute permission="reports"><AppRoute><FinancialAccounts /></AppRoute></ProtectedRoute>} />
                 <Route path="/customers" element={<ProtectedRoute permission="customers"><AppRoute><Customers /></AppRoute></ProtectedRoute>} />
-                <Route path="/invoices" element={<Navigate to="/suppliers" replace />} />
                 <Route path="/suppliers" element={<ProtectedRoute permission="suppliers"><AppRoute><Suppliers /></AppRoute></ProtectedRoute>} />
                 <Route path="/staff" element={<ProtectedRoute permission="staff"><AppRoute><Staff /></AppRoute></ProtectedRoute>} />
                 <Route path="/approvals" element={<ProtectedRoute permission="dashboard"><AppRoute><Approvals /></AppRoute></ProtectedRoute>} />

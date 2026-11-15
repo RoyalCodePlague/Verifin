@@ -5,7 +5,7 @@ import {
   BarChart3, Users, UserCog, Settings, Menu, X, LogOut,
   Moon, Sun, Clock, Truck, CreditCard, MessageCircle,
   Lock, WalletCards, TrendingUp,
-  Sparkles, ShieldCheck, ChevronDown,
+  Sparkles, ShieldCheck, ChevronDown, FileText,
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { useAuth } from "@/lib/auth-context";
@@ -29,6 +29,7 @@ const navItems = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard", permission: "dashboard" },
   { to: "/inventory", icon: Package, label: "Inventory", permission: "inventory" },
   { to: "/sales", icon: ShoppingCart, label: "Sales", permission: "sales" },
+  { to: "/invoices", icon: FileText, label: "Invoices", permission: "sales" },
   { to: "/expenses", icon: Receipt, label: "Expenses", permission: "expenses" },
   { to: "/reports", icon: BarChart3, label: "Reports", permission: "reports" },
   { to: "/customers", icon: Users, label: "Customers", permission: "customers" },
@@ -44,7 +45,7 @@ const navItems = [
 ];
 
 const navGroups = [
-  { key: "daily-work", label: "Daily work", itemPaths: ["/inventory", "/sales", "/expenses", "/reports"] },
+  { key: "daily-work", label: "Daily work", itemPaths: ["/inventory", "/sales", "/invoices", "/expenses", "/reports"] },
   { key: "more-tools", label: "More tools", itemPaths: ["/customers", "/suppliers", "/audits", "/inventory/intelligence", "/insights", "/accounts"] },
   { key: "workspace", label: "Workspace", itemPaths: ["/staff", "/approvals", "/billing", "/settings"] },
 ];

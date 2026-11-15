@@ -47,6 +47,8 @@ export interface Sale {
   amountPaidBase?: number;
   balanceDue?: number;
   dueDate?: string;
+  invoiceNumber?: string;
+  invoiceDate?: string;
   branchId?: string;
   customerId?: string;
   saleItems?: SaleItem[];

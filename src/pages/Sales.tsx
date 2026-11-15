@@ -51,6 +51,7 @@ const Sales = () => {
   const [selectedBranchId, setSelectedBranchId] = useState("");
   const [saving, setSaving] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [invoiceMode, setInvoiceMode] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
   const [tillOpen, setTillOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
@@ -186,16 +187,23 @@ const Sales = () => {
 
   useEffect(() => {
     if (searchParams.get("action") !== "add") return;
+    const createInvoice = searchParams.get("invoice") === "1";
     if (!products.some((product) => product.stock > 0 && product.price > 0)) {
       toast.info("Add a product with opening stock and a selling price before recording a sale.");
       navigate("/inventory?action=add&onboarding=first-product", { replace: true });
       return;
+    }
+    setInvoiceMode(createInvoice);
+    if (createInvoice) {
+      setSelectedCustomerId("");
+      setMethod("Cash");
     }
     setAddOpen(true);
     setFirstSalePrompt(searchParams.get("onboarding") === "first-sale");
     const nextParams = new URLSearchParams(searchParams);
     nextParams.delete("action");
     nextParams.delete("onboarding");
+    nextParams.delete("invoice");
     setSearchParams(nextParams, { replace: true });
   }, [navigate, products, searchParams, setSearchParams]);
 
@@ -365,6 +373,18 @@ const Sales = () => {
 
   const handleAdd = async () => {
     if (lineItems.length === 0) return;
+    if (invoiceMode && !selectedCustomerId) {
+      toast.error("Select a saved customer so the invoice can be issued to them.");
+      return;
+    }
+    if (invoiceMode && !/^\d+$/.test(selectedCustomerId)) {
+      toast.error("Sync this customer before issuing an invoice.");
+      return;
+    }
+    if (invoiceMode && !navigator.onLine) {
+      toast.error("Connect to the internet to issue an invoice number.");
+      return;
+    }
     const unsyncedProduct = lineItems.find((item) => {
       const productId = Number(item.productId);
       return !Number.isSafeInteger(productId) || productId <= 0;
@@ -466,7 +486,13 @@ const Sales = () => {
       return;
     }
 
-    if (canQueueOfflineAction() && method !== "Credit") {
+    if (invoiceMode && canQueueOfflineAction()) {
+      toast.error("Reconnect before issuing an invoice number. This invoice was not recorded.");
+      setSaving(false);
+      return;
+    }
+
+    if (canQueueOfflineAction() && method !== "Credit" && !invoiceMode) {
       createOfflineSale();
       addToOfflineQueue({ type: "sale", payload: offlinePayload });
       saleIntegrationIdRef.current = null;
@@ -485,10 +511,11 @@ const Sales = () => {
       return;
     }
 
+    let createdSale: Awaited<ReturnType<typeof createSaleApi>>;
     try {
-      await createSaleApi(apiPayload);
+      createdSale = await createSaleApi(apiPayload);
     } catch (e) {
-      if (canQueueOfflineAction() && method !== "Credit") {
+      if (canQueueOfflineAction() && method !== "Credit" && !invoiceMode) {
         createOfflineSale();
         addToOfflineQueue({ type: "sale", payload: offlinePayload });
         toast.success("Sale saved locally. It will sync automatically when you are back online.");
@@ -500,8 +527,9 @@ const Sales = () => {
     }
 
     saleIntegrationIdRef.current = null;
-    toast.success(firstSalePrompt ? "Your first sale is recorded. You’re ready for daily sales." : "Sale recorded");
+    toast.success(invoiceMode ? (createdSale.invoice_number ? `Invoice ${createdSale.invoice_number} created.` : "Invoice created.") : firstSalePrompt ? "Your first sale is recorded. Ready for daily sales." : "Sale recorded");
     setFirstSalePrompt(false);
+    setInvoiceMode(false);
     setLineItems([]);
     setBarcodeInput("");
     setSelectedProduct("");
@@ -766,12 +794,14 @@ const Sales = () => {
         </Card>
       )}
 
-      <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) setFirstSalePrompt(false); }}>
+      <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) { setFirstSalePrompt(false); setInvoiceMode(false); } }}>
         <DialogContent className="max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
           <DialogHeader>
-            <DialogTitle className="font-display">Record Sale</DialogTitle>
+            <DialogTitle className="font-display">{invoiceMode ? "Create customer invoice" : "Record Sale"}</DialogTitle>
             <DialogDescription>
-              {firstSalePrompt
+              {invoiceMode
+                ? "Choose a saved customer and add the items. Verifin will issue an invoice number when you record the sale."
+                : firstSalePrompt
                 ? "You’re ready for your first sale. Choose a product, enter the quantity, and save."
                 : "Add products, choose payment currency, and save the sale total in your base currency."}
             </DialogDescription>
@@ -861,13 +891,14 @@ const Sales = () => {
             </div>
 
             <div>
-              <Label>Customer</Label>
+              <Label>Customer{invoiceMode ? " (required for invoice)" : ""}</Label>
               <select
                 value={selectedCustomerId}
                 onChange={e => setSelectedCustomerId(e.target.value)}
+                required={invoiceMode}
                 className="mt-1 w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
               >
-                <option value="">Walk-in customer</option>
+                <option value="">{invoiceMode ? "Select a customer..." : "Walk-in customer"}</option>
                 {customers.map((customer) => (
                   <option key={customer.id} value={customer.id}>
                     {customer.name}{customer.phone ? ` · ${customer.phone}` : ""}
@@ -875,7 +906,9 @@ const Sales = () => {
                 ))}
               </select>
               <p className="mt-1 text-xs text-muted-foreground">
-                Select a saved customer to attach their WhatsApp number to the receipt.
+                {invoiceMode
+                  ? "The invoice will include this customer's name and saved contact number."
+                  : "Select a saved customer to include their details on the invoice and receipt."}
               </p>
             </div>
 
