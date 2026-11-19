@@ -41,7 +41,6 @@ const Footer = () => {
               <li><button onClick={() => navigate("/contact")} className="hover:text-sidebar-foreground transition-colors">Email or WhatsApp support</button></li>
               <li><button onClick={() => navigate("/help")} className="hover:text-sidebar-foreground transition-colors">Help Center</button></li>
               <li><button onClick={() => navigate("/privacy")} className="hover:text-sidebar-foreground transition-colors">Privacy Policy</button></li>
-              <li><button onClick={() => window.dispatchEvent(new Event("verifin:manage-analytics-consent"))} className="hover:text-sidebar-foreground transition-colors">Privacy settings</button></li>
               <li><button onClick={() => navigate("/terms")} className="hover:text-sidebar-foreground transition-colors">Terms of Service</button></li>
             </ul>
           </div>

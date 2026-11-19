@@ -12,7 +12,6 @@ import { PWAInstallButton } from "./components/PWAInstallButton";
 import { PWAUpdatePrompt } from "./components/PWAUpdatePrompt";
 import { PageSkeleton } from "@/components/ui/page-skeleton";
 import { RouteSEO } from "@/components/RouteSEO";
-import AnalyticsConsentBanner from "@/components/AnalyticsConsentBanner";
 
 const Index = lazy(() => import("./pages/Index"));
 const Features = lazy(() => import("./pages/Features"));
@@ -70,6 +69,20 @@ function RouteFallback() {
   );
 }
 
+function RemoveLegacyGoogleAnalytics() {
+  useEffect(() => {
+    document.querySelectorAll('script[src*="googletagmanager.com/gtag/js"], #verifin-google-analytics').forEach((script) => script.remove());
+    document.cookie.split(";").forEach((cookie) => {
+      const name = cookie.split("=")[0]?.trim();
+      if (name?.startsWith("_ga")) document.cookie = `${name}=; Max-Age=0; path=/; SameSite=Lax`;
+    });
+    localStorage.removeItem("verifin:site-analytics-consent");
+    Reflect.deleteProperty(window, "gtag");
+    Reflect.deleteProperty(window, "dataLayer");
+  }, []);
+  return null;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <StoreProvider>
@@ -79,10 +92,10 @@ const App = () => (
           <Sonner />
           <PWAInstallButton />
           <PWAUpdatePrompt />
+          <RemoveLegacyGoogleAnalytics />
           <BrowserRouter>
             <ScrollToTop />
             <RouteSEO />
-            <AnalyticsConsentBanner />
             <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/" element={<Index />} />

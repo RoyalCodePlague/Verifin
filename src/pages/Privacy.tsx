@@ -31,7 +31,7 @@ const sections = [
       },
       {
         subtitle: "Usage and technical data",
-        items: ["Technical and operational data generated when you use the service, such as request logs and device or browser details, where collected by the application or its hosting providers.", "The website loads Google Analytics only after you choose Allow analytics in the consent notice. You can change your choice using Privacy settings in the footer. Google may process website usage information under its own privacy terms.", "If you opt in through Settings, first-party product milestones such as first product creation, sale recording, and expense recording are stored by Verifin. These events use a random pseudonymous identifier and do not include the business record itself. A backend command exists to purge events older than 365 days, but the production schedule for that command has not been verified. Turning off this product analytics consent deletes events currently associated with that identifier.", "Offline queue and sync metadata needed to keep your records consistent across sessions."],
+        items: ["Technical and operational data generated when you use the service, such as request logs and device or browser details, where collected by the application or its hosting providers.", "If you opt in through Settings, first-party product milestones such as first product creation, sale recording, and expense recording are stored by Verifin. These events use a random pseudonymous identifier and do not include the business record itself. A backend command exists to purge events older than 365 days, but the production schedule for that command has not been verified. Turning off this product analytics consent deletes events currently associated with that identifier.", "Offline queue and sync metadata needed to keep your records consistent across sessions."],
       },
       {
         subtitle: "Billing data",
@@ -57,7 +57,7 @@ const sections = [
     title: "4. When We Share Information",
     content: "We do not sell your data. We only share information where needed to provide the service, comply with law, or protect Verifin and its users.",
     items: [
-      "Service providers that help with hosting, database infrastructure, email delivery, support, and security. If you allow website analytics, Google Analytics receives website usage information; Verifin's current site code no longer loads the separate Tag Manager container.",
+      "Service providers that help with hosting, database infrastructure, email delivery, support, and security.",
       "Your authorized staff users, based on the permissions you configure.",
       "Law enforcement, regulators, courts, or other parties where legally required or necessary to protect rights, safety, and security.",
       "A successor organization if Verifin is involved in a merger, acquisition, restructuring, financing, or sale of assets, subject to appropriate confidentiality safeguards.",
@@ -100,7 +100,7 @@ const sections = [
     icon: Cookie,
     title: "8. Cookies and Similar Technologies",
     content:
-      "Essential browser storage supports authentication, preferences, offline workflows, and session continuity. Website analytics remains off until you choose Allow analytics. Use Privacy settings in the footer to change that choice; choosing Essential only stops future analytics measurement, removes the script from the current page and clears accessible Google Analytics cookies. If you previously allowed analytics, the script may already have loaded for that page view; the saved Essential only choice prevents it loading on later visits. The separate product-milestone setting is in account Settings. Disabling essential cookies or local storage may affect login, offline mode, and app functionality.",
+      "Essential browser storage supports authentication, preferences, offline workflows, and session continuity. Verifin does not use Google Analytics or the separate Tag Manager container. The separate first-party product-milestone setting is available in account Settings and is off unless you opt in. Disabling essential cookies or local storage may affect login, offline mode, and app functionality.",
   },
   {
     icon: Globe,
