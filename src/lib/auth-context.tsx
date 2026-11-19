@@ -193,18 +193,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (getOfflineQueue().length > 0) {
       throw new Error("Sync your pending changes before signing into a new account, or open this verification link in another browser.");
     }
-    await verifyEmailRequest(token);
-    // Verification activates the account but deliberately does not create a
-    // browser session. The user returns to sign-in with their own credentials.
-    resetForLogout();
-    clearTokens();
-    clearCachedUser();
-    clearOfflineSession();
-    clearAuthenticatedOfflineSession();
+    const response = await verifyEmailRequest(token);
     localStorage.removeItem(STAFF_SESSION_KEY);
     setStaffSession(null);
-    setUser(null);
-  }, [resetForLogout]);
+    setTokens(response.access, response.refresh);
+    await refreshUser();
+  }, [refreshUser]);
 
   const staffLogin = useCallback(
     async (businessCode: string, username: string, password: string) => {

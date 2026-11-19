@@ -191,7 +191,7 @@ const Dashboard = () => {
   ];
 
   const activationTasks = [
-    { label: "Add your first product", detail: "Set a name, selling price and stock quantity.", done: products.length > 0, to: "/inventory", action: "Add product" },
+    { label: "Add your first product", detail: "Set its selling price and stock; add unit cost for profit estimates.", done: products.length > 0, to: "/inventory", action: "Add product" },
     { label: "Record your first sale", detail: "Choose a stocked product and save the transaction.", done: sales.length > 0, to: "/sales", action: "Record sale" },
     ...(canAccessExpenses ? [{ label: "Record an expense", detail: "Keep business costs together with your sales.", done: expenses.length > 0, to: "/expenses", action: "Add expense" }] : []),
   ];
@@ -217,8 +217,8 @@ const Dashboard = () => {
             <span className="h-2.5 w-2.5 rounded-full bg-success" />
             Currency: {profile.currency}{secondaryCurrency ? ` | ${secondaryCurrency}` : ""}
           </div>
-          <h2 className="text-xl font-display font-bold">Welcome back, {displayName}!</h2>
-          <p className="text-sm text-muted-foreground">Here's what's happening with your business today.</p>
+          <h2 className="text-xl font-display font-bold">Welcome, {displayName}!</h2>
+          <p className="text-sm text-muted-foreground">Here’s your business overview for today.</p>
         </div>
         <Button variant="outline" size="sm" onClick={handleWhatsAppShare} className="hidden sm:flex gap-2">
           <Share2 className="h-4 w-4" /> Share via WhatsApp

@@ -14,7 +14,7 @@ async function mockApi(page: Page, sent = true, valid = true) {
     let json: unknown = [];
     let status = 200;
     if (path.endsWith("/google/")) json = { client_id: "", nonce: null };
-    if (path.endsWith("/register/")) json = { verification_required: true, email_sent: sent, email: "new@example.test", detail: sent ? "Check your inbox. Verify your email to finish creating your account and sign in." : "Email delivery is not configured yet. Your account is pending verification." };
+    if (path.endsWith("/register/")) json = { verification_required: true, email_sent: sent, email: "new@example.test", detail: sent ? "Check your inbox. Verify your email to activate your account. We’ll sign you in and take you to setup." : "Email delivery is not configured yet. Your account is pending verification." };
     if (path.endsWith("/verify-email/")) {
       verificationCalls++;
       status = valid ? 200 : 400;
@@ -30,32 +30,26 @@ async function mockApi(page: Page, sent = true, valid = true) {
   return () => verificationCalls;
 }
 
-test("signup stays signed out and explains the verification step", async ({ page }) => {
+test("signup directs the new customer to their inbox and stays signed out", async ({ page }) => {
   await mockApi(page);
   await page.goto("/login?signup=1");
   await page.getByPlaceholder("you@business.com").fill("new@example.test");
   await page.getByPlaceholder("Password", { exact: true }).fill("Strong-pass123!");
   await page.getByRole("button", { name: "Create Account", exact: true }).click();
-  await expect(page).toHaveURL(/login/);
-  await expect(page.getByText("Check your inbox. Verify your email to finish creating your account and sign in.")).toBeVisible();
+  await expect(page).toHaveURL(/verify-email/);
+  await expect(page.getByText(/Check your inbox\. Verify your email to activate your account/)).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem("sp_access_token"))).toBeNull();
 });
 
-test("email confirmation activates account and returns to sign in", async ({ page }) => {
+test("email confirmation activates account, signs in, and opens onboarding", async ({ page }) => {
   const calls = await mockApi(page);
   await page.goto("/verify-email?token=example-token");
   await expect(page.getByRole("button", { name: "Verify email" })).toBeVisible();
   expect(calls()).toBe(0);
   await page.getByRole("button", { name: "Verify email" }).click();
-  await expect(page).toHaveURL(/login$/);
-  expect(calls()).toBe(1);
-  expect(await page.evaluate(() => localStorage.getItem("sp_access_token"))).toBeNull();
-  await expect(page.getByText(/Your email is verified/)).toBeVisible();
-  await page.getByPlaceholder("you@business.com").fill("new@example.test");
-  await page.getByPlaceholder("Password", { exact: true }).fill("Strong-pass123!");
-  await page.getByRole("button", { name: "Sign In", exact: true }).click();
   await expect(page).toHaveURL(/onboarding$/);
-  expect(await page.evaluate(() => localStorage.getItem("sp_access_token"))).toBe("login-access");
+  expect(calls()).toBe(1);
+  expect(await page.evaluate(() => localStorage.getItem("sp_access_token"))).toBe("verified-access");
 });
 
 test("invalid verification stays signed out and allows resending", async ({ page }) => {
@@ -86,10 +80,8 @@ test("delivery failure is visible and users can request another email", async ({
   await page.getByPlaceholder("you@business.com").fill("new@example.test");
   await page.getByPlaceholder("Password", { exact: true }).fill("Strong-pass123!");
   await page.getByRole("button", { name: "Create Account", exact: true }).click();
-  await expect(page.getByText(/Email delivery is not configured yet/)).toBeVisible();
-  await page.getByRole("button", { name: "Resend verification email" }).click();
   await expect(page).toHaveURL(/verify-email/);
-  await page.getByPlaceholder("you@business.com").fill("new@example.test");
+  await expect(page.getByText(/Email delivery is not configured yet/)).toBeVisible();
   await page.getByRole("button", { name: "Resend verification email" }).click();
   await expect(page.getByText(/If this address has a pending account/)).toBeVisible();
 });

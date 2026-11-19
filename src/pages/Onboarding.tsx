@@ -92,7 +92,7 @@ const steps = [
   { title: "Goals", desc: "Pick what you want Verifin to help with first." },
   { title: "Currency", desc: "Choose how you price and report your numbers." },
   { title: "Categories", desc: "Start with smart defaults and adjust them if needed." },
-  { title: "Starter Stock", desc: "Add a few sample products so the app feels ready immediately." },
+  { title: "Starter Stock", desc: "Add your first products so you can start recording sales." },
 ];
 
 const toNumberOrZero = (value: string) => {
@@ -103,6 +103,7 @@ const toNumberOrZero = (value: string) => {
 interface QuickProduct {
   name: string;
   price: string;
+  costPrice: string;
   stock: string;
   category: string;
 }
@@ -130,9 +131,13 @@ function loadOnboardingProgress(userId: number | undefined): OnboardingProgress 
     const validCategories = Array.isArray(parsed.categories) && parsed.categories.every((category) => typeof category === "string");
     const validProducts = Array.isArray(parsed.quickProducts) && parsed.quickProducts.every((product) =>
       product && ["name", "price", "stock", "category"].every((field) => typeof product[field as keyof QuickProduct] === "string")
+      && (product.costPrice === undefined || typeof product.costPrice === "string")
     );
     if (!validStep || typeof parsed.bizName !== "string" || !validBusinessType || !validGoals || !validCurrency || !validCategories || !validProducts) return null;
-    return parsed as OnboardingProgress;
+    return {
+      ...parsed,
+      quickProducts: parsed.quickProducts!.map((product) => ({ ...product, costPrice: product.costPrice || "" })),
+    } as OnboardingProgress;
   } catch {
     return null;
   }
@@ -144,6 +149,7 @@ function starterProductsFor(type: BusinessType, categories: string[]): QuickProd
   return business.starterProducts.slice(0, 1).map((name, index) => ({
     name,
     price: "",
+    costPrice: "",
     stock: "",
     category: categories[index] || defaultCategory,
   }));
@@ -270,7 +276,7 @@ const Onboarding = () => {
             categoryId: categoryIdByName.get(product.category.toLowerCase()),
             stock: toNumberOrZero(product.stock),
             reorder_level: 5,
-            cost_price: 0,
+            cost_price: toNumberOrZero(product.costPrice),
             price: toNumberOrZero(product.price),
           });
         } catch (createError) {
@@ -348,6 +354,7 @@ const Onboarding = () => {
     setQuickProducts((current) => [...current, {
       name: "",
       price: "",
+      costPrice: "",
       stock: "",
       category: categories[0] || "General",
     }]);
@@ -525,10 +532,15 @@ const Onboarding = () => {
                     <Button variant="outline" onClick={applyBusinessTemplate}>Reset Suggestions</Button>
                   </div>
 
+                  <p className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-sm leading-5 text-muted-foreground">
+                    Unit cost is what you pay to buy or make one item. Add it for more useful profit estimates; you can leave it blank and fill it in later.
+                  </p>
+
                   {quickProducts.map((product, index) => (
                     <div key={`${product.name}-${index}`} className="grid gap-2 rounded-2xl border border-border bg-background p-4 sm:grid-cols-2">
                       <Input placeholder="Product name" value={product.name} onChange={(e) => updateQuickProduct(index, "name", e.target.value)} className="sm:col-span-2" />
-                      <Input placeholder="Selling price" type="number" value={product.price} onChange={(e) => updateQuickProduct(index, "price", e.target.value)} />
+                      <Input placeholder="Unit cost (optional)" aria-label="Unit cost (optional)" type="number" min="0" step="0.01" value={product.costPrice} onChange={(e) => updateQuickProduct(index, "costPrice", e.target.value)} />
+                      <Input placeholder="Selling price" aria-label="Selling price" type="number" min="0" step="0.01" value={product.price} onChange={(e) => updateQuickProduct(index, "price", e.target.value)} />
                       <Input placeholder="Opening stock" type="number" value={product.stock} onChange={(e) => updateQuickProduct(index, "stock", e.target.value)} />
                       <select value={product.category} onChange={(e) => updateQuickProduct(index, "category", e.target.value)} className="h-10 rounded-md border border-input bg-background px-3 text-sm sm:col-span-2">
                         {categories.map((category) => <option key={category} value={category}>{category}</option>)}

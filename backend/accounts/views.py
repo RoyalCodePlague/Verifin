@@ -86,7 +86,7 @@ class RegisterView(APIView):
             record_activation_event(user, "signup_completed")
             try:
                 send_verification_email(user)
-                sent, detail = True, "Check your inbox. Verify your email to finish creating your account and sign in."
+                sent, detail = True, "Check your inbox. Verify your email to activate your account. We’ll sign you in and take you to setup."
             except VerificationEmailError as exc:
                 sent, detail = False, str(exc)
         return Response({"verification_required": True, "email_sent": sent, "email": user.email, "detail": detail}, status=201)

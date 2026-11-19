@@ -84,7 +84,7 @@ const Login = () => {
         navigate("/dashboard");
       } else if (isSignUp) {
         const result = await register(form.email, form.password, form.name.trim() || undefined, referralCode);
-        navigate("/login", { replace: true, state: { email: result.email, verificationNotice: result.detail } });
+        navigate("/verify-email", { replace: true, state: { email: result.email, emailSent: result.email_sent, detail: result.detail } });
       } else {
         await login(form.email, form.password);
         toast.success("Welcome back!");
@@ -124,7 +124,7 @@ const Login = () => {
             <div className="w-16" />
           </div>
           <h1 className="font-display font-bold text-2xl mb-1">
-            {isSignUp ? "Create your account" : loginMode === "staff" ? "Staff sign in" : "Welcome back"}
+            {isSignUp ? "Create your account" : loginMode === "staff" ? "Staff sign in" : "Sign in to Verifin"}
           </h1>
           <p className="text-sm text-muted-foreground">
             {isSignUp ? "Create an account with your email and a password" : loginMode === "staff" ? "Use the details created by the owner" : "Sign in to your dashboard"}
@@ -252,7 +252,7 @@ const Login = () => {
               </Button>
             </form>
 
-            {isSignUp && <div className="mt-4 space-y-2 text-xs leading-5 text-muted-foreground"><p>After signup, check your inbox for an email confirmation link before signing in. You can request another confirmation email from the sign-in page.</p><p>By creating an account, you agree to the <a className="font-medium text-primary underline underline-offset-2" href="/terms">Terms of Service</a> and acknowledge the <a className="font-medium text-primary underline underline-offset-2" href="/privacy">Privacy Policy</a>.</p></div>}
+            {isSignUp && <div className="mt-4 space-y-2 text-xs leading-5 text-muted-foreground"><p>After signup, confirm your email to activate your account. We’ll sign you in automatically and take you to setup.</p><p>By creating an account, you agree to the <a className="font-medium text-primary underline underline-offset-2" href="/terms">Terms of Service</a> and acknowledge the <a className="font-medium text-primary underline underline-offset-2" href="/privacy">Privacy Policy</a>.</p></div>}
 
             {(loginMode === "owner" || isSignUp) && (
               <div className="mt-6 text-center text-sm">

@@ -23,13 +23,13 @@ const VerifyEmail = () => {
   const [token] = useState(() => params.get("token") || "");
   const [email, setEmail] = useState(state?.email || "");
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState(state?.detail || (token ? "Confirm your email to activate your account and sign in." : "Enter your signup email to request a verification link."));
+  const [message, setMessage] = useState(state?.detail || (token ? "Confirm your email to activate your account. We’ll sign you in and continue to setup." : "Enter your signup email to request a verification link."));
   const confirm = async () => {
     setBusy(true);
     try {
       await verifyEmail(token);
-      toast.success("Email verified. You can now sign in.");
-      navigate("/login", { replace: true, state: { email, verificationNotice: "Your email is verified. Sign in to open your workspace." } });
+      toast.success("Email verified. Let’s set up your workspace.");
+      navigate("/onboarding", { replace: true });
     } catch (error) { setMessage(error instanceof Error ? error.message : "Verification failed."); }
     finally { setBusy(false); }
   };
@@ -44,7 +44,7 @@ const VerifyEmail = () => {
     <Card className="w-full max-w-md overflow-hidden shadow-elevated"><div className="h-1.5 bg-gradient-hero" /><CardContent className="space-y-5 p-6 sm:p-8">
       <div className="text-center"><div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10"><Mail className="h-7 w-7 text-primary" /></div><h1 className="font-display text-2xl font-bold">Verify your email</h1><p className="mt-2 text-sm text-muted-foreground">One last step to activate your Verifin account.</p></div>
       <div role="status" className="rounded-xl border border-border bg-muted/40 p-4 text-sm leading-relaxed">{message}</div>
-      {state?.email && <div className="flex items-center gap-2 rounded-lg bg-primary/5 px-3 py-2 text-sm text-primary"><CheckCircle2 className="h-4 w-4 shrink-0" />Verification email sent to <strong className="truncate">{state.email}</strong></div>}
+      {state?.email && state.emailSent && <div className="flex items-center gap-2 rounded-lg bg-primary/5 px-3 py-2 text-sm text-primary"><CheckCircle2 className="h-4 w-4 shrink-0" />Verification email sent to <strong className="truncate">{state.email}</strong></div>}
       {token && <Button onClick={() => void confirm()} disabled={busy || isLoading} className="h-11 w-full bg-gradient-hero text-primary-foreground">{busy ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" />Verifying your email...</> : <><ShieldCheck className="mr-2 h-4 w-4" />Verify email</>}</Button>}
       <form onSubmit={resend} className="space-y-3 border-t border-border pt-5">
         <div><label htmlFor="verification-email" className="text-sm font-medium">Need another link?</label><p className="mt-1 text-xs text-muted-foreground">Enter the email you used to create your account.</p></div>

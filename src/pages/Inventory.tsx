@@ -21,6 +21,7 @@ import { symbolForCurrency } from "@/lib/currency";
 import { cacheBarcodeEntry, getCachedBarcodeEntry } from "@/lib/barcodeCache";
 import { barcodeMatches, normalizeBarcode } from "@/lib/barcodes";
 import { buildReorderSuggestions } from "@/lib/reporting";
+import { TutorialCenterButton } from "@/components/TutorialCenterButton";
 
 const allCategories = [
   "Groceries", "Beverages", "Hardware", "Personal Care", "Electronics",
@@ -666,6 +667,7 @@ const Inventory = () => {
             : "Save stock levels, reorder points, and base cost for this product."}
         </DialogDescription>
       </DialogHeader>
+      {!editProduct && <p className="rounded-lg bg-primary/5 px-3 py-2 text-xs leading-5 text-muted-foreground">Unit cost is what you pay to buy or make one item. Add it for better profit estimates; you can fill it in later.</p>}
       <div className="space-y-3">
         <div><Label>Product Name</Label><Input ref={productNameInputRef} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} className="mt-1" placeholder="e.g. White Bread Loaf" /></div>
         <div>
@@ -704,7 +706,7 @@ const Inventory = () => {
                 {inventoryCostMetaText(selectedEditProduct?.costCurrency, selectedEditProduct?.costFxRateToBase)}
               </p>
             ) : (
-              <p className="mt-1 text-[11px] text-muted-foreground">Base cost</p>
+              <p className="mt-1 text-[11px] text-muted-foreground">What you pay to buy or make one item.</p>
             )}
           </div>
         </div>
@@ -734,6 +736,7 @@ const Inventory = () => {
           <Input placeholder="Search products, SKU, barcode..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
         </div>
         <div className="flex gap-2">
+          <TutorialCenterButton initialTutorial="product" label="Product guide" />
           {canUseCameraScan && (
             <Button
               variant="outline"
