@@ -2338,6 +2338,7 @@ export type ReferralProgress = {
   pending_count: number;
   remaining: number;
   reward_days: number;
+  completed: boolean;
   tokens: ReferralRewardToken[];
 };
 

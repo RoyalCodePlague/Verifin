@@ -116,6 +116,7 @@ class ReferralProgressSerializer(serializers.Serializer):
     pending_count = serializers.IntegerField()
     remaining = serializers.IntegerField()
     reward_days = serializers.IntegerField()
+    completed = serializers.BooleanField()
     tokens = ReferralRewardTokenSerializer(many=True)
 
 

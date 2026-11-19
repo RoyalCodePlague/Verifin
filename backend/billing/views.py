@@ -454,7 +454,7 @@ class ReferralViewSet(viewsets.ViewSet):
         subscription, token = redeem_referral_reward(request.user, request.data.get("token", ""))
         return Response(
             {
-                "detail": f"Growth unlocked for {token.reward_days} days.",
+                "detail": f"Referral reward applied: {token.reward_days} days of Growth.",
                 "billing": BillingOverviewSerializer(subscription_payload(subscription.user)).data,
                 "referrals": ReferralProgressSerializer(referral_progress(request.user)).data,
             },

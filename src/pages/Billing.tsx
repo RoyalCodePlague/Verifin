@@ -36,6 +36,7 @@ const formatDate = (value: string | null) => {
 };
 
 const visibleLimits = ["users", "products", "customers", "reports"];
+const referralMilestones = [5, 10, 15, 20];
 
 function UsageRow({ limit }: { limit: FeatureLimit }) {
   const used = limit.used ?? 0;
@@ -96,6 +97,7 @@ const Billing = () => {
     return `${window.location.origin}/login?signup=1&ref=${encodeURIComponent(referrals.code)}`;
   }, [referrals?.code]);
   const unusedReferralToken = referrals?.tokens.find((token) => token.status === "unused");
+  const unusedReferralTokenCount = referrals?.tokens.filter((token) => token.status === "unused").length ?? 0;
   const referralPct = referrals ? Math.min(100, Math.round((referrals.qualified_count / referrals.target) * 100)) : 0;
 
   const refreshBilling = async () => {
@@ -260,18 +262,37 @@ const Billing = () => {
               </div>
               <div>
                 <h2 className="text-xl font-bold">Referral Growth Reward</h2>
-                <p className="mt-1 text-sm text-muted-foreground">Invite {referrals?.target ?? 15} verified businesses and unlock Growth for {referrals?.reward_days ?? 90} days.</p>
+                <p className="mt-1 text-sm text-muted-foreground">Reach 5, 10, 15, and 20 total qualified referrals. Each milestone earns {referrals?.reward_days ?? 30} days of Growth.</p>
               </div>
             </div>
 
             <div className="mt-6 space-y-3">
               <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="font-medium text-foreground">{referrals?.qualified_count ?? 0}/{referrals?.target ?? 15} qualified referrals</span>
+                <span className="font-medium text-foreground">
+                  {referrals?.completed
+                    ? `All ${referralMilestones.length} reward milestones reached`
+                    : `${referrals?.qualified_count ?? 0}/${referrals?.target ?? referralMilestones[0]} total qualified referrals`}
+                </span>
                 <span className="text-muted-foreground">{referrals?.pending_count ?? 0} pending</span>
               </div>
               <div className="h-3 overflow-hidden rounded bg-muted dark:bg-muted/40">
                 <div className="h-full rounded bg-emerald-500 transition-all" style={{ width: `${referralPct}%` }} />
               </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {referralMilestones.map((milestone) => {
+                const reached = (referrals?.qualified_count ?? 0) >= milestone;
+                return (
+                  <div key={milestone} className={`rounded-md border p-3 ${reached ? "border-emerald-300 bg-emerald-50/70 dark:border-emerald-700/60 dark:bg-emerald-950/30" : "border-border bg-background"}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-semibold">{milestone} referrals</span>
+                      {reached && <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />}
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">{referrals?.reward_days ?? 30} Growth days</p>
+                  </div>
+                );
+              })}
             </div>
 
             <div className="mt-5 flex flex-col gap-3 sm:flex-row">
@@ -291,7 +312,7 @@ const Billing = () => {
                 className="inline-flex items-center justify-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-60"
               >
                 <Ticket className="h-4 w-4" />
-                {unusedReferralToken ? "Redeem Growth token" : "No token ready yet"}
+                {unusedReferralToken ? "Redeem Growth reward" : "No reward ready yet"}
               </button>
             </div>
           </div>
@@ -301,9 +322,11 @@ const Billing = () => {
             <p className="mt-2 break-all text-2xl font-bold">{referrals?.code ?? "Loading..."}</p>
             <p className="mt-3 text-sm text-muted-foreground">
               {unusedReferralToken
-                ? `Token ready: ${unusedReferralToken.code}`
+                ? `${unusedReferralTokenCount} reward${unusedReferralTokenCount === 1 ? "" : "s"} ready. Code: ${unusedReferralToken.code} (${unusedReferralToken.reward_days} days).`
                 : referrals
-                  ? `${referrals.remaining} more qualified referral${referrals.remaining === 1 ? "" : "s"} until your next token.`
+                  ? referrals.completed
+                    ? "All milestone rewards are complete. Your invite code remains active."
+                    : `${referrals.remaining} more qualified referral${referrals.remaining === 1 ? "" : "s"} to reach ${referrals.target} total and unlock your next reward.`
                   : "Checking referral progress."}
             </p>
           </div>

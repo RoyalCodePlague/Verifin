@@ -14,8 +14,12 @@ from .regional_pricing import COUNTRY_PRICING, DEFAULT_COUNTRY, normalize_countr
 
 
 GRACE_PERIOD_DAYS = 7
-REFERRAL_TARGET = 15
-REFERRAL_REWARD_DAYS = 90
+REFERRAL_MILESTONES = (5, 10, 15, 20)
+REFERRAL_TARGET = REFERRAL_MILESTONES[-1]
+REFERRAL_REWARD_DAYS = 30
+REFERRAL_PROGRAM = "progressive_5_v1"
+LEGACY_REFERRAL_TARGET = 15
+LEGACY_REFERRAL_REWARD_DAYS = 90
 REFERRAL_TOKEN_TTL_DAYS = 180
 _CATALOG_SYNCED = False
 
@@ -431,29 +435,73 @@ def _new_reward_token():
 
 @transaction.atomic
 def maybe_issue_referral_reward(user):
+    user = type(user).objects.select_for_update().get(pk=user.pk)
     qualified_count = ReferralSignup.objects.filter(referrer=user, status=ReferralSignup.QUALIFIED, is_deleted=False).count()
-    earned_count = qualified_count // REFERRAL_TARGET
-    existing_count = ReferralRewardToken.objects.filter(user=user, is_deleted=False).count()
+    now = timezone.now()
+    ReferralRewardToken.objects.filter(
+        user=user,
+        status=ReferralRewardToken.UNUSED,
+        is_deleted=False,
+        expires_at__lt=now,
+    ).update(status=ReferralRewardToken.EXPIRED, updated_at=now)
+    existing_tokens = list(ReferralRewardToken.objects.filter(user=user, is_deleted=False))
+    issued_milestones = set()
+    legacy_reward_credits = 0
+    for token in existing_tokens:
+        metadata = token.metadata if isinstance(token.metadata, dict) else {}
+        if metadata.get("program") == REFERRAL_PROGRAM:
+            try:
+                milestone_target = int(metadata.get("milestone_target", token.referrals_required))
+            except (TypeError, ValueError):
+                continue
+            if milestone_target in REFERRAL_MILESTONES:
+                issued_milestones.add(milestone_target)
+            continue
+
+        legacy_reward_is_valid = token.status == ReferralRewardToken.REDEEMED or (
+            token.status == ReferralRewardToken.UNUSED and (not token.expires_at or token.expires_at >= now)
+        )
+        if (
+            legacy_reward_is_valid
+            and token.referrals_required == LEGACY_REFERRAL_TARGET
+            and token.reward_days == LEGACY_REFERRAL_REWARD_DAYS
+        ):
+            legacy_reward_credits += token.reward_days // REFERRAL_REWARD_DAYS
+
+    legacy_covered_milestones = set(REFERRAL_MILESTONES[:min(len(REFERRAL_MILESTONES), legacy_reward_credits)])
     created = []
-    while existing_count < earned_count:
+    for milestone_index, milestone_target in enumerate(REFERRAL_MILESTONES, start=1):
+        if qualified_count < milestone_target:
+            continue
+        if milestone_target in issued_milestones or milestone_target in legacy_covered_milestones:
+            continue
         token = ReferralRewardToken.objects.create(
             user=user,
             code=_new_reward_token(),
             plan_code=Plan.GROWTH,
-            referrals_required=REFERRAL_TARGET,
+            referrals_required=milestone_target,
             reward_days=REFERRAL_REWARD_DAYS,
             expires_at=timezone.now() + timedelta(days=REFERRAL_TOKEN_TTL_DAYS),
-            metadata={"qualified_referrals": qualified_count, "milestone": existing_count + 1},
+            metadata={
+                "program": REFERRAL_PROGRAM,
+                "qualified_referrals": qualified_count,
+                "milestone": milestone_index,
+                "milestone_target": milestone_target,
+            },
         )
         created.append(token)
         subscription = get_or_create_subscription(user)
         record_event(
             subscription,
             "referral_reward_issued",
-            {"token": token.code, "qualified_referrals": qualified_count, "reward_days": token.reward_days},
+            {
+                "token": token.code,
+                "qualified_referrals": qualified_count,
+                "milestone_target": milestone_target,
+                "reward_days": token.reward_days,
+            },
             actor=user,
         )
-        existing_count += 1
     return created
 
 
@@ -493,20 +541,22 @@ def qualify_referral_for_user(user):
 
 
 def referral_progress(user):
+    maybe_issue_referral_reward(user)
     code = get_or_create_referral_code(user)
     qualified_count = ReferralSignup.objects.filter(referrer=user, status=ReferralSignup.QUALIFIED, is_deleted=False).count()
     pending_count = ReferralSignup.objects.filter(referrer=user, status=ReferralSignup.PENDING, is_deleted=False).count()
     tokens = ReferralRewardToken.objects.filter(user=user, is_deleted=False).order_by("status", "-created_at")
-    has_unused_token = tokens.filter(status=ReferralRewardToken.UNUSED).exists()
-    remainder = qualified_count % REFERRAL_TARGET
-    remaining = 0 if has_unused_token else (REFERRAL_TARGET - remainder if remainder else REFERRAL_TARGET)
+    next_target = next((target for target in REFERRAL_MILESTONES if qualified_count < target), REFERRAL_TARGET)
+    completed = qualified_count >= REFERRAL_TARGET
+    remaining = max(0, next_target - qualified_count) if not completed else 0
     return {
         "code": code.code,
-        "target": REFERRAL_TARGET,
+        "target": next_target,
         "qualified_count": qualified_count,
         "pending_count": pending_count,
         "remaining": remaining,
         "reward_days": REFERRAL_REWARD_DAYS,
+        "completed": completed,
         "tokens": tokens,
     }
 
@@ -528,9 +578,18 @@ def redeem_referral_reward(user, token_code=""):
     sync_plan_catalog()
     plan = Plan.objects.get(code=token.plan_code, is_deleted=False)
     subscription = get_or_create_subscription(user)
+    subscription = Subscription.objects.select_for_update().select_related("plan").get(pk=subscription.pk)
     country_code = subscription.billing_country_code or DEFAULT_COUNTRY
     region_price = region_price_for(plan, country_code)
-    end_at = now + timedelta(days=token.reward_days)
+    stacks_with_current_reward = (
+        subscription.provider == "referral_reward"
+        and subscription.plan.code == token.plan_code
+        and subscription.status == Subscription.ACTIVE
+        and subscription.current_period_end
+        and subscription.current_period_end > now
+    )
+    period_start = subscription.current_period_end if stacks_with_current_reward else now
+    end_at = period_start + timedelta(days=token.reward_days)
 
     subscription.plan = plan
     subscription.provider = "referral_reward"
@@ -538,7 +597,8 @@ def redeem_referral_reward(user, token_code=""):
     subscription.status = Subscription.ACTIVE
     subscription.billing_country_code = region_price.country_code
     subscription.billing_currency = region_price.currency
-    subscription.current_period_start = now
+    if not stacks_with_current_reward:
+        subscription.current_period_start = now
     subscription.current_period_end = end_at
     subscription.trial_ends_at = None
     subscription.grace_period_ends_at = None
@@ -549,7 +609,7 @@ def redeem_referral_reward(user, token_code=""):
 
     cycle = BillingCycle.objects.create(
         subscription=subscription,
-        period_start=now,
+        period_start=period_start,
         period_end=end_at,
         amount=Decimal("0"),
         currency=region_price.currency,
@@ -563,7 +623,13 @@ def redeem_referral_reward(user, token_code=""):
     record_event(
         subscription,
         "referral_reward_redeemed",
-        {"token": token.code, "cycle_id": cycle.id, "plan": plan.code, "reward_days": token.reward_days},
+        {
+            "token": token.code,
+            "cycle_id": cycle.id,
+            "plan": plan.code,
+            "reward_days": token.reward_days,
+            "stacked": stacks_with_current_reward,
+        },
         actor=user,
     )
     refresh_usage_snapshot(user)
