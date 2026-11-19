@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { useQuery } from "@tanstack/react-query";
 import { getDetectedPricingCountry, getPricingContextApi, type RegionalPlanPrice } from "@/lib/api";
 import { fallbackPricingContextForCountry, formatRegionalSampleAmount } from "@/lib/pricing";
+import { TutorialCenterButton } from "@/components/TutorialCenterButton";
 
 const detectedCountry = getDetectedPricingCountry();
 const helpSaleExample = `Sold 3 bread for ${formatRegionalSampleAmount(54, detectedCountry)}`;
@@ -114,6 +115,9 @@ const HelpCenter = () => {
             <div className="relative max-w-md mx-auto">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input placeholder="Search help articles..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+            </div>
+            <div className="mt-4 flex justify-center">
+              <TutorialCenterButton label="Browse quick tutorials" />
             </div>
           </div>
 

@@ -33,6 +33,7 @@ import { useFeatureAccess, useUpgradePrompt, LockedBadge } from "@/lib/features"
 import { useQuery } from "@tanstack/react-query";
 import { symbolForCurrency } from "@/lib/currency";
 import { useAuth } from "@/lib/auth-context";
+import { TutorialCenterButton } from "@/components/TutorialCenterButton";
 
 const Dashboard = () => {
   const [financePeriod, setFinancePeriod] = useState<FinancePeriod>("months");
@@ -300,8 +301,9 @@ const Dashboard = () => {
                   ))}
                 </div>
               </div>
-              <div className="flex shrink-0 gap-2">
+              <div className="flex shrink-0 flex-wrap gap-2">
                 <Button size="sm" variant="outline" onClick={() => navigate("/reports")}>View summaries</Button>
+                <TutorialCenterButton label="Tutorials" />
                 <Button size="sm" variant="ghost" onClick={() => navigate("/help")}>Get help</Button>
               </div>
             </div>
